@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. プロジェクト構造とコア設定のセットアップ
+- [x] 1. プロジェクト構造とコア設定のセットアップ
   - Next.js 14（App Router）とFastAPIのプロジェクト構造を作成
   - TypeScript、Tailwind CSS、Pythonの依存関係をインストール
   - Docker Compose設定を作成（開発環境用）

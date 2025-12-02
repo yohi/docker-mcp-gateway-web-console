@@ -1,0 +1,31 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Bitwarden CLI
+RUN curl -L https://github.com/bitwarden/clients/releases/download/cli-v2024.2.0/bw-linux-2024.2.0.zip -o bw.zip \
+    && unzip bw.zip \
+    && chmod +x bw \
+    && mv bw /usr/local/bin/ \
+    && rm bw.zip
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application files
+COPY . .
+
+# Expose port
+EXPOSE 8000
+
+# Start development server
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
