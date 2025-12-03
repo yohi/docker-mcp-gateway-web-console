@@ -93,7 +93,7 @@
   - **Property 16: コンテナログの取得**
   - **検証対象: 要件 4.5**
 
-- [ ] 5. バックエンド: Catalog Service実装
+- [x] 5. バックエンド: Catalog Service実装
   - Catalog取得メソッドを実装（HTTP fetch）
   - Catalogキャッシュ機構を実装
   - 検索・フィルタリングメソッドを実装
