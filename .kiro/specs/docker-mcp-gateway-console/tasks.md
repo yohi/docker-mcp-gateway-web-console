@@ -7,7 +7,7 @@
   - 環境変数の設定ファイルを作成
   - _要件: すべての要件の基盤_
 
-- [ ] 2. バックエンド: Secret Manager実装
+- [x] 2. バックエンド: Secret Manager実装
   - Bitwarden CLI wrapperを実装
   - Bitwarden参照記法のパーサーを実装（`{{ bw:item-id:field }}`）
   - Secret解決メソッドを実装
