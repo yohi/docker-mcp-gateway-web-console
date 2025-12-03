@@ -212,7 +212,8 @@ class InspectorService:
             exec_result = await loop.run_in_executor(
                 None,
                 lambda: container.exec_run(
-                    cmd=["sh", "-c", f"echo '{request_json}' | mcp"],
+                    cmd=["mcp"],
+                    stdin=request_json.encode('utf-8'),
                     stdout=True,
                     stderr=True,
                 )
