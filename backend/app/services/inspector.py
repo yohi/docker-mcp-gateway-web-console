@@ -397,18 +397,26 @@ class InspectorService:
             )
             
             # Handle exceptions
+            first_exception = None
+
             if isinstance(tools, Exception):
                 logger.error(f"Failed to fetch tools: {tools}")
-                tools = []
+                if first_exception is None:
+                    first_exception = tools
             
             if isinstance(resources, Exception):
                 logger.error(f"Failed to fetch resources: {resources}")
-                resources = []
+                if first_exception is None:
+                    first_exception = resources
             
             if isinstance(prompts, Exception):
                 logger.error(f"Failed to fetch prompts: {prompts}")
-                prompts = []
+                if first_exception is None:
+                    first_exception = prompts
             
+            if first_exception:
+                raise first_exception
+
             return InspectorResponse(
                 tools=tools,
                 resources=resources,
