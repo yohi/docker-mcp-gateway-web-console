@@ -143,8 +143,9 @@ class SecretManager:
             Secret value from Bitwarden
             
         Raises:
-            RuntimeError: If Bitwarden CLI command fails
+            RuntimeError: If Bitwarden CLI command fails or times out
         """
+        process = None
         try:
             # Run Bitwarden CLI command to get item
             cmd = [
@@ -163,7 +164,41 @@ class SecretManager:
                 stderr=asyncio.subprocess.PIPE
             )
             
-            stdout, stderr = await process.communicate()
+            # Wait for process completion with timeout
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=settings.bitwarden_cli_timeout_seconds
+                )
+            except asyncio.TimeoutError:
+                # Process timed out - need to clean up
+                error_msg = f"Bitwarden CLI command timed out after {settings.bitwarden_cli_timeout_seconds} seconds"
+                
+                # Try to capture any partial output before killing
+                partial_stdout = b""
+                partial_stderr = b""
+                try:
+                    # Kill the process
+                    process.kill()
+                    # Wait for process to terminate and capture any remaining output
+                    partial_stdout, partial_stderr = await asyncio.wait_for(
+                        process.communicate(),
+                        timeout=5.0  # Give it 5 seconds to clean up
+                    )
+                except asyncio.TimeoutError as e:
+                    # Process cleanup timed out - log but continue
+                    pass
+                except ProcessLookupError as e:
+                    # Process already terminated
+                    pass
+                
+                # Include any partial output in error message
+                if partial_stderr:
+                    error_msg += f" - Partial stderr: {partial_stderr.decode().strip()}"
+                if partial_stdout:
+                    error_msg += f" - Partial stdout: {partial_stdout.decode().strip()}"
+                
+                raise RuntimeError(error_msg)
             
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
@@ -185,9 +220,37 @@ class SecretManager:
             return value
             
         except json.JSONDecodeError as e:
-            raise RuntimeError(f"Invalid JSON response from Bitwarden CLI: {e}")
-        except Exception as e:
-            raise RuntimeError(f"Error fetching from Bitwarden: {e}")
+            raise RuntimeError(
+                f"Invalid JSON response from Bitwarden CLI: {e}"
+            ) from e
+        except asyncio.TimeoutError:
+            # Re-raise timeout errors as-is (already handled above)
+            raise
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(
+                f"Bitwarden CLI process failed with return code {e.returncode}: {e}"
+            ) from e
+        except OSError as e:
+            raise RuntimeError(
+                f"OS error while executing Bitwarden CLI: {e}"
+            ) from e
+        except ValueError as e:
+            raise RuntimeError(
+                f"Invalid value encountered while processing Bitwarden response: {e}"
+            ) from e
+        except KeyError as e:
+            raise RuntimeError(
+                f"Missing expected key in Bitwarden response: {e}"
+            ) from e
+        finally:
+            # Ensure process is cleaned up to avoid leaked subprocesses
+            if process is not None and process.returncode is None:
+                try:
+                    process.kill()
+                    await asyncio.wait_for(process.wait(), timeout=5.0)
+                except (ProcessLookupError, asyncio.TimeoutError):
+                    # Process already terminated or still hanging
+                    pass
 
     def _extract_field_value(self, item_data: Dict[str, Any], field: str) -> Optional[str]:
         """

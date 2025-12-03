@@ -8,6 +8,9 @@ class Settings(BaseSettings):
 
     # Bitwarden Configuration
     bitwarden_cli_path: str = "/usr/local/bin/bw"
+    # Timeout for Bitwarden CLI commands in seconds
+    # Prevents hanging on unresponsive Bitwarden CLI operations
+    bitwarden_cli_timeout_seconds: int = 30
 
     # Docker Configuration
     docker_host: str = "unix:///var/run/docker.sock"
