@@ -81,7 +81,12 @@ async def auth_error_handler(request: Request, exc: AuthError):
     
     **Validates: Requirements 10.1, 10.2**
     """
-    logger.warning(f"Authentication error: {exc}")
+    logger.warning(
+        "Authentication error on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
     return JSONResponse(
         status_code=status.HTTP_401_UNAUTHORIZED,
         content={
@@ -99,7 +104,12 @@ async def catalog_error_handler(request: Request, exc: CatalogError):
     
     **Validates: Requirements 10.1, 10.2**
     """
-    logger.error(f"Catalog error: {exc}")
+    logger.error(
+        "Catalog error on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={
@@ -117,7 +127,12 @@ async def config_error_handler(request: Request, exc: ConfigError):
     
     **Validates: Requirements 10.1, 10.2**
     """
-    logger.error(f"Configuration error: {exc}")
+    logger.error(
+        "Configuration error on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={
@@ -135,7 +150,12 @@ async def container_error_handler(request: Request, exc: ContainerError):
     
     **Validates: Requirements 10.1, 10.2**
     """
-    logger.error(f"Container error: {exc}")
+    logger.error(
+        "Container error on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={
@@ -153,7 +173,12 @@ async def inspector_error_handler(request: Request, exc: InspectorError):
     
     **Validates: Requirements 10.1, 10.2**
     """
-    logger.error(f"Inspector error: {exc}")
+    logger.error(
+        "Inspector error on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={
@@ -171,7 +196,12 @@ async def secret_error_handler(request: Request, exc: SecretError):
     
     **Validates: Requirements 10.1, 10.2**
     """
-    logger.error(f"Secret error: {exc}")
+    logger.error(
+        "Secret error on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={
