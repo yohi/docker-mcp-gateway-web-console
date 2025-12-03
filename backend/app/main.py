@@ -263,12 +263,18 @@ async def general_exception_handler(request: Request, exc: Exception):
     body_preview = None
     try:
         body_bytes = await request.body()
-        # Truncate to 1024 bytes for safety
-        max_body_length = 1024
-        if len(body_bytes) > max_body_length:
-            body_preview = body_bytes[:max_body_length].decode("utf-8", errors="replace") + "... (truncated)"
+        
+        # Gate body logging behind configuration flag to prevent logging sensitive data
+        if settings.log_request_body:
+            # Only log actual body content in debug/non-production environments
+            max_body_length = 1024
+            if len(body_bytes) > max_body_length:
+                body_preview = body_bytes[:max_body_length].decode("utf-8", errors="replace") + "... (truncated)"
+            else:
+                body_preview = body_bytes.decode("utf-8", errors="replace")
         else:
-            body_preview = body_bytes.decode("utf-8", errors="replace")
+            # In production, only log body length to avoid exposing sensitive data
+            body_preview = f"<body logging disabled, length: {len(body_bytes)} bytes>"
     except Exception as body_error:
         body_preview = f"<failed to read body: {body_error}>"
     
