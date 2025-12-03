@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, containers
+from app.api import auth, catalog, containers
 from app.config import settings
 
 # Configure logging
@@ -41,6 +41,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router, prefix="/api")
+app.include_router(catalog.router)
 app.include_router(containers.router, prefix="/api")
 
 
