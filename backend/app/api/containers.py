@@ -118,6 +118,12 @@ async def create_container(
         
         # Get session to access bw_session_key
         session = await auth_service.get_session(session_id)
+        if session is None:
+            logger.warning(f"Session {session_id} not found after validation (race condition)")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired session"
+            )
         
         # Create and start container
         container_id = await container_service.create_container(
@@ -402,12 +408,12 @@ async def stream_logs(
         try:
             await websocket.send_json({"error": str(e)})
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-        except:
-            pass
+        except Exception as send_exc:
+            logger.debug(f"Failed to send error response: {send_exc}")
     except Exception as e:
         logger.error(f"Unexpected error in log streaming: {e}")
         try:
             await websocket.send_json({"error": "An unexpected error occurred"})
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-        except:
-            pass
+        except Exception as send_exc:
+            logger.debug(f"Failed to send error response: {send_exc}")

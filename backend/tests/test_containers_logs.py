@@ -4,7 +4,8 @@ import asyncio
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 
-from app.services.containers import ContainerService, LogEntry
+from app.services.containers import ContainerService
+from app.models.containers import LogEntry
 from app.services.secrets import SecretManager
 
 class TestContainerLogs:
