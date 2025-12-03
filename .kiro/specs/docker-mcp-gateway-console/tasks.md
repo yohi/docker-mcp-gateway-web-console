@@ -147,7 +147,7 @@
   - **Property 20: 設定書き込み失敗のエラーハンドリング**
   - **検証対象: 要件 5.5**
 
-- [ ] 7. バックエンド: Inspector Service実装
+- [x] 7. バックエンド: Inspector Service実装
   - MCPプロトコル通信ライブラリを統合
   - MCPサーバーへの接続メソッドを実装
   - Tools/Resources/Prompts取得メソッドを実装
