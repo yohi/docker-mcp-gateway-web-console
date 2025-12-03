@@ -376,6 +376,14 @@ class ContainerService:
         except DockerException as e:
             raise RuntimeError(f"Docker operation failed: {e}") from e
 
+    async def _read_log_line(self, log_stream):
+        """Read a single log line in thread pool."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: next(log_stream, None)
+        )
+
     async def stream_logs(
         self,
         container_id: str,
@@ -418,8 +426,11 @@ class ContainerService:
                 )
             )
             
-            # Process log lines
-            for line in log_stream:
+            # Process log lines asynchronously
+            while True:
+                line = await self._read_log_line(log_stream)
+                if line is None:
+                    break
                 if isinstance(line, bytes):
                     line = line.decode("utf-8", errors="replace")
                 
