@@ -219,7 +219,12 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     
     **Validates: Requirements 10.1, 10.2**
     """
-    logger.warning(f"Validation error: {exc}")
+    logger.warning(
+        "Validation error on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
     errors = exc.errors()
     error_messages = []
     
