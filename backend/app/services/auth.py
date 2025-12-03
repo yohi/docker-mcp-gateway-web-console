@@ -245,6 +245,37 @@ class AuthService:
         Raises:
             AuthError: If login fails
         """
+        # ------------------------------------------------------------------------------
+        # [CRITICAL ISSUE] API キー認証フローが Bitwarden CLI 仕様と矛盾しており、実装上は確実に失敗する
+        #
+        # API キー認証の実装には複数の致命的な問題があります：
+        #
+        # 1. 環境変数不足: _login_with_api_key は BW_CLIENTSECRET のみを設定しており、
+        #    Bitwarden CLI が bw login --apikey に要求する BW_CLIENTID を提供していません。
+        #    ログインの段階で失敗します。
+        #
+        # 2. Vault unlock に API キーを誤用: _login_with_api_key 内で return await self._unlock_vault(api_key)
+        #    としていますが、Bitwarden CLI の bw unlock はマスターパスワードのみを受け入れ、
+        #    API キーでは unlock できません。これが失敗の主要な原因です。
+        #
+        # 3. マスターパスワードの喪失: LoginRequest には master_password フィールドが存在し
+        #    validate_credentials() で要求されますが、_authenticate_bitwarden が API キー方式を選択した際に、
+        #    _login_with_api_key(login_request.api_key) へマスターパスワードを渡していません。
+        #    Vault unlock に必要なマスターパスワードが利用できず、設計段階から実行不可能です。
+        #
+        # Bitwarden CLI 仕様では bw login --apikey (BW_CLIENTID/BW_CLIENTSECRET) → bw unlock (マスターパスワード)
+        # → セッションキー取得の流れが必須です。現実装はこの要件を満たしていません。
+        #
+        # 結果: API キー方式を選択したユーザーは常にログイン失敗に陥ります。実装を以下の方向で修正が必要です：
+        #
+        # - API キー方式では、LoginRequest から受け取る master_password を _login_with_api_key に渡し、
+        #   await _unlock_vault(login_request.master_password) として unlock する。
+        # - または BW_CLIENTID をどこから取得するか（設定から読むか、リクエストに含めるか）を決め、
+        #   bw login --apikey に必要な両環境変数を正しく設定する。
+        # - API キー方式でもマスターパスワードが不可欠である仕様を明示的に設計に反映する。
+        #
+        # マージ前に、Bitwarden CLI の実機テストを行い、Vault アクセスが正常に機能することを確認してください。
+        # ------------------------------------------------------------------------------
         process = None
         try:
             # Set API key as environment variable and login
