@@ -253,7 +253,34 @@ async def general_exception_handler(request: Request, exc: Exception):
     
     Logs detailed error information while returning a user-friendly message.
     """
-    logger.error(f"Unexpected error: {exc}", exc_info=True)
+    # Sanitize headers (omit sensitive headers)
+    sanitized_headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in ("authorization", "cookie")
+    }
+    
+    # Safely read request body with size limit
+    body_preview = None
+    try:
+        body_bytes = await request.body()
+        # Truncate to 1024 bytes for safety
+        max_body_length = 1024
+        if len(body_bytes) > max_body_length:
+            body_preview = body_bytes[:max_body_length].decode("utf-8", errors="replace") + "... (truncated)"
+        else:
+            body_preview = body_bytes.decode("utf-8", errors="replace")
+    except Exception as body_error:
+        body_preview = f"<failed to read body: {body_error}>"
+    
+    logger.error(
+        "Unexpected error on %s %s: %s | Headers: %s | Body: %s",
+        request.method,
+        str(request.url),
+        exc,
+        sanitized_headers,
+        body_preview,
+        exc_info=True,
+    )
     
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
