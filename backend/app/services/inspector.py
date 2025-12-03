@@ -7,6 +7,7 @@ from typing import List, Optional
 
 import docker
 import httpx
+import shlex
 from docker.errors import DockerException, NotFound
 
 from ..models.inspector import InspectorResponse, PromptInfo, ResourceInfo, ToolInfo
@@ -208,12 +209,15 @@ class InspectorService:
             
             request_json = json.dumps(request_data)
             
-            # Execute command in container
+            # Execute command in container (JSON を安全にシェル経由で渡す)
             exec_result = await loop.run_in_executor(
                 None,
                 lambda: container.exec_run(
-                    cmd=["mcp"],
-                    stdin=request_json.encode('utf-8'),
+                    cmd=[
+                        "sh",
+                        "-c",
+                        f"printf '%s' {shlex.quote(request_json)} | mcp",
+                    ],
                     stdout=True,
                     stderr=True,
                 )
