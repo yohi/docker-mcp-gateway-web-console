@@ -65,7 +65,7 @@
   - **Property 24: セッション終了時のキャッシュクリア**
   - **検証対象: 要件 7.2**
 
-- [ ] 4. バックエンド: Container Service実装
+- [x] 4. バックエンド: Container Service実装
   - Docker SDK for Pythonを統合
   - コンテナ一覧取得メソッドを実装
   - コンテナ作成・起動メソッドを実装（Secret解決を含む）
