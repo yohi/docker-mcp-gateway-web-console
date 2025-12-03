@@ -423,20 +423,31 @@ class ContainerService:
                     timestamps=True,
                     stdout=True,
                     stderr=True,
+                    demux=True,
                 )
             )
             
             # Process log lines asynchronously
             while True:
-                line = await self._read_log_line(log_stream)
-                if line is None:
+                chunk = await self._read_log_line(log_stream)
+                if chunk is None:
                     break
-                if isinstance(line, bytes):
-                    line = line.decode("utf-8", errors="replace")
+                
+                # chunk is (stdout_bytes, stderr_bytes)
+                stdout_chunk, stderr_chunk = chunk
+                
+                if stdout_chunk:
+                    raw_line = stdout_chunk.decode("utf-8", errors="replace")
+                    stream = "stdout"
+                elif stderr_chunk:
+                    raw_line = stderr_chunk.decode("utf-8", errors="replace")
+                    stream = "stderr"
+                else:
+                    continue
                 
                 # Parse timestamp and message
                 # Docker log format: "2024-01-01T12:00:00.000000000Z message"
-                parts = line.strip().split(" ", 1)
+                parts = raw_line.strip().split(" ", 1)
                 
                 if len(parts) == 2:
                     timestamp_str, message = parts
@@ -446,14 +457,10 @@ class ContainerService:
                         )
                     except ValueError:
                         timestamp = datetime.now()
-                        message = line.strip()
+                        message = raw_line.strip()
                 else:
                     timestamp = datetime.now()
-                    message = line.strip()
-                
-                # Determine stream (stdout vs stderr)
-                # Docker SDK doesn't easily distinguish, default to stdout
-                stream = "stdout"
+                    message = raw_line.strip()
                 
                 yield LogEntry(
                     timestamp=timestamp,
