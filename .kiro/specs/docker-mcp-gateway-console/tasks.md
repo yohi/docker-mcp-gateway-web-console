@@ -162,7 +162,7 @@
   - **Property 22: MCP接続失敗のエラーハンドリング**
   - **検証対象: 要件 6.4**
 
-- [ ] 8. バックエンド: FastAPI エンドポイント実装
+- [x] 8. バックエンド: FastAPI エンドポイント実装
   - 認証エンドポイント（login, logout, session）を実装
   - Catalogエンドポイント（list, search）を実装
   - コンテナエンドポイント（CRUD, logs）を実装

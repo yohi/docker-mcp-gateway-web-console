@@ -17,6 +17,11 @@ from ..models.containers import (
 from .secrets import SecretManager
 
 
+class ContainerError(Exception):
+    """Exception raised for container operation errors."""
+    pass
+
+
 class ContainerService:
     """
     Manages Docker container lifecycle operations.
