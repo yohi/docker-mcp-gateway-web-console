@@ -7,7 +7,7 @@
   - 環境変数の設定ファイルを作成
   - _要件: すべての要件の基盤_
 
-- [x] 2. バックエンド: Secret Manager実装
+- [ ] 2. バックエンド: Secret Manager実装
   - Bitwarden CLI wrapperを実装
   - Bitwarden参照記法のパーサーを実装（`{{ bw:item-id:field }}`）
   - Secret解決メソッドを実装
@@ -38,7 +38,7 @@
   - **Property 25: キャッシュ有効期限**
   - **検証対象: 要件 7.5**
 
-- [ ] 3. バックエンド: Auth Service実装
+- [x] 3. バックエンド: Auth Service実装
   - Bitwarden認証フローを実装（APIキー、マスターパスワード）
   - セッション管理機構を実装（UUID生成、有効期限管理）
   - セッションタイムアウト処理を実装
