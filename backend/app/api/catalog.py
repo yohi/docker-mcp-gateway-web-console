@@ -1,5 +1,6 @@
 """Catalog API endpoints."""
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -42,28 +43,26 @@ async def get_catalog(
         if cached_items is not None:
             # We have valid cache, try to fetch fresh data in background
             # but return cached data immediately
-            try:
-                items = await catalog_service.fetch_catalog(source)
-                return CatalogResponse(
-                    servers=items,
-                    total=len(items),
-                    cached=False
-                )
-            except CatalogError:
-                # Fresh fetch failed, return cached data
-                logger.info(f"Returning cached catalog for {source}")
-                return CatalogResponse(
-                    servers=cached_items,
-                    total=len(cached_items),
-                    cached=True
-                )
+            async def _background_fetch(url: str):
+                try:
+                    await catalog_service.fetch_catalog(url)
+                except Exception as e:
+                    logger.error(f"Background fetch failed for {url}: {e}")
+
+            asyncio.create_task(_background_fetch(source))
+
+            return CatalogResponse(
+                servers=cached_items,
+                total=len(cached_items),
+                cached=True
+            )
         else:
             # No cache, must fetch fresh data
-            items = await catalog_service.fetch_catalog(source)
+            items, is_cached = await catalog_service.fetch_catalog(source)
             return CatalogResponse(
                 servers=items,
                 total=len(items),
-                cached=False
+                cached=is_cached
             )
             
     except CatalogError as e:
@@ -105,7 +104,7 @@ async def search_catalog(
     """
     try:
         # Fetch catalog data (will use cache if available)
-        items = await catalog_service.fetch_catalog(source)
+        items, is_cached = await catalog_service.fetch_catalog(source)
         
         # Apply search and filters
         filtered_items = await catalog_service.search_catalog(
@@ -117,7 +116,7 @@ async def search_catalog(
         return CatalogResponse(
             servers=filtered_items,
             total=len(filtered_items),
-            cached=False
+            cached=is_cached
         )
         
     except CatalogError as e:

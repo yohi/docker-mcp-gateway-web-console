@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import httpx
 
@@ -36,7 +36,7 @@ class CatalogService:
         self._cache: Dict[str, tuple[List[CatalogItem], datetime]] = {}
         self._cache_ttl = timedelta(seconds=settings.catalog_cache_ttl_seconds)
 
-    async def fetch_catalog(self, source_url: str) -> List[CatalogItem]:
+    async def fetch_catalog(self, source_url: str) -> Tuple[List[CatalogItem], bool]:
         """
         Fetch catalog data from a remote URL.
         
@@ -47,7 +47,9 @@ class CatalogService:
             source_url: URL of the catalog JSON file
             
         Returns:
-            List of CatalogItem objects
+            Tuple containing:
+            - List of CatalogItem objects
+            - Boolean indicating if data is from cache (True) or fresh (False)
             
         Raises:
             CatalogError: If fetch fails and no cached data is available
@@ -60,7 +62,7 @@ class CatalogService:
             await self.update_cache(source_url, catalog_items)
             
             logger.info(f"Successfully fetched catalog from {source_url}")
-            return catalog_items
+            return catalog_items, False
             
         except Exception as e:
             logger.warning(f"Failed to fetch catalog from {source_url}: {e}")
@@ -69,7 +71,7 @@ class CatalogService:
             cached_data = await self.get_cached_catalog(source_url)
             if cached_data is not None:
                 logger.info(f"Using cached catalog data for {source_url}")
-                return cached_data
+                return cached_data, True
             
             # No cache available, raise error
             raise CatalogError(

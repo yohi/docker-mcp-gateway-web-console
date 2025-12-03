@@ -280,10 +280,11 @@ class TestCatalogFetch:
         
         # Fetch catalog
         source_url = "https://example.com/catalog.json"
-        items = await catalog_service.fetch_catalog(source_url)
+        items, is_cached = await catalog_service.fetch_catalog(source_url)
         
         # Verify results
         assert len(items) == 3
+        assert is_cached is False
         assert items[0].id == "test-server-1"
         assert items[1].id == "test-server-2"
         assert items[2].id == "test-server-3"
@@ -319,10 +320,11 @@ class TestCatalogFetch:
         monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
         
         # Fetch should fall back to cache
-        items = await catalog_service.fetch_catalog(source_url)
+        items, is_cached = await catalog_service.fetch_catalog(source_url)
         
         # Should return cached data
         assert len(items) == len(sample_catalog_items)
+        assert is_cached is True
         assert items[0].id == sample_catalog_items[0].id
 
     @pytest.mark.asyncio
