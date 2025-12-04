@@ -61,6 +61,12 @@ export default function DashboardPage() {
             >
               Catalogを見る
             </Link>
+            <Link
+              href="/config"
+              className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium transition-colors"
+            >
+              Gateway設定
+            </Link>
             <button
               onClick={() => setShowConfigurator(true)}
               className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors"

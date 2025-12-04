@@ -239,7 +239,7 @@
   - コンテナ操作ボタンのインタラクションをテスト
   - ログストリーミングの表示をテスト
 
-- [ ] 13. フロントエンド: Gateway Config エディター実装
+- [x] 13. フロントエンド: Gateway Config エディター実装
   - ConfigFormコンポーネントを実装
   - SecretReferenceInputコンポーネントを実装（Bitwarden参照記法サポート）
   - ConfigValidatorを実装（リアルタイムバリデーション）

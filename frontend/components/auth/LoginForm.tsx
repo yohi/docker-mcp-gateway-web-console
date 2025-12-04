@@ -61,7 +61,7 @@ export default function LoginForm() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} role="form">
           {/* Authentication Method Selection */}
           <div className="mb-4">
             <label className="block text-gray-700 text-sm font-bold mb-2">

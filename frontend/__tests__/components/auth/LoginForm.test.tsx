@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import LoginForm from '../../../components/auth/LoginForm';
 import { SessionProvider } from '../../../contexts/SessionContext';
@@ -25,58 +25,64 @@ describe('LoginForm', () => {
   });
 
   it('renders login form with all fields', async () => {
-    render(
-      <SessionProvider>
-        <LoginForm />
-      </SessionProvider>
-    );
+    await act(async () => {
+      render(
+        <SessionProvider>
+          <LoginForm />
+        </SessionProvider>
+      );
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Bitwardenでログイン')).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText('メールアドレス')).toBeInTheDocument();
-    expect(screen.getByLabelText('APIキー')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('your@email.com')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Bitwarden APIキー')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument();
+    });
   });
 
   it('switches between API key and master password methods', async () => {
-    render(
-      <SessionProvider>
-        <LoginForm />
-      </SessionProvider>
-    );
+    await act(async () => {
+      render(
+        <SessionProvider>
+          <LoginForm />
+        </SessionProvider>
+      );
+    });
 
     await waitFor(() => {
-      expect(screen.getByLabelText('APIキー')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Bitwarden APIキー')).toBeInTheDocument();
     });
 
     // Initially shows API key field
-    expect(screen.getByLabelText('APIキー')).toBeInTheDocument();
-    expect(screen.queryByLabelText('マスターパスワード')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Bitwarden APIキー')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('マスターパスワード')).not.toBeInTheDocument();
 
     // Switch to master password
-    const masterPasswordRadio = screen.getByLabelText('マスターパスワード');
+    const masterPasswordRadio = screen.getByRole('radio', { name: 'マスターパスワード' });
     fireEvent.click(masterPasswordRadio);
 
     // Now shows master password field
-    expect(screen.queryByLabelText('APIキー')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('マスターパスワード')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Bitwarden APIキー')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('マスターパスワード')).toBeInTheDocument();
   });
 
   it('validates required fields before submission', async () => {
-    render(
-      <SessionProvider>
-        <LoginForm />
-      </SessionProvider>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument();
+    await act(async () => {
+      render(
+        <SessionProvider>
+          <LoginForm />
+        </SessionProvider>
+      );
     });
 
-    const submitButton = screen.getByRole('button', { name: 'ログイン' });
-    fireEvent.click(submitButton);
+    const form = screen.getByRole('form', { name: /.*/i }); // Try with regex for name
+    await act(async () => {
+      fireEvent.submit(form);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('メールアドレスを入力してください')).toBeInTheDocument();
@@ -87,27 +93,29 @@ describe('LoginForm', () => {
 
   it('submits login with API key credentials', async () => {
     mockLoginAPI.mockResolvedValue({
-      session_id: 'test-session-id',
+      session_id: 'new-session',
       user_email: 'test@example.com',
       expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       created_at: new Date().toISOString(),
     });
 
-    render(
-      <SessionProvider>
-        <LoginForm />
-      </SessionProvider>
-    );
+    await act(async () => {
+      render(
+        <SessionProvider>
+          <LoginForm />
+        </SessionProvider>
+      );
+    });
 
     await waitFor(() => {
-      expect(screen.getByLabelText('メールアドレス')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('your@email.com')).toBeInTheDocument();
     });
 
     // Fill in the form
-    fireEvent.change(screen.getByLabelText('メールアドレス'), {
+    fireEvent.change(screen.getByPlaceholderText('your@email.com'), {
       target: { value: 'test@example.com' },
     });
-    fireEvent.change(screen.getByLabelText('APIキー'), {
+    fireEvent.change(screen.getByPlaceholderText('Bitwarden APIキー'), {
       target: { value: 'test-api-key' },
     });
 
@@ -132,27 +140,36 @@ describe('LoginForm', () => {
       created_at: new Date().toISOString(),
     });
 
-    render(
-      <SessionProvider>
-        <LoginForm />
-      </SessionProvider>
-    );
+    await act(async () => {
+      render(
+        <SessionProvider>
+          <LoginForm />
+        </SessionProvider>
+      );
+    });
 
     // Switch to master password
     const masterPasswordRadio = screen.getByRole('radio', { name: 'マスターパスワード' });
     fireEvent.click(masterPasswordRadio);
 
     // Fill in the form
-    fireEvent.change(screen.getByLabelText('メールアドレス'), {
+    fireEvent.change(screen.getByPlaceholderText('your@email.com'), {
       target: { value: 'test@example.com' },
     });
-    fireEvent.change(screen.getByLabelText('マスターパスワード'), {
+    fireEvent.change(screen.getByPlaceholderText('マスターパスワード'), {
       target: { value: 'test-password' },
     });
 
     // Submit
-    const submitButton = screen.getByRole('button', { name: 'ログイン' });
-    fireEvent.click(submitButton);
+    const submitButton = screen.getByRole('button', { name: 'ログイン' }); // Query the initial non-loading button
+    await act(async () => {
+      fireEvent.click(submitButton);
+    });
+
+    // Expect loading state after click
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'ログイン中...' })).toBeInTheDocument();
+    });
 
     await waitFor(() => {
       expect(mockLoginAPI).toHaveBeenCalledWith({
@@ -160,6 +177,7 @@ describe('LoginForm', () => {
         email: 'test@example.com',
         masterPassword: 'test-password',
       });
+      expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument(); // Assert button is back to 'ログイン'
     });
   });
 
@@ -167,11 +185,13 @@ describe('LoginForm', () => {
     const loginError = new Error('Invalid credentials');
     mockLoginAPI.mockRejectedValue(loginError);
 
-    render(
-      <SessionProvider>
-        <LoginForm />
-      </SessionProvider>
-    );
+    await act(async () => {
+      render(
+        <SessionProvider>
+          <LoginForm />
+        </SessionProvider>
+      );
+    });
 
     // Wait for initial session check
     await waitFor(() => {
@@ -179,10 +199,10 @@ describe('LoginForm', () => {
     });
 
     // Fill in the form
-    fireEvent.change(screen.getByLabelText('メールアドレス'), {
+    fireEvent.change(screen.getByPlaceholderText('your@email.com'), {
       target: { value: 'test@example.com' },
     });
-    fireEvent.change(screen.getByLabelText('APIキー'), {
+    fireEvent.change(screen.getByPlaceholderText('Bitwarden APIキー'), {
       target: { value: 'wrong-key' },
     });
 
@@ -196,23 +216,31 @@ describe('LoginForm', () => {
   });
 
   it('disables form during submission', async () => {
-    mockLoginAPI.mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)));
+    const mockSession = {
+      session_id: 'test-session-id',
+      user_email: 'test@example.com',
+      expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      created_at: new Date().toISOString(),
+    };
+    mockLoginAPI.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve(mockSession), 100)));
 
-    render(
-      <SessionProvider>
-        <LoginForm />
-      </SessionProvider>
-    );
+    await act(async () => {
+      render(
+        <SessionProvider>
+          <LoginForm />
+        </SessionProvider>
+      );
+    });
 
     await waitFor(() => {
-      expect(screen.getByLabelText('メールアドレス')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('your@email.com')).toBeInTheDocument();
     });
 
     // Fill in the form
-    fireEvent.change(screen.getByLabelText('メールアドレス'), {
+    fireEvent.change(screen.getByPlaceholderText('your@email.com'), {
       target: { value: 'test@example.com' },
     });
-    fireEvent.change(screen.getByLabelText('APIキー'), {
+    fireEvent.change(screen.getByPlaceholderText('Bitwarden APIキー'), {
       target: { value: 'test-api-key' },
     });
 

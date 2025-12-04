@@ -20,7 +20,7 @@ function TestComponent() {
       <div data-testid="loading">{isLoading ? 'loading' : 'not-loading'}</div>
       <div data-testid="session">{session ? session.user_email : 'no-session'}</div>
       <div data-testid="error">{error || 'no-error'}</div>
-      <button onClick={() => login({ method: 'api_key', email: 'test@example.com', apiKey: 'key' })}>
+      <button onClick={async () => await login({ method: 'api_key', email: 'test@example.com', apiKey: 'key' })}>
         Login
       </button>
       <button onClick={() => logout()}>Logout</button>
@@ -44,13 +44,14 @@ describe('SessionProvider', () => {
       },
     });
 
+    // Render and assert initial loading state before async operations complete
     render(
       <SessionProvider>
         <TestComponent />
       </SessionProvider>
     );
 
-    // Initially loading
+    // Initially loading (observed synchronously before any async state updates)
     expect(screen.getByTestId('loading')).toHaveTextContent('loading');
 
     // After check, should have session
@@ -65,11 +66,13 @@ describe('SessionProvider', () => {
   it('handles no existing session', async () => {
     mockCheckSessionAPI.mockResolvedValue({ valid: false });
 
-    render(
-      <SessionProvider>
-        <TestComponent />
-      </SessionProvider>
-    );
+    await act(async () => {
+      render(
+        <SessionProvider>
+          <TestComponent />
+        </SessionProvider>
+      );
+    });
 
     await waitFor(() => {
       expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
@@ -86,11 +89,13 @@ describe('SessionProvider', () => {
       created_at: new Date().toISOString(),
     });
 
-    render(
-      <SessionProvider>
-        <TestComponent />
-      </SessionProvider>
-    );
+    await act(async () => {
+      render(
+        <SessionProvider>
+          <TestComponent />
+        </SessionProvider>
+      );
+    });
 
     // Wait for initial check
     await waitFor(() => {
@@ -102,7 +107,6 @@ describe('SessionProvider', () => {
     await act(async () => {
       loginButton.click();
     });
-
     await waitFor(() => {
       expect(screen.getByTestId('session')).toHaveTextContent('test@example.com');
     });
@@ -119,11 +123,13 @@ describe('SessionProvider', () => {
     const loginError = new Error('Login failed');
     mockLoginAPI.mockRejectedValue(loginError);
 
-    render(
-      <SessionProvider>
-        <TestComponent />
-      </SessionProvider>
-    );
+    await act(async () => {
+      render(
+        <SessionProvider>
+          <TestComponent />
+        </SessionProvider>
+      );
+    });
 
     // Wait for initial check
     await waitFor(() => {
@@ -154,11 +160,13 @@ describe('SessionProvider', () => {
     });
     mockLogoutAPI.mockResolvedValue();
 
-    render(
-      <SessionProvider>
-        <TestComponent />
-      </SessionProvider>
-    );
+    await act(async () => {
+      render(
+        <SessionProvider>
+          <TestComponent />
+        </SessionProvider>
+      );
+    });
 
     // Wait for session to be established
     await waitFor(() => {
@@ -180,7 +188,7 @@ describe('SessionProvider', () => {
 
   it('throws error when useSession is used outside provider', () => {
     // Suppress console.error for this test
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
     expect(() => {
       render(<TestComponent />);
