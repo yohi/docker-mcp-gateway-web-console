@@ -35,9 +35,21 @@ export default function LogViewer({ containerId, onClose }: LogViewerProps) {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        
+
         if (data.error) {
           setError(data.error);
+          return;
+        }
+
+        // Validate required fields
+        if (!data.timestamp || !data.message || !data.stream) {
+          setError('受信したログメッセージに必須フィールド(timestamp, message, stream)が不足しています。');
+          return;
+        }
+
+        // Validate timestamp format
+        if (isNaN(new Date(data.timestamp).getTime())) {
+          setError('受信したログメッセージのタイムスタンプが無効です。');
           return;
         }
 
@@ -49,6 +61,11 @@ export default function LogViewer({ containerId, onClose }: LogViewerProps) {
 
         setLogs((prev) => [...prev, logEntry]);
       } catch (err) {
+        let errorMessage = 'ログメッセージの解析に失敗しました。';
+        if (err instanceof Error) {
+          errorMessage += ` (${err.message})`;
+        }
+        setError(errorMessage);
         console.error('Failed to parse log message:', err);
       }
     };
@@ -76,6 +93,9 @@ export default function LogViewer({ containerId, onClose }: LogViewerProps) {
 
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
+    if (isNaN(date.getTime())) {
+      return '-'; // または適切なフォールバック値
+    }
     return date.toLocaleTimeString('ja-JP', { hour12: false });
   };
 
