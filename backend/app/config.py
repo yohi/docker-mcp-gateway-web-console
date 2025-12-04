@@ -26,6 +26,9 @@ class Settings(BaseSettings):
 
     # Application Configuration
     log_level: str = "INFO"
+    # Security: Only log request bodies in debug/non-production environments
+    # to prevent logging sensitive data (passwords, API keys, PII)
+    log_request_body: bool = False
 
     @property
     def cors_origins_list(self) -> list[str]:

@@ -17,6 +17,11 @@ from ..models.containers import (
 from .secrets import SecretManager
 
 
+class ContainerError(Exception):
+    """Exception raised for container operation errors."""
+    pass
+
+
 class ContainerService:
     """
     Manages Docker container lifecycle operations.
@@ -46,7 +51,7 @@ class ContainerService:
             Docker client instance
             
         Raises:
-            RuntimeError: If Docker client cannot be created
+            ContainerError: If Docker client cannot be created
         """
         if self._client is None:
             try:
@@ -54,7 +59,7 @@ class ContainerService:
                 # Test connection
                 self._client.ping()
             except DockerException as e:
-                raise RuntimeError(f"Failed to connect to Docker daemon: {e}") from e
+                raise ContainerError(f"Failed to connect to Docker daemon: {e}") from e
         
         return self._client
 
@@ -132,7 +137,7 @@ class ContainerService:
             List of ContainerInfo objects
             
         Raises:
-            RuntimeError: If Docker operation fails
+            ContainerError: If Docker operation fails
         """
         try:
             client = self._get_client()
@@ -147,7 +152,7 @@ class ContainerService:
             return [self._container_to_info(c) for c in containers]
             
         except DockerException as e:
-            raise RuntimeError(f"Failed to list containers: {e}") from e
+            raise ContainerError(f"Failed to list containers: {e}") from e
 
     async def create_container(
         self,
@@ -173,7 +178,7 @@ class ContainerService:
             Container ID
             
         Raises:
-            RuntimeError: If container creation or secret resolution fails
+            ContainerError: If container creation or secret resolution fails
         """
         try:
             # Resolve all Bitwarden references in environment variables
@@ -223,14 +228,14 @@ class ContainerService:
             return container.id
             
         except ImageNotFound as e:
-            raise RuntimeError(f"Docker image not found: {config.image}") from e
+            raise ContainerError(f"Docker image not found: {config.image}") from e
         except APIError as e:
-            raise RuntimeError(f"Docker API error: {e}") from e
+            raise ContainerError(f"Docker API error: {e}") from e
         except DockerException as e:
-            raise RuntimeError(f"Failed to create container: {e}") from e
+            raise ContainerError(f"Failed to create container: {e}") from e
         except Exception as e:
             # Catch secret resolution errors
-            raise RuntimeError(f"Failed to create container: {e}") from e
+            raise ContainerError(f"Failed to create container: {e}") from e
 
     async def start_container(self, container_id: str) -> bool:
         """
@@ -243,7 +248,7 @@ class ContainerService:
             True if successful
             
         Raises:
-            RuntimeError: If container not found or operation fails
+            ContainerError: If container not found or operation fails
         """
         try:
             client = self._get_client()
@@ -259,11 +264,11 @@ class ContainerService:
             return True
             
         except NotFound as e:
-            raise RuntimeError(f"Container not found: {container_id}") from e
+            raise ContainerError(f"Container not found: {container_id}") from e
         except APIError as e:
-            raise RuntimeError(f"Failed to start container: {e}") from e
+            raise ContainerError(f"Failed to start container: {e}") from e
         except DockerException as e:
-            raise RuntimeError(f"Docker operation failed: {e}") from e
+            raise ContainerError(f"Docker operation failed: {e}") from e
 
     async def stop_container(self, container_id: str, timeout: int = 10) -> bool:
         """
@@ -277,7 +282,7 @@ class ContainerService:
             True if successful
             
         Raises:
-            RuntimeError: If container not found or operation fails
+            ContainerError: If container not found or operation fails
         """
         try:
             client = self._get_client()
@@ -296,11 +301,11 @@ class ContainerService:
             return True
             
         except NotFound as e:
-            raise RuntimeError(f"Container not found: {container_id}") from e
+            raise ContainerError(f"Container not found: {container_id}") from e
         except APIError as e:
-            raise RuntimeError(f"Failed to stop container: {e}") from e
+            raise ContainerError(f"Failed to stop container: {e}") from e
         except DockerException as e:
-            raise RuntimeError(f"Docker operation failed: {e}") from e
+            raise ContainerError(f"Docker operation failed: {e}") from e
 
     async def restart_container(self, container_id: str, timeout: int = 10) -> bool:
         """
@@ -314,7 +319,7 @@ class ContainerService:
             True if successful
             
         Raises:
-            RuntimeError: If container not found or operation fails
+            ContainerError: If container not found or operation fails
         """
         try:
             client = self._get_client()
@@ -333,11 +338,11 @@ class ContainerService:
             return True
             
         except NotFound as e:
-            raise RuntimeError(f"Container not found: {container_id}") from e
+            raise ContainerError(f"Container not found: {container_id}") from e
         except APIError as e:
-            raise RuntimeError(f"Failed to restart container: {e}") from e
+            raise ContainerError(f"Failed to restart container: {e}") from e
         except DockerException as e:
-            raise RuntimeError(f"Docker operation failed: {e}") from e
+            raise ContainerError(f"Docker operation failed: {e}") from e
 
     async def delete_container(self, container_id: str, force: bool = False) -> bool:
         """
@@ -351,7 +356,7 @@ class ContainerService:
             True if successful
             
         Raises:
-            RuntimeError: If container not found or operation fails
+            ContainerError: If container not found or operation fails
         """
         try:
             client = self._get_client()
@@ -370,11 +375,11 @@ class ContainerService:
             return True
             
         except NotFound as e:
-            raise RuntimeError(f"Container not found: {container_id}") from e
+            raise ContainerError(f"Container not found: {container_id}") from e
         except APIError as e:
-            raise RuntimeError(f"Failed to delete container: {e}") from e
+            raise ContainerError(f"Failed to delete container: {e}") from e
         except DockerException as e:
-            raise RuntimeError(f"Docker operation failed: {e}") from e
+            raise ContainerError(f"Docker operation failed: {e}") from e
 
     async def _read_log_line(self, log_stream):
         """Read a single log line in thread pool."""
@@ -402,7 +407,7 @@ class ContainerService:
             LogEntry objects
             
         Raises:
-            RuntimeError: If container not found or operation fails
+            ContainerError: If container not found or operation fails
         """
         try:
             client = self._get_client()
@@ -469,11 +474,11 @@ class ContainerService:
                 )
                 
         except NotFound as e:
-            raise RuntimeError(f"Container not found: {container_id}") from e
+            raise ContainerError(f"Container not found: {container_id}") from e
         except APIError as e:
-            raise RuntimeError(f"Failed to stream logs: {e}") from e
+            raise ContainerError(f"Failed to stream logs: {e}") from e
         except DockerException as e:
-            raise RuntimeError(f"Docker operation failed: {e}") from e
+            raise ContainerError(f"Docker operation failed: {e}") from e
 
     def close(self):
         """Close the Docker client connection."""

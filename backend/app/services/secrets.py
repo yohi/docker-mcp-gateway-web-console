@@ -9,6 +9,12 @@ from typing import Any, Dict, Optional, Tuple
 
 from ..config import settings
 
+__all__ = ["SecretError", "SecretManager"]
+
+class SecretError(Exception):
+    """Exception raised for secret management errors."""
+    pass
+
 
 class SecretManager:
     """
