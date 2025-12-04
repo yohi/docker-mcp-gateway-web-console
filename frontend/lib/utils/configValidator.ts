@@ -103,8 +103,12 @@ export function parseBitwardenReference(reference: string): { itemId: string; fi
   if (!match) {
     return null;
   }
-  return {
-    itemId: match[1].trim(),
-    field: match[2].trim(),
-  };
+  const itemId = match[1].trim();
+  const field = match[2].trim();
+
+  if (itemId === '' || field === '') {
+    return null;
+  }
+
+  return { itemId, field };
 }
