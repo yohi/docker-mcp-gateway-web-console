@@ -37,21 +37,21 @@ export function validateGatewayConfig(config: GatewayConfig): ValidationResult {
     if (duplicateIds.length > 0) {
       errors.push(`Duplicate container IDs found: ${[...new Set(duplicateIds)].join(', ')}`);
     }
+
+    // Warnings
+    if (config.servers.length === 0) {
+      warnings.push('No servers configured');
+    }
+
+    const disabledServers = config.servers.filter(s => !s.enabled);
+    if (disabledServers.length > 0) {
+      warnings.push(`${disabledServers.length} server(s) are disabled`);
+    }
   }
 
   // Validate global_settings
   if (config.global_settings && typeof config.global_settings !== 'object') {
     errors.push('Global settings must be an object');
-  }
-
-  // Warnings
-  if (config.servers.length === 0) {
-    warnings.push('No servers configured');
-  }
-
-  const disabledServers = config.servers.filter(s => !s.enabled);
-  if (disabledServers.length > 0) {
-    warnings.push(`${disabledServers.length} server(s) are disabled`);
   }
 
   return {
