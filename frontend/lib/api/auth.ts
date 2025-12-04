@@ -63,5 +63,11 @@ export async function checkSessionAPI(): Promise<{ valid: boolean; session?: Ses
     return { valid: false };
   }
 
-  return response.json();
+  try {
+    return await response.json();
+  } catch (error) {
+    // Log parse error for debugging
+    console.error('Failed to parse session response as JSON:', error);
+    return { valid: false };
+  }
 }

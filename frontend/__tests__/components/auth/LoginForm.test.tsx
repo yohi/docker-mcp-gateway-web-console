@@ -138,12 +138,8 @@ describe('LoginForm', () => {
       </SessionProvider>
     );
 
-    await waitFor(() => {
-      expect(screen.getByLabelText('マスターパスワード')).toBeInTheDocument();
-    });
-
     // Switch to master password
-    const masterPasswordRadio = screen.getByLabelText('マスターパスワード');
+    const masterPasswordRadio = screen.getByRole('radio', { name: 'マスターパスワード' });
     fireEvent.click(masterPasswordRadio);
 
     // Fill in the form
