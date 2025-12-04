@@ -250,7 +250,7 @@
   - フォーム入力とバリデーションをテスト
   - Bitwarden参照記法の入力をテスト
 
-- [ ] 14. フロントエンド: MCP Inspector実装
+- [x] 14. フロントエンド: MCP Inspector実装
   - InspectorPanelコンポーネントを実装（タブUI）
   - ToolsListコンポーネントを実装
   - ResourcesListコンポーネントを実装

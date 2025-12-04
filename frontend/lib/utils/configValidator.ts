@@ -28,14 +28,14 @@ export function validateGatewayConfig(config: GatewayConfig): ValidationResult {
     const serverNames = config.servers.map(s => s.name);
     const duplicates = serverNames.filter((name, index) => serverNames.indexOf(name) !== index);
     if (duplicates.length > 0) {
-      errors.push(`Duplicate server names found: ${[...new Set(duplicates)].join(', ')}`);
+      errors.push(`Duplicate server names found: ${Array.from(new Set(duplicates)).join(', ')}`);
     }
 
     // Check for duplicate container IDs
     const containerIds = config.servers.map(s => s.container_id);
     const duplicateIds = containerIds.filter((id, index) => containerIds.indexOf(id) !== index);
     if (duplicateIds.length > 0) {
-      errors.push(`Duplicate container IDs found: ${[...new Set(duplicateIds)].join(', ')}`);
+      errors.push(`Duplicate container IDs found: ${Array.from(new Set(duplicateIds)).join(', ')}`);
     }
 
     // Warnings

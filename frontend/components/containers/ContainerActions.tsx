@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ContainerInfo } from '../../lib/types/containers';
 import {
   startContainer,
@@ -20,9 +21,16 @@ export default function ContainerActions({
   onRefresh,
   onViewLogs,
 }: ContainerActionsProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleInspect = () => {
+    const params = new URLSearchParams();
+    params.set('name', container.name);
+    router.push(`/inspector/${container.id}?${params.toString()}`);
+  };
 
   const handleAction = async (
     action: () => Promise<any>,
@@ -97,6 +105,13 @@ export default function ContainerActions({
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium transition-colors"
             >
               {loading ? '処理中...' : '再起動'}
+            </button>
+            <button
+              onClick={handleInspect}
+              disabled={loading}
+              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+            >
+              Inspect
             </button>
           </>
         )}
