@@ -197,7 +197,7 @@
   - LoginFormのレンダリングとインタラクションをテスト
   - SessionProviderの状態管理をテスト
 
-- [ ] 11. フロントエンド: Catalogブラウザ実装
+- [x] 11. フロントエンド: Catalogブラウザ実装
   - CatalogListコンポーネントを実装
   - SearchBarコンポーネントを実装（キーワード、カテゴリフィルター）
   - ServerCardコンポーネントを実装
