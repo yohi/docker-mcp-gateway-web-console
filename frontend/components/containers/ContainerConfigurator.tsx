@@ -57,9 +57,17 @@ export default function ContainerConfigurator({
 
   const addPort = () => {
     if (portContainer && portHost) {
+      setError(null); // Clear previous errors
+      const hostPortNum = parseInt(portHost, 10);
+
+      if (isNaN(hostPortNum) || hostPortNum < 1 || hostPortNum > 65535) {
+        setError('ホストポートは1から65535の間の有効な数値である必要があります。');
+        return;
+      }
+
       setConfig((prev) => ({
         ...prev,
-        ports: { ...prev.ports, [portContainer]: parseInt(portHost) },
+        ports: { ...prev.ports, [portContainer]: hostPortNum },
       }));
       setPortContainer('');
       setPortHost('');
@@ -255,7 +263,9 @@ export default function ContainerConfigurator({
                   className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
                 />
                 <input
-                  type="text"
+                  type="number"
+                  min="1"
+                  max="65535"
                   value={portHost}
                   onChange={(e) => setPortHost(e.target.value)}
                   placeholder="ホストポート"
