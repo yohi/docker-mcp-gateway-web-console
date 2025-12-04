@@ -44,15 +44,14 @@ describe('SessionProvider', () => {
       },
     });
 
-    await act(async () => {
-      render(
-        <SessionProvider>
-          <TestComponent />
-        </SessionProvider>
-      );
-    });
+    // Render and assert initial loading state before async operations complete
+    render(
+      <SessionProvider>
+        <TestComponent />
+      </SessionProvider>
+    );
 
-    // Initially loading
+    // Initially loading (observed synchronously before any async state updates)
     expect(screen.getByTestId('loading')).toHaveTextContent('loading');
 
     // After check, should have session
@@ -103,15 +102,11 @@ describe('SessionProvider', () => {
       expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
     });
 
-            // Click login
-            const loginButton = screen.getByText('Login');
-            await act(async () => {
-              try {
-                loginButton.click();
-              } catch (e) {
-                // Expected to throw, catch it to allow act block to complete
-              }
-            });
+    // Click login
+    const loginButton = screen.getByText('Login');
+    await act(async () => {
+      loginButton.click();
+    });
     await waitFor(() => {
       expect(screen.getByTestId('session')).toHaveTextContent('test@example.com');
     });
@@ -126,6 +121,8 @@ describe('SessionProvider', () => {
   it('handles login failure', async () => {
     mockCheckSessionAPI.mockResolvedValue({ valid: false });
     const loginError = new Error('Login failed');
+    mockLoginAPI.mockRejectedValue(loginError);
+
     await act(async () => {
       render(
         <SessionProvider>
@@ -139,25 +136,17 @@ describe('SessionProvider', () => {
       expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
     });
 
-                    // Click login
+    // Click login
+    const loginButton = screen.getByText('Login');
+    await act(async () => {
+      loginButton.click();
+    });
 
-                    const loginButton = screen.getByText('Login');
-
-                    await act(async () => {
-
-                      loginButton.click();
-
-                    });
-
-            
-
-                    await waitFor(() => {
-
-                      expect(screen.getByTestId('error')).toHaveTextContent('Login failed');
-
-                      expect(screen.getByTestId('session')).toHaveTextContent('no-session');
-
-                    });  });
+    await waitFor(() => {
+      expect(screen.getByTestId('error')).toHaveTextContent('Login failed');
+      expect(screen.getByTestId('session')).toHaveTextContent('no-session');
+    });
+  });
 
   it('handles logout successfully', async () => {
     mockCheckSessionAPI.mockResolvedValue({
@@ -199,7 +188,7 @@ describe('SessionProvider', () => {
 
   it('throws error when useSession is used outside provider', () => {
     // Suppress console.error for this test
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
     expect(() => {
       render(<TestComponent />);

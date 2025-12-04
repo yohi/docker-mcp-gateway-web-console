@@ -88,18 +88,25 @@ function validateServerConfig(server: ServerConfig, index: number): string[] {
 }
 
 /**
+ * Shared regex pattern for Bitwarden reference validation.
+ * Format: {{ bw:<item-ref>:<field> }}
+ * - item-ref: UUID or search string (no colons or whitespace)
+ * - field: field name (no closing braces or whitespace)
+ */
+const BITWARDEN_REFERENCE_PATTERN = /^\{\{\s*bw:([^\s:]+):([^\s}]+)\s*\}\}$/;
+
+/**
  * Validates Bitwarden reference notation.
  */
 export function isValidBitwardenReference(value: string): boolean {
-  const referencePattern = new RegExp('^\\{\\{\\s*bw:\\S+:\\S+\\s*\\}\\}$');
-  return referencePattern.test(value);
+  return BITWARDEN_REFERENCE_PATTERN.test(value);
 }
 
 /**
  * Parses a Bitwarden reference and returns the item ID and field.
  */
 export function parseBitwardenReference(reference: string): { itemId: string; field: string } | null {
-  const match = reference.match(new RegExp('^\\{\\{\\s*bw:(\\S+):(\\S+)\\s*\\}\\}$'));
+  const match = reference.match(BITWARDEN_REFERENCE_PATTERN);
   if (!match) {
     return null;
   }

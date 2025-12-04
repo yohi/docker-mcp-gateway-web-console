@@ -216,7 +216,13 @@ describe('LoginForm', () => {
   });
 
   it('disables form during submission', async () => {
-    mockLoginAPI.mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)));
+    const mockSession = {
+      session_id: 'test-session-id',
+      user_email: 'test@example.com',
+      expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      created_at: new Date().toISOString(),
+    };
+    mockLoginAPI.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve(mockSession), 100)));
 
     await act(async () => {
       render(
