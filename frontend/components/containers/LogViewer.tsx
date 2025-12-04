@@ -63,8 +63,8 @@ export default function LogViewer({ containerId, onClose }: LogViewerProps) {
     };
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close();
+      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+        wsRef.current.close();
       }
     };
   }, [containerId]);
