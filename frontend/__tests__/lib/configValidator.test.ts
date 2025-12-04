@@ -106,6 +106,10 @@ describe('configValidator', () => {
     it('validates correct Bitwarden reference', () => {
       expect(isValidBitwardenReference('{{ bw:item123:password }}')).toBe(true);
       expect(isValidBitwardenReference('{{ bw:abc-def:api_key }}')).toBe(true);
+      // Ensure that non-whitespace itemIds/fields are required
+      expect(isValidBitwardenReference('{{ bw: :password }}')).toBe(false);
+      expect(isValidBitwardenReference('{{ bw:item123: }}')).toBe(false);
+      expect(isValidBitwardenReference('{{ bw: : }}')).toBe(false);
     });
 
     it('rejects invalid references', () => {
@@ -125,12 +129,22 @@ describe('configValidator', () => {
       });
     });
 
-    it('handles whitespace', () => {
-      const result = parseBitwardenReference('{{  bw:item123:password  }}');
+    it('handles external whitespace but rejects internal whitespace in itemId/field', () => {
+      // External whitespace should be trimmed, but internal itemId/field should not accept only whitespace
+      let result = parseBitwardenReference('{{  bw:item123:password  }}');
       expect(result).toEqual({
         itemId: 'item123',
         field: 'password',
       });
+
+      result = parseBitwardenReference('{{ bw: :password }}');
+      expect(result).toBeNull();
+
+      result = parseBitwardenReference('{{ bw:item123: }}');
+      expect(result).toBeNull();
+
+      result = parseBitwardenReference('{{ bw: : }}');
+      expect(result).toBeNull();
     });
 
     it('returns null for invalid reference', () => {
