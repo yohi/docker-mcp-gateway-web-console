@@ -60,9 +60,7 @@ export default function LogViewer({ containerId, onClose }: LogViewerProps) {
         };
 
         // Clear error state on successful message parsing
-        if (error) {
-          setError(null);
-        }
+        setError(null);
 
         setLogs((prev) => [...prev, logEntry]);
       } catch (err) {
