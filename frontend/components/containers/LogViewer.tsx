@@ -59,6 +59,11 @@ export default function LogViewer({ containerId, onClose }: LogViewerProps) {
           stream: data.stream,
         };
 
+        // Clear error state on successful message parsing
+        if (error) {
+          setError(null);
+        }
+
         setLogs((prev) => [...prev, logEntry]);
       } catch (err) {
         let errorMessage = 'ログメッセージの解析に失敗しました。';
