@@ -14,9 +14,19 @@ function getSessionId(): string {
   return localStorage.getItem('session_id') || '';
 }
 
-export async function fetchTools(containerId: string): Promise<ToolInfo[]> {
+async function fetchInspectorData<T>(
+  containerId: string,
+  endpoint: string,
+  defaultErrorMessage: string
+): Promise<T> {
+  const trimmedContainerId = containerId ? containerId.trim() : '';
+
+  if (!trimmedContainerId || !/^[a-zA-Z0-9_-]+$/.test(trimmedContainerId)) {
+    throw new Error('Invalid containerId');
+  }
+
   const sessionId = getSessionId();
-  const url = `${API_BASE_URL}/api/inspector/${containerId}/tools`;
+  const url = `${API_BASE_URL}/api/inspector/${trimmedContainerId}/${endpoint}`;
 
   const response = await fetch(url, {
     headers: {
@@ -25,63 +35,25 @@ export async function fetchTools(containerId: string): Promise<ToolInfo[]> {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to fetch tools' }));
-    throw new Error(error.detail || 'Failed to fetch tools');
+    const error = await response.json().catch(() => ({ detail: defaultErrorMessage }));
+    throw new Error(error.detail || defaultErrorMessage);
   }
 
   return response.json();
+}
+
+export async function fetchTools(containerId: string): Promise<ToolInfo[]> {
+  return fetchInspectorData<ToolInfo[]>(containerId, 'tools', 'Failed to fetch tools');
 }
 
 export async function fetchResources(containerId: string): Promise<ResourceInfo[]> {
-  const sessionId = getSessionId();
-  const url = `${API_BASE_URL}/api/inspector/${containerId}/resources`;
-
-  const response = await fetch(url, {
-    headers: {
-      'X-Session-ID': sessionId,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to fetch resources' }));
-    throw new Error(error.detail || 'Failed to fetch resources');
-  }
-
-  return response.json();
+  return fetchInspectorData<ResourceInfo[]>(containerId, 'resources', 'Failed to fetch resources');
 }
 
 export async function fetchPrompts(containerId: string): Promise<PromptInfo[]> {
-  const sessionId = getSessionId();
-  const url = `${API_BASE_URL}/api/inspector/${containerId}/prompts`;
-
-  const response = await fetch(url, {
-    headers: {
-      'X-Session-ID': sessionId,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to fetch prompts' }));
-    throw new Error(error.detail || 'Failed to fetch prompts');
-  }
-
-  return response.json();
+  return fetchInspectorData<PromptInfo[]>(containerId, 'prompts', 'Failed to fetch prompts');
 }
 
 export async function fetchCapabilities(containerId: string): Promise<InspectorResponse> {
-  const sessionId = getSessionId();
-  const url = `${API_BASE_URL}/api/inspector/${containerId}/capabilities`;
-
-  const response = await fetch(url, {
-    headers: {
-      'X-Session-ID': sessionId,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to fetch capabilities' }));
-    throw new Error(error.detail || 'Failed to fetch capabilities');
-  }
-
-  return response.json();
+  return fetchInspectorData<InspectorResponse>(containerId, 'capabilities', 'Failed to fetch capabilities');
 }
