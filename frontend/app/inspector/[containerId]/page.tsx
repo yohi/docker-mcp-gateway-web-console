@@ -1,0 +1,43 @@
+'use client';
+
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { InspectorPanel } from '../../../components/inspector';
+import ProtectedRoute from '../../../components/auth/ProtectedRoute';
+
+export default function InspectorPage() {
+  const params = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  const containerId = params.containerId as string;
+  const containerName = searchParams.get('name') || undefined;
+
+  const handleClose = () => {
+    router.push('/dashboard');
+  };
+
+  return (
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gray-100 py-8">
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="mb-6">
+            <button
+              onClick={handleClose}
+              className="text-blue-600 hover:text-blue-800 flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              ダッシュボードに戻る
+            </button>
+          </div>
+          <InspectorPanel
+            containerId={containerId}
+            containerName={containerName}
+            onClose={handleClose}
+          />
+        </div>
+      </div>
+    </ProtectedRoute>
+  );
+}
