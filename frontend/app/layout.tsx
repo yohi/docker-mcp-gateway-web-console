@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { SessionProvider } from "../contexts/SessionContext";
+import { ToastProvider } from "../contexts/ToastContext";
 
 export const metadata: Metadata = {
   title: "Docker MCP Gateway Console",
@@ -16,7 +17,9 @@ export default function RootLayout({
     <html lang="ja">
       <body>
         <SessionProvider>
-          {children}
+          <ToastProvider>
+            {children}
+          </ToastProvider>
         </SessionProvider>
       </body>
     </html>

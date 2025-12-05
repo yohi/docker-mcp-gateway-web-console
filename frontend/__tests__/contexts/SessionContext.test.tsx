@@ -15,12 +15,20 @@ const mockCheckSessionAPI = authAPI.checkSessionAPI as jest.MockedFunction<typeo
 function TestComponent() {
   const { session, isLoading, error, login, logout } = useSession();
 
+  const handleLogin = async () => {
+    try {
+      await login({ method: 'api_key', email: 'test@example.com', apiKey: 'key' });
+    } catch (err) {
+      // Error is handled by context, just catch to prevent unhandled rejection
+    }
+  };
+
   return (
     <div>
       <div data-testid="loading">{isLoading ? 'loading' : 'not-loading'}</div>
       <div data-testid="session">{session ? session.user_email : 'no-session'}</div>
       <div data-testid="error">{error || 'no-error'}</div>
-      <button onClick={async () => await login({ method: 'api_key', email: 'test@example.com', apiKey: 'key' })}>
+      <button onClick={handleLogin}>
         Login
       </button>
       <button onClick={() => logout()}>Logout</button>
@@ -119,9 +127,12 @@ describe('SessionProvider', () => {
   });
 
   it('handles login failure', async () => {
+    // Suppress console.error for this test since we're intentionally testing error handling
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    
     mockCheckSessionAPI.mockResolvedValue({ valid: false });
-    const loginError = new Error('Login failed');
-    mockLoginAPI.mockRejectedValue(loginError);
+    // Use mockRejectedValue with a string to avoid Jest error tracking issues
+    mockLoginAPI.mockRejectedValue({ message: 'Login failed' });
 
     await act(async () => {
       render(
@@ -146,6 +157,8 @@ describe('SessionProvider', () => {
       expect(screen.getByTestId('error')).toHaveTextContent('Login failed');
       expect(screen.getByTestId('session')).toHaveTextContent('no-session');
     });
+    
+    consoleErrorSpy.mockRestore();
   });
 
   it('handles logout successfully', async () => {

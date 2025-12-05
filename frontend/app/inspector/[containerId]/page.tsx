@@ -3,6 +3,7 @@
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { InspectorPanel } from '../../../components/inspector';
 import ProtectedRoute from '../../../components/auth/ProtectedRoute';
+import { MainLayout } from '../../../components/layout';
 
 export default function InspectorPage() {
   const params = useParams();
@@ -18,12 +19,12 @@ export default function InspectorPage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gray-100 py-8">
-        <div className="max-w-4xl mx-auto px-4">
+      <MainLayout>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="mb-6">
             <button
               onClick={handleClose}
-              className="text-blue-600 hover:text-blue-800 flex items-center gap-2"
+              className="text-blue-600 hover:text-blue-800 flex items-center gap-2 font-medium"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -37,7 +38,7 @@ export default function InspectorPage() {
             onClose={handleClose}
           />
         </div>
-      </div>
+      </MainLayout>
     </ProtectedRoute>
   );
 }
