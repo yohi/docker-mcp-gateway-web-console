@@ -25,7 +25,7 @@ export default function LoadingIndicator({
         return 'w-16 h-16 border-4';
       case 'medium':
       default:
-        return 'w-10 h-10 border-3';
+        return 'w-10 h-10 border-2';
     }
   };
 

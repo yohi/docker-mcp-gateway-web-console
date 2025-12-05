@@ -116,4 +116,76 @@ describe('ConfirmDialog', () => {
     const message = screen.getByText('Are you sure?');
     expect(message).toHaveAttribute('id', 'dialog-message');
   });
+
+  describe('Accessibility Features', () => {
+    it('should focus the first focusable element (Cancel button) on mount', () => {
+      render(<ConfirmDialog {...defaultProps} />);
+      const cancelButton = screen.getByText('キャンセル');
+      expect(document.activeElement).toBe(cancelButton);
+    });
+
+    it('should close the dialog when Escape key is pressed', () => {
+      render(<ConfirmDialog {...defaultProps} />);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('should trap focus within the dialog', () => {
+      render(<ConfirmDialog {...defaultProps} />);
+      const cancelButton = screen.getByText('キャンセル');
+      const confirmButton = screen.getByText('確認');
+
+      // Initial focus should be on Cancel
+      expect(document.activeElement).toBe(cancelButton);
+
+      // Move focus to Confirm (last element) manually to test the loop
+      confirmButton.focus();
+      expect(document.activeElement).toBe(confirmButton);
+
+      // Press Tab on last element -> Should go to first (Cancel)
+      fireEvent.keyDown(confirmButton, { key: 'Tab' });
+      expect(document.activeElement).toBe(cancelButton);
+
+      // Case 2: Shift+Tab on First element (Cancel) -> Should go to Last (Confirm)
+      cancelButton.focus();
+      fireEvent.keyDown(cancelButton, { key: 'Tab', shiftKey: true });
+      expect(document.activeElement).toBe(confirmButton);
+    });
+
+    it('should restore focus to the previously focused element on unmount', () => {
+      const TestComponent = () => {
+        const [isOpen, setIsOpen] = React.useState(false);
+        const buttonRef = React.useRef<HTMLButtonElement>(null);
+
+        return (
+          <div>
+            <button onClick={() => setIsOpen(true)} ref={buttonRef}>Open Dialog</button>
+            {isOpen && (
+              <ConfirmDialog
+                {...defaultProps}
+                onCancel={() => setIsOpen(false)}
+              />
+            )}
+          </div>
+        );
+      };
+
+      render(<TestComponent />);
+      const openButton = screen.getByText('Open Dialog');
+
+      // Focus the button and open dialog
+      openButton.focus();
+      fireEvent.click(openButton);
+
+      // Dialog is open, focus should move to Cancel button
+      const cancelButton = screen.getByText('キャンセル');
+      expect(document.activeElement).toBe(cancelButton);
+
+      // Close dialog (unmount)
+      fireEvent.click(cancelButton);
+
+      // Focus should return to Open button
+      expect(document.activeElement).toBe(openButton);
+    });
+  });
 });

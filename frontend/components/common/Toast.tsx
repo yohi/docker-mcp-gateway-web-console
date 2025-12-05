@@ -59,7 +59,7 @@ export default function Toast({ message, type, duration = 3000, onClose }: Toast
 
   return (
     <div
-      className={`fixed top-4 right-4 z-50 max-w-md p-4 border rounded-lg shadow-lg flex items-start gap-3 animate-slide-in ${getTypeStyles()}`}
+      className={`relative z-50 max-w-md p-4 border rounded-lg shadow-lg flex items-start gap-3 animate-slide-in ${getTypeStyles()}`}
       role="alert"
       aria-live="assertive"
     >
