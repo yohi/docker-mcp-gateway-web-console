@@ -11,12 +11,16 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Resolve project root
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COMPOSE_FILE="$PROJECT_ROOT/docker-compose.test.yml"
+
 echo -e "${GREEN}Starting E2E test environment...${NC}"
 
 # Function to cleanup on exit
 cleanup() {
     echo -e "${YELLOW}Cleaning up...${NC}"
-    docker-compose -f docker-compose.test.yml down -v
+    docker-compose -f "$COMPOSE_FILE" down -v
 }
 
 # Register cleanup function
@@ -24,7 +28,7 @@ trap cleanup EXIT
 
 # Start the services
 echo -e "${GREEN}Starting services...${NC}"
-docker-compose -f docker-compose.test.yml up -d frontend backend
+docker-compose -f "$COMPOSE_FILE" up -d frontend backend
 
 # Wait for services to be healthy
 echo -e "${GREEN}Waiting for services to be ready...${NC}"
@@ -33,9 +37,9 @@ elapsed=0
 interval=5
 
 while [ $elapsed -lt $timeout ]; do
-    if docker-compose -f docker-compose.test.yml ps | grep -q "healthy"; then
-        frontend_healthy=$(docker-compose -f docker-compose.test.yml ps frontend | grep -c "healthy" || echo "0")
-        backend_healthy=$(docker-compose -f docker-compose.test.yml ps backend | grep -c "healthy" || echo "0")
+    if docker-compose -f "$COMPOSE_FILE" ps | grep -q "healthy"; then
+        frontend_healthy=$(docker-compose -f "$COMPOSE_FILE" ps frontend | grep -c "healthy" || echo "0")
+        backend_healthy=$(docker-compose -f "$COMPOSE_FILE" ps backend | grep -c "healthy" || echo "0")
         
         if [ "$frontend_healthy" -gt 0 ] && [ "$backend_healthy" -gt 0 ]; then
             echo -e "${GREEN}Services are ready!${NC}"
@@ -50,13 +54,13 @@ done
 
 if [ $elapsed -ge $timeout ]; then
     echo -e "${RED}Timeout waiting for services to be ready${NC}"
-    docker-compose -f docker-compose.test.yml logs
+    docker-compose -f "$COMPOSE_FILE" logs
     exit 1
 fi
 
 # Run E2E tests
 echo -e "${GREEN}Running E2E tests...${NC}"
-cd frontend
+cd "$PROJECT_ROOT/frontend"
 
 # Install Playwright browsers if not already installed
 if [ ! -d "$HOME/.cache/ms-playwright" ]; then
@@ -73,10 +77,10 @@ else
     
     # Show logs on failure
     echo -e "${YELLOW}Backend logs:${NC}"
-    docker-compose -f ../docker-compose.test.yml logs backend
+    docker-compose -f "$COMPOSE_FILE" logs backend
     
     echo -e "${YELLOW}Frontend logs:${NC}"
-    docker-compose -f ../docker-compose.test.yml logs frontend
+    docker-compose -f "$COMPOSE_FILE" logs frontend
     
     exit 1
 fi

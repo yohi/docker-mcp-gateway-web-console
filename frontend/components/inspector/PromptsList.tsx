@@ -35,7 +35,7 @@ export default function PromptsList({ prompts, loading, error }: PromptsListProp
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="prompts-list">
       {prompts.map((prompt, index) => (
         <div
           key={`${prompt.name}-${index}`}

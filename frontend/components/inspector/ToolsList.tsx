@@ -35,7 +35,7 @@ export default function ToolsList({ tools, loading, error }: ToolsListProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="tools-list">
       {tools.map((tool, index) => (
         <div
           key={`${tool.name}-${index}`}

@@ -181,7 +181,7 @@ test.describe('Container Configuration', () => {
         await addEnvButton.click();
         
         // Should show input fields for key and value
-        await page.waitForTimeout(500);
+        await expect(page.getByPlaceholder(/key|name|キー/i).or(page.locator('input[type="text"]')).last()).toBeVisible();
       }
     }
   });
@@ -247,7 +247,8 @@ test.describe('Container Configuration', () => {
       
       if (hasButton) {
         await addVolumeButton.click();
-        await page.waitForTimeout(500);
+        // Wait for volume input fields to appear
+        await expect(page.getByPlaceholder(/host path|volume|ホストパス/i).or(page.locator('input[type="text"]')).last()).toBeVisible();
       }
     }
   });

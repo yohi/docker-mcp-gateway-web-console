@@ -81,6 +81,9 @@ test.describe('Authentication Flow', () => {
       value: 'expired-session-id',
       domain: 'localhost',
       path: '/',
+      httpOnly: true,
+      secure: false,
+      sameSite: 'Lax',
     }]);
     
     // Try to access a protected route

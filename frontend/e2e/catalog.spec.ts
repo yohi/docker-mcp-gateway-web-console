@@ -56,7 +56,7 @@ test.describe('Catalog Browser', () => {
     await searchInput.fill('test');
     
     // Wait for search results to update
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     // Results should be filtered
     // (exact assertions depend on test data)
@@ -79,7 +79,7 @@ test.describe('Catalog Browser', () => {
       await categoryFilter.click();
       
       // Wait for filter to apply
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
     }
   });
 
@@ -134,7 +134,7 @@ test.describe('Catalog Browser', () => {
     await searchInput.fill('xyznonexistentserver123');
     
     // Wait for search to complete
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     // Should show empty state message
     await expect(
@@ -149,11 +149,11 @@ test.describe('Catalog Browser', () => {
     // Search for something
     const searchInput = page.getByPlaceholder(/search/i);
     await searchInput.fill('test');
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     // Clear search
     await searchInput.clear();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     // Should show all items again
     // (exact assertion depends on test data)
