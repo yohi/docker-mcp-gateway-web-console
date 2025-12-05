@@ -13,10 +13,17 @@ services:
       - /app/.next
     environment:
       - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NODE_ENV=development
     depends_on:
       - backend
     networks:
       - mcp-gateway
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   backend:
     build:
@@ -32,10 +39,17 @@ services:
       - DOCKER_HOST=unix:///var/run/docker.sock
       - SESSION_TIMEOUT_MINUTES=30
       - CATALOG_CACHE_TTL_SECONDS=3600
-      - CORS_ORIGINS=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
       - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
     networks:
       - mcp-gateway
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 networks:
   mcp-gateway:

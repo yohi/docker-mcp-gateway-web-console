@@ -55,6 +55,22 @@ The application will be available at:
 - Backend API: http://localhost:8000
 - API Documentation: http://localhost:8000/docs
 
+### Running E2E Tests
+
+To run the complete E2E test suite:
+
+```bash
+# Using the provided script
+./scripts/run-e2e-tests.sh
+
+# Or manually with Docker Compose
+docker-compose -f docker-compose.test.yml up -d frontend backend
+cd frontend
+npm run test:e2e
+```
+
+See [frontend/e2e/README.md](frontend/e2e/README.md) for detailed testing documentation.
+
 ### Local Development
 
 #### Frontend
@@ -117,12 +133,32 @@ LOG_LEVEL=INFO
 
 ## Testing
 
-### Frontend Tests
+### Frontend Unit Tests
 
 ```bash
 cd frontend
 npm test
 ```
+
+### Frontend E2E Tests
+
+```bash
+cd frontend
+
+# Install Playwright browsers (first time only)
+npx playwright install
+
+# Run E2E tests
+npm run test:e2e
+
+# Run E2E tests with UI mode
+npm run test:e2e:ui
+
+# Run E2E tests in headed mode
+npm run test:e2e:headed
+```
+
+See [frontend/e2e/README.md](frontend/e2e/README.md) for detailed E2E testing documentation.
 
 ### Backend Tests
 

@@ -1,0 +1,84 @@
+version: '3.8'
+
+# Docker Compose configuration for E2E testing
+# This extends the base docker-compose.yml with test-specific settings
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3001:3000"  # Use different port to avoid conflicts
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NODE_ENV=test
+      - CI=true
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - mcp-gateway-test
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8001:8000"  # Use different port to avoid conflicts
+    volumes:
+      - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - BITWARDEN_CLI_PATH=/usr/local/bin/bw
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - SESSION_TIMEOUT_MINUTES=30
+      - CATALOG_CACHE_TTL_SECONDS=3600
+      - CORS_ORIGINS=http://localhost:3001
+      - LOG_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1
+      - TESTING=true
+    networks:
+      - mcp-gateway-test
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Playwright test runner
+  playwright:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - PLAYWRIGHT_BASE_URL=http://frontend:3000
+      - CI=true
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - mcp-gateway-test
+    command: npx playwright test
+    profiles:
+      - test  # Only run when explicitly requested
+
+networks:
+  mcp-gateway-test:
+    driver: bridge
