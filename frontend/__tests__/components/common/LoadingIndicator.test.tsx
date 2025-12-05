@@ -29,7 +29,7 @@ describe('LoadingIndicator', () => {
     render(<LoadingIndicator size="medium" />);
 
     const spinner = screen.getByRole('status');
-    expect(spinner).toHaveClass('w-10', 'h-10', 'border-3');
+    expect(spinner).toHaveClass('w-10', 'h-10', 'border-2');
   });
 
   it('renders large size', () => {

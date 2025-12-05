@@ -97,6 +97,6 @@ describe('Inspector API', () => {
   });
 
   it('throws error if containerId is missing', async () => {
-      await expect(fetchTools('')).rejects.toThrow('Container ID is required');
+      await expect(fetchTools('')).rejects.toThrow('Invalid containerId');
   });
 });
