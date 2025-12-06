@@ -20,6 +20,7 @@ echo -e "${GREEN}Starting E2E test environment...${NC}"
 # Function to cleanup on exit
 cleanup() {
     echo -e "${YELLOW}Cleaning up...${NC}"
+    cd "$PROJECT_ROOT"
     docker-compose -f "$COMPOSE_FILE" down -v
 }
 
@@ -28,6 +29,7 @@ trap cleanup EXIT
 
 # Start the services
 echo -e "${GREEN}Starting services...${NC}"
+cd "$PROJECT_ROOT"
 docker-compose -f "$COMPOSE_FILE" up -d frontend backend
 
 # Wait for services to be healthy
@@ -76,6 +78,7 @@ else
     echo -e "${RED}E2E tests failed!${NC}"
     
     # Show logs on failure
+    cd "$PROJECT_ROOT"
     echo -e "${YELLOW}Backend logs:${NC}"
     docker-compose -f "$COMPOSE_FILE" logs backend
     
