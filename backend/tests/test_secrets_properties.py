@@ -678,7 +678,6 @@ class TestSecretManagerProperties:
             )
             
             # Reset mock to track subsequent calls
-            initial_call_count = mock_process.communicate.call_count
             mock_process.communicate.reset_mock()
             
             # Property 2: Second request should use cache (no Bitwarden access)
