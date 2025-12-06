@@ -1,6 +1,8 @@
 # Environment files
 .env
-.env.local
+.env.*
+!.env.example
+!.env.local.example
 
 # IDE
 .vscode/
@@ -11,16 +13,46 @@
 # OS
 .DS_Store
 Thumbs.db
+.directory
 
 # Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# gemini
+# Backend (Python)
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# Frontend (Node.js / Next.js)
+node_modules/
+.next/
+out/
+build/
+dist/
+.swc/
+coverage/
+.nyc_output/
+
+# Testing / E2E
+playwright-report/
+test-results/
+
+# Gemini / AI
 GEMINI.md
 .gemini/
+.agent/
 
-# kiro
+# Kiro
 # .kiro/settings/rules
 # .kiro/settings/templates
-
-
