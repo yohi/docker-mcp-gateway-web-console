@@ -6,7 +6,7 @@ import logging
 import subprocess
 import uuid
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 from ..config import settings
 from ..models.auth import AuthMethod, LoginRequest, Session
@@ -30,11 +30,18 @@ class AuthService:
     - Provide vault access through session keys
     """
 
-    def __init__(self):
-        """Initialize the Auth Service with empty session storage."""
+    def __init__(self, on_session_end: Optional['Callable[[str], None]'] = None):
+        """
+        Initialize the Auth Service.
+        
+        Args:
+            on_session_end: Optional callback function to be called when a session ends.
+                           Receives session_id as argument.
+        """
         # In-memory session storage: {session_id: Session}
         self._sessions: Dict[str, Session] = {}
         self._session_timeout = timedelta(minutes=settings.session_timeout_minutes)
+        self._on_session_end = on_session_end
 
     async def login(self, login_request: LoginRequest) -> Session:
         """
@@ -100,6 +107,13 @@ class AuthService:
         
         # Remove session from storage
         del self._sessions[session_id]
+        
+        # Trigger session end callback if provided
+        if self._on_session_end:
+            try:
+                self._on_session_end(session_id)
+            except Exception as e:
+                logger.error(f"Error in session end callback for {session_id}: {e}")
         
         logger.info(f"Session terminated: {session_id}")
         
