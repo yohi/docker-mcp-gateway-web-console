@@ -23,8 +23,8 @@ def item_id_strategy(draw):
     # Using alphanumeric + hyphens + underscores
     charset = st.text(
         alphabet=st.characters(
-            whitelist_categories=('Lu', 'Ll', 'Nd'),  # Uppercase, lowercase, digits
-            whitelist_characters='-_'
+            categories=('Lu', 'Ll', 'Nd'),  # Uppercase, lowercase, digits
+            include_characters='-_'
         ),
         min_size=1,
         max_size=50
@@ -43,8 +43,8 @@ def field_name_strategy(draw):
     # Generate a string with valid characters for field names
     charset = st.text(
         alphabet=st.characters(
-            whitelist_categories=('Lu', 'Ll', 'Nd'),  # Uppercase, lowercase, digits
-            whitelist_characters='-_'
+            categories=('Lu', 'Ll', 'Nd'),  # Uppercase, lowercase, digits
+            include_characters='-_'
         ),
         min_size=1,
         max_size=50
@@ -174,7 +174,7 @@ class TestSecretManagerProperties:
     @settings(max_examples=100)
     @given(
         st.text(
-            alphabet=st.characters(blacklist_categories=('Cs',)),  # Exclude surrogates
+            alphabet=st.characters(exclude_categories=('Cs',)),  # Exclude surrogates
             min_size=0,
             max_size=100
         ).filter(lambda s: not SecretManager.REFERENCE_PATTERN.match(s))
@@ -212,12 +212,12 @@ class TestSecretManagerProperties:
         reference_data=bitwarden_reference_strategy(),
         secret_value=st.text(min_size=1, max_size=100),
         session_id=st.text(
-            alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd'), whitelist_characters='-'),
+            alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-'),
             min_size=10,
             max_size=50
         ),
         bw_session_key=st.text(
-            alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd'), whitelist_characters='-_'),
+            alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-_'),
             min_size=20,
             max_size=100
         )
@@ -329,12 +329,12 @@ class TestSecretManagerProperties:
     @given(
         reference_data=bitwarden_reference_strategy(),
         session_id=st.text(
-            alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd'), whitelist_characters='-'),
+            alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-'),
             min_size=10,
             max_size=50
         ),
         bw_session_key=st.text(
-            alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd'), whitelist_characters='-_'),
+            alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-_'),
             min_size=20,
             max_size=100
         ),
@@ -447,12 +447,12 @@ class TestSecretManagerProperties:
         reference_data=bitwarden_reference_strategy(),
         secret_value=st.text(min_size=1, max_size=100),
         session_id=st.text(
-            alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd'), whitelist_characters='-'),
+            alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-'),
             min_size=10,
             max_size=50
         ),
         bw_session_key=st.text(
-            alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd'), whitelist_characters='-_'),
+            alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-_'),
             min_size=20,
             max_size=100
         )
@@ -600,12 +600,12 @@ class TestSecretManagerProperties:
         reference_data=bitwarden_reference_strategy(),
         secret_value=st.text(min_size=1, max_size=100),
         session_id=st.text(
-            alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd'), whitelist_characters='-'),
+            alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-'),
             min_size=10,
             max_size=50
         ),
         bw_session_key=st.text(
-            alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd'), whitelist_characters='-_'),
+            alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-_'),
             min_size=20,
             max_size=100
         )
@@ -777,12 +777,12 @@ class TestSecretManagerProperties:
         reference_data=bitwarden_reference_strategy(),
         secret_value=st.text(min_size=1, max_size=100),
         session_id=st.text(
-            alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd'), whitelist_characters='-'),
+            alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-'),
             min_size=10,
             max_size=50
         ),
         bw_session_key=st.text(
-            alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd'), whitelist_characters='-_'),
+            alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-_'),
             min_size=20,
             max_size=100
         )
