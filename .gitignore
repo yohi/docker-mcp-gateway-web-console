@@ -20,7 +20,7 @@ GEMINI.md
 .gemini/
 
 # kiro
-.kiro/settings/rules
-.kiro/settings/templates
+# .kiro/settings/rules
+# .kiro/settings/templates
 
 
