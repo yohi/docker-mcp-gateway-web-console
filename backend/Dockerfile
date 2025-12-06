@@ -8,10 +8,11 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Bitwarden CLI
-RUN curl -L https://github.com/bitwarden/clients/releases/download/cli-v2023.12.0/bw-linux-2023.12.0.zip -o bw.zip \
+RUN curl -L https://github.com/bitwarden/clients/releases/download/cli-v2025.11.0/bw-linux-2025.11.0.zip -o bw.zip \
     && unzip bw.zip \
     && chmod +x bw \
     && mv bw /usr/local/bin/ \
