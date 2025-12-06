@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mcp-gateway-backend
+    restart: unless-stopped
+    environment:
+      - BITWARDEN_CLI_PATH=/usr/local/bin/bw
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - SESSION_TIMEOUT_MINUTES=${SESSION_TIMEOUT_MINUTES:-30}
+      - CATALOG_CACHE_TTL_SECONDS=${CATALOG_CACHE_TTL_SECONDS:-3600}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://yourdomain.com}
+      - LOG_LEVEL=${LOG_LEVEL:-WARNING}
+      - SECRET_CACHE_TTL_SECONDS=${SECRET_CACHE_TTL_SECONDS:-1800}
+      - MAX_LOG_LINES=${MAX_LOG_LINES:-1000}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - backend-data:/app/data
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://api.yourdomain.com}
+    container_name: mcp-gateway-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    image: nginx:alpine
+    container_name: mcp-gateway-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  backend-data:
+    driver: local
+  nginx-logs:
+    driver: local
+
+networks:
+  mcp-network:
+    driver: bridge
