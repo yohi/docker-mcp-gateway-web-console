@@ -23,7 +23,7 @@ export async function mockAuthentication(page: Page) {
     secure: false,
     sameSite: 'Lax',
   }]);
-  
+
   // Mock the session validation API
   await page.route('**/api/auth/session', route => {
     route.fulfill({
@@ -40,36 +40,38 @@ export async function mockAuthentication(page: Page) {
 /**
  * Mock catalog data for testing
  */
-export async function mockCatalogData(page: Page) {
+export async function mockCatalogData(page: Page, customServers?: any[]) {
+  const servers = customServers || [
+    {
+      id: 'test-server-1',
+      name: 'Test MCP Server',
+      description: 'A test MCP server for E2E testing',
+      category: 'testing',
+      docker_image: 'test/mcp-server:latest',
+      default_env: {
+        PORT: '8080',
+        API_KEY: '{{ bw:test-id:api_key }}',
+      },
+      required_secrets: ['API_KEY'],
+    },
+    {
+      id: 'test-server-2',
+      name: 'Another Test Server',
+      description: 'Another test server',
+      category: 'utilities',
+      docker_image: 'test/another-server:latest',
+      default_env: {},
+      required_secrets: [],
+    },
+  ];
+
   await page.route('**/api/catalog**', route => {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        servers: [
-          {
-            id: 'test-server-1',
-            name: 'Test MCP Server',
-            description: 'A test MCP server for E2E testing',
-            category: 'testing',
-            docker_image: 'test/mcp-server:latest',
-            default_env: {
-              PORT: '8080',
-              API_KEY: '{{ bw:test-id:api_key }}',
-            },
-            required_secrets: ['API_KEY'],
-          },
-          {
-            id: 'test-server-2',
-            name: 'Another Test Server',
-            description: 'Another test server',
-            category: 'utilities',
-            docker_image: 'test/another-server:latest',
-            default_env: {},
-            required_secrets: [],
-          },
-        ],
-        total: 2,
+        servers: servers,
+        total: servers.length,
         cached: false,
       }),
     });
@@ -129,7 +131,7 @@ export async function mockInspectorData(page: Page, containerId: string) {
       }),
     });
   });
-  
+
   // Mock resources
   await page.route(`**/api/inspector/${containerId}/resources`, route => {
     route.fulfill({
@@ -147,7 +149,7 @@ export async function mockInspectorData(page: Page, containerId: string) {
       }),
     });
   });
-  
+
   // Mock prompts
   await page.route(`**/api/inspector/${containerId}/prompts`, route => {
     route.fulfill({
@@ -202,10 +204,10 @@ export async function clickButton(page: Page, name: string | RegExp) {
  * Wait for toast notification
  */
 export async function waitForToast(page: Page, message?: string | RegExp) {
-  const toast = message 
+  const toast = message
     ? page.getByText(message)
     : page.locator('[role="alert"]').or(page.locator('.toast'));
-  
+
   await toast.waitFor({ state: 'visible', timeout: 5000 });
   return toast;
 }
