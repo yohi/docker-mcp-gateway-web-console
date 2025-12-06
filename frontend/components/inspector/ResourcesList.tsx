@@ -35,7 +35,7 @@ export default function ResourcesList({ resources, loading, error }: ResourcesLi
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="resources-list">
       {resources.map((resource, index) => (
         <div
           key={`${resource.uri}-${index}`}
