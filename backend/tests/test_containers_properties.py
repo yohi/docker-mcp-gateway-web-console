@@ -19,19 +19,31 @@ from app.services.secrets import SecretManager
 @st.composite
 def container_config_strategy(draw):
     """Generate valid ContainerConfig objects."""
-    # Docker names: alphanumeric + [-_.]
-    name = draw(st.text(
-        min_size=1, 
-        max_size=30, 
-        alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-_')
+    # Docker names: must start with alphanumeric, can contain [-_.]
+    name_start = draw(st.text(
+        min_size=1,
+        max_size=1,
+        alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'))
     ))
+    name_rest = draw(st.text(
+        min_size=0,
+        max_size=29,
+        alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-_.')
+    ))
+    name = name_start + name_rest
     
-    # Docker images: mostly alphanumeric + [-_./:]
-    image = draw(st.text(
-        min_size=1, 
-        max_size=50, 
-        alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-/:_.')
+    # Docker images: use valid format like "repo:tag" or "registry/repo:tag"
+    repo = draw(st.text(
+        min_size=1,
+        max_size=30,
+        alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-_.')
     ))
+    tag = draw(st.text(
+        min_size=1,
+        max_size=20,
+        alphabet=st.characters(categories=('Lu', 'Ll', 'Nd'), include_characters='-_.')
+    ))
+    image = f"{repo}:{tag}"
     
     env = draw(st.dictionaries(
         keys=st.text(
@@ -43,13 +55,9 @@ def container_config_strategy(draw):
         max_size=5
     ))
     
-    # Simple port mappings
+    # Valid port mappings (1-65535)
     ports = draw(st.dictionaries(
-        keys=st.text(
-            min_size=2, 
-            max_size=5, 
-            alphabet=st.characters(categories=('Nd',))
-        ), # container port
+        keys=st.integers(min_value=1, max_value=65535).map(str),  # container port as string
         values=st.integers(min_value=1024, max_value=65535),      # host port
         max_size=2
     ))
@@ -100,7 +108,7 @@ class TestContainerServiceProperties:
         container_service = ContainerService(mock_secret_manager)
         
         # Mock Docker Client and Container
-        with patch('docker.DockerClient') as MockDockerClient:
+        with patch('backend.app.services.containers.docker.DockerClient') as MockDockerClient:
             mock_client = MockDockerClient.return_value
             mock_client.ping.return_value = True
             
@@ -159,7 +167,7 @@ class TestContainerServiceProperties:
         mock_secret_manager = AsyncMock(spec=SecretManager)
         container_service = ContainerService(mock_secret_manager)
         
-        with patch('docker.DockerClient') as MockDockerClient:
+        with patch('backend.app.services.containers.docker.DockerClient') as MockDockerClient:
             mock_client = MockDockerClient.return_value
             mock_client.ping.return_value = True
             
@@ -193,7 +201,7 @@ class TestContainerServiceProperties:
         mock_secret_manager = AsyncMock(spec=SecretManager)
         container_service = ContainerService(mock_secret_manager)
         
-        with patch('docker.DockerClient') as MockDockerClient:
+        with patch('backend.app.services.containers.docker.DockerClient') as MockDockerClient:
             mock_client = MockDockerClient.return_value
             mock_client.ping.return_value = True
             
@@ -227,7 +235,7 @@ class TestContainerServiceProperties:
         mock_secret_manager = AsyncMock(spec=SecretManager)
         container_service = ContainerService(mock_secret_manager)
         
-        with patch('docker.DockerClient') as MockDockerClient:
+        with patch('backend.app.services.containers.docker.DockerClient') as MockDockerClient:
             mock_client = MockDockerClient.return_value
             mock_client.ping.return_value = True
             
@@ -261,7 +269,7 @@ class TestContainerServiceProperties:
         mock_secret_manager = AsyncMock(spec=SecretManager)
         container_service = ContainerService(mock_secret_manager)
         
-        with patch('docker.DockerClient') as MockDockerClient:
+        with patch('backend.app.services.containers.docker.DockerClient') as MockDockerClient:
             mock_client = MockDockerClient.return_value
             mock_client.ping.return_value = True
             
