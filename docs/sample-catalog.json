@@ -1,0 +1,295 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "Sample MCP Server Catalog",
+    "description": "A curated collection of MCP servers for various use cases",
+    "maintainer": "Your Organization",
+    "last_updated": "2024-01-01T00:00:00Z"
+  },
+  "servers": [
+    {
+      "id": "mcp-server-filesystem",
+      "name": "Filesystem MCP Server",
+      "description": "Provides file system access capabilities including reading, writing, and searching files",
+      "category": "utilities",
+      "docker_image": "mcp/filesystem:latest",
+      "default_env": {
+        "PORT": "8080",
+        "ALLOWED_PATHS": "/data,/workspace",
+        "MAX_FILE_SIZE": "10485760"
+      },
+      "required_secrets": [],
+      "documentation_url": "https://github.com/example/mcp-filesystem",
+      "tags": ["filesystem", "files", "storage"]
+    },
+    {
+      "id": "mcp-server-github",
+      "name": "GitHub MCP Server",
+      "description": "Interact with GitHub repositories, issues, pull requests, and more",
+      "category": "development",
+      "docker_image": "mcp/github:latest",
+      "default_env": {
+        "PORT": "8080",
+        "GITHUB_API_URL": "https://api.github.com",
+        "GITHUB_TOKEN": "{{ bw:github-token:token }}"
+      },
+      "required_secrets": ["GITHUB_TOKEN"],
+      "documentation_url": "https://github.com/example/mcp-github",
+      "tags": ["github", "git", "version-control", "development"]
+    },
+    {
+      "id": "mcp-server-slack",
+      "name": "Slack MCP Server",
+      "description": "Send messages, manage channels, and interact with Slack workspaces",
+      "category": "communication",
+      "docker_image": "mcp/slack:latest",
+      "default_env": {
+        "PORT": "8080",
+        "SLACK_BOT_TOKEN": "{{ bw:slack-credentials:bot_token }}",
+        "SLACK_APP_TOKEN": "{{ bw:slack-credentials:app_token }}"
+      },
+      "required_secrets": ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"],
+      "documentation_url": "https://github.com/example/mcp-slack",
+      "tags": ["slack", "communication", "messaging"]
+    },
+    {
+      "id": "mcp-server-postgres",
+      "name": "PostgreSQL MCP Server",
+      "description": "Execute SQL queries and manage PostgreSQL databases",
+      "category": "database",
+      "docker_image": "mcp/postgres:latest",
+      "default_env": {
+        "PORT": "8080",
+        "POSTGRES_HOST": "localhost",
+        "POSTGRES_PORT": "5432",
+        "POSTGRES_DB": "mydb",
+        "POSTGRES_USER": "{{ bw:postgres-creds:username }}",
+        "POSTGRES_PASSWORD": "{{ bw:postgres-creds:password }}"
+      },
+      "required_secrets": ["POSTGRES_USER", "POSTGRES_PASSWORD"],
+      "documentation_url": "https://github.com/example/mcp-postgres",
+      "tags": ["postgresql", "database", "sql"]
+    },
+    {
+      "id": "mcp-server-openai",
+      "name": "OpenAI MCP Server",
+      "description": "Access OpenAI APIs including GPT models, embeddings, and more",
+      "category": "ai",
+      "docker_image": "mcp/openai:latest",
+      "default_env": {
+        "PORT": "8080",
+        "OPENAI_API_KEY": "{{ bw:openai-key:api_key }}",
+        "OPENAI_ORG_ID": "{{ bw:openai-key:org_id }}",
+        "DEFAULT_MODEL": "gpt-4"
+      },
+      "required_secrets": ["OPENAI_API_KEY"],
+      "documentation_url": "https://github.com/example/mcp-openai",
+      "tags": ["openai", "ai", "gpt", "llm"]
+    },
+    {
+      "id": "mcp-server-aws",
+      "name": "AWS MCP Server",
+      "description": "Manage AWS resources including EC2, S3, Lambda, and more",
+      "category": "cloud",
+      "docker_image": "mcp/aws:latest",
+      "default_env": {
+        "PORT": "8080",
+        "AWS_ACCESS_KEY_ID": "{{ bw:aws-credentials:access_key }}",
+        "AWS_SECRET_ACCESS_KEY": "{{ bw:aws-credentials:secret_key }}",
+        "AWS_REGION": "us-east-1"
+      },
+      "required_secrets": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+      "documentation_url": "https://github.com/example/mcp-aws",
+      "tags": ["aws", "cloud", "infrastructure"]
+    },
+    {
+      "id": "mcp-server-stripe",
+      "name": "Stripe MCP Server",
+      "description": "Process payments, manage subscriptions, and interact with Stripe API",
+      "category": "payments",
+      "docker_image": "mcp/stripe:latest",
+      "default_env": {
+        "PORT": "8080",
+        "STRIPE_SECRET_KEY": "{{ bw:stripe-keys:secret_key }}",
+        "STRIPE_PUBLISHABLE_KEY": "{{ bw:stripe-keys:publishable_key }}",
+        "STRIPE_WEBHOOK_SECRET": "{{ bw:stripe-keys:webhook_secret }}"
+      },
+      "required_secrets": ["STRIPE_SECRET_KEY"],
+      "documentation_url": "https://github.com/example/mcp-stripe",
+      "tags": ["stripe", "payments", "billing"]
+    },
+    {
+      "id": "mcp-server-sendgrid",
+      "name": "SendGrid MCP Server",
+      "description": "Send emails and manage email campaigns via SendGrid",
+      "category": "communication",
+      "docker_image": "mcp/sendgrid:latest",
+      "default_env": {
+        "PORT": "8080",
+        "SENDGRID_API_KEY": "{{ bw:sendgrid-key:api_key }}",
+        "DEFAULT_FROM_EMAIL": "noreply@example.com",
+        "DEFAULT_FROM_NAME": "My Application"
+      },
+      "required_secrets": ["SENDGRID_API_KEY"],
+      "documentation_url": "https://github.com/example/mcp-sendgrid",
+      "tags": ["sendgrid", "email", "communication"]
+    },
+    {
+      "id": "mcp-server-mongodb",
+      "name": "MongoDB MCP Server",
+      "description": "Query and manage MongoDB databases and collections",
+      "category": "database",
+      "docker_image": "mcp/mongodb:latest",
+      "default_env": {
+        "PORT": "8080",
+        "MONGODB_URI": "{{ bw:mongodb-creds:connection_string }}",
+        "MONGODB_DATABASE": "mydb"
+      },
+      "required_secrets": ["MONGODB_URI"],
+      "documentation_url": "https://github.com/example/mcp-mongodb",
+      "tags": ["mongodb", "database", "nosql"]
+    },
+    {
+      "id": "mcp-server-redis",
+      "name": "Redis MCP Server",
+      "description": "Interact with Redis for caching, pub/sub, and data storage",
+      "category": "database",
+      "docker_image": "mcp/redis:latest",
+      "default_env": {
+        "PORT": "8080",
+        "REDIS_HOST": "localhost",
+        "REDIS_PORT": "6379",
+        "REDIS_PASSWORD": "{{ bw:redis-creds:password }}",
+        "REDIS_DB": "0"
+      },
+      "required_secrets": ["REDIS_PASSWORD"],
+      "documentation_url": "https://github.com/example/mcp-redis",
+      "tags": ["redis", "cache", "database"]
+    },
+    {
+      "id": "mcp-server-jira",
+      "name": "Jira MCP Server",
+      "description": "Manage Jira issues, projects, and workflows",
+      "category": "project-management",
+      "docker_image": "mcp/jira:latest",
+      "default_env": {
+        "PORT": "8080",
+        "JIRA_URL": "https://yourcompany.atlassian.net",
+        "JIRA_EMAIL": "{{ bw:jira-creds:email }}",
+        "JIRA_API_TOKEN": "{{ bw:jira-creds:api_token }}"
+      },
+      "required_secrets": ["JIRA_EMAIL", "JIRA_API_TOKEN"],
+      "documentation_url": "https://github.com/example/mcp-jira",
+      "tags": ["jira", "project-management", "atlassian"]
+    },
+    {
+      "id": "mcp-server-notion",
+      "name": "Notion MCP Server",
+      "description": "Create and manage Notion pages, databases, and content",
+      "category": "productivity",
+      "docker_image": "mcp/notion:latest",
+      "default_env": {
+        "PORT": "8080",
+        "NOTION_API_KEY": "{{ bw:notion-key:api_key }}",
+        "NOTION_VERSION": "2022-06-28"
+      },
+      "required_secrets": ["NOTION_API_KEY"],
+      "documentation_url": "https://github.com/example/mcp-notion",
+      "tags": ["notion", "productivity", "notes"]
+    },
+    {
+      "id": "mcp-server-google-calendar",
+      "name": "Google Calendar MCP Server",
+      "description": "Manage Google Calendar events and schedules",
+      "category": "productivity",
+      "docker_image": "mcp/google-calendar:latest",
+      "default_env": {
+        "PORT": "8080",
+        "GOOGLE_CLIENT_ID": "{{ bw:google-oauth:client_id }}",
+        "GOOGLE_CLIENT_SECRET": "{{ bw:google-oauth:client_secret }}",
+        "GOOGLE_REFRESH_TOKEN": "{{ bw:google-oauth:refresh_token }}"
+      },
+      "required_secrets": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"],
+      "documentation_url": "https://github.com/example/mcp-google-calendar",
+      "tags": ["google", "calendar", "productivity"]
+    },
+    {
+      "id": "mcp-server-weather",
+      "name": "Weather MCP Server",
+      "description": "Get weather forecasts and current conditions from various providers",
+      "category": "utilities",
+      "docker_image": "mcp/weather:latest",
+      "default_env": {
+        "PORT": "8080",
+        "WEATHER_API_KEY": "{{ bw:weather-api:api_key }}",
+        "DEFAULT_UNITS": "metric"
+      },
+      "required_secrets": ["WEATHER_API_KEY"],
+      "documentation_url": "https://github.com/example/mcp-weather",
+      "tags": ["weather", "api", "utilities"]
+    },
+    {
+      "id": "mcp-server-web-scraper",
+      "name": "Web Scraper MCP Server",
+      "description": "Scrape and extract data from websites",
+      "category": "utilities",
+      "docker_image": "mcp/web-scraper:latest",
+      "default_env": {
+        "PORT": "8080",
+        "USER_AGENT": "MCP-WebScraper/1.0",
+        "MAX_CONCURRENT_REQUESTS": "5",
+        "REQUEST_TIMEOUT": "30"
+      },
+      "required_secrets": [],
+      "documentation_url": "https://github.com/example/mcp-web-scraper",
+      "tags": ["scraping", "web", "utilities"]
+    }
+  ],
+  "categories": [
+    {
+      "id": "utilities",
+      "name": "Utilities",
+      "description": "General-purpose utility servers"
+    },
+    {
+      "id": "development",
+      "name": "Development",
+      "description": "Development and version control tools"
+    },
+    {
+      "id": "communication",
+      "name": "Communication",
+      "description": "Messaging and communication platforms"
+    },
+    {
+      "id": "database",
+      "name": "Database",
+      "description": "Database management and query tools"
+    },
+    {
+      "id": "ai",
+      "name": "AI & Machine Learning",
+      "description": "AI and machine learning services"
+    },
+    {
+      "id": "cloud",
+      "name": "Cloud Services",
+      "description": "Cloud infrastructure and services"
+    },
+    {
+      "id": "payments",
+      "name": "Payments",
+      "description": "Payment processing and billing"
+    },
+    {
+      "id": "project-management",
+      "name": "Project Management",
+      "description": "Project and task management tools"
+    },
+    {
+      "id": "productivity",
+      "name": "Productivity",
+      "description": "Productivity and organization tools"
+    }
+  ]
+}
