@@ -14,3 +14,13 @@ Thumbs.db
 
 # Logs
 *.log
+
+# gemini
+GEMINI.md
+.gemini/
+
+# kiro
+.kiro/settings/rules
+.kiro/settings/templates
+
+

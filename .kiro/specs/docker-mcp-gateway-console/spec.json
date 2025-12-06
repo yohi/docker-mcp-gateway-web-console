@@ -1,0 +1,19 @@
+{
+  "title": "Docker MCP Gateway Web Console",
+  "description": "Web console for managing Docker-based MCP servers with Bitwarden integration",
+  "language": "Japanese",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "approved": true
+    },
+    "design": {
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": false
+    }
+  },
+  "updated_at": "2025-12-06T00:00:00Z"
+}
