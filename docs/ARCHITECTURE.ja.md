@@ -1,14 +1,14 @@
-[日本語 (Japanese)](ARCHITECTURE.ja.md)
+[English](ARCHITECTURE.md)
 
-# Architecture Documentation
+# アーキテクチャドキュメント
 
-This document provides a detailed overview of the Docker MCP Gateway Console architecture.
+このドキュメントでは、Docker MCP Gateway Consoleのアーキテクチャについて詳細に説明します。
 
-## System Overview
+## システム概要
 
-The Docker MCP Gateway Console is a three-tier web application designed to manage Docker-based MCP servers with secure secret management through Bitwarden integration.
+Docker MCP Gateway Consoleは、Bitwarden統合を通じた安全なシークレット管理を備えた、DockerベースのMCPサーバーを管理するために設計された3層Webアプリケーションです。
 
-## High-Level Architecture
+## ハイレベルアーキテクチャ
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -44,48 +44,48 @@ The Docker MCP Gateway Console is a three-tier web application designed to manag
 └──────────────────────┘    └──────────────────────┘
 ```
 
-## Component Architecture
+## コンポーネントアーキテクチャ
 
-### Frontend Layer
+### フロントエンド層
 
-#### Technology Stack
-- **Framework**: Next.js 14 with App Router
-- **UI Library**: React 18
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **State Management**: React Context API + SWR
-- **HTTP Client**: Fetch API
+#### 技術スタック
+- **フレームワーク**: Next.js 14 with App Router
+- **UIライブラリ**: React 18
+- **言語**: TypeScript
+- **スタイリング**: Tailwind CSS
+- **状態管理**: React Context API + SWR
+- **HTTPクライアント**: Fetch API
 - **WebSocket**: Native WebSocket API
 
-#### Key Components
+#### 主要コンポーネント
 
-1. **Authentication Module** (`/app/auth`)
-   - Login form with Bitwarden integration
-   - Session management
-   - Protected route wrapper
+1. **認証モジュール** (`/app/auth`)
+   - Bitwarden統合ログインフォーム
+   - セッション管理
+   - 保護されたルートのラッパー
 
-2. **Catalog Browser** (`/app/catalog`)
-   - Server listing and search
-   - Category filtering
-   - Installation workflow
+2. **カタログブラウザ** (`/app/catalog`)
+   - サーバー一覧と検索
+   - カテゴリフィルタリング
+   - インストールワークフロー
 
-3. **Container Dashboard** (`/app/dashboard`, `/app/containers`)
-   - Container list with status
-   - Lifecycle controls (start/stop/restart/delete)
-   - Real-time log viewer
-   - Container configurator
+3. **コンテナダッシュボード** (`/app/dashboard`, `/app/containers`)
+   - ステータス付きコンテナリスト
+   - ライフサイクル制御（起動/停止/再起動/削除）
+   - リアルタイムログビューア
+   - コンテナ設定
 
-4. **Config Editor** (`/app/config`)
-   - Gateway configuration form
-   - Bitwarden reference input
-   - Real-time validation
+4. **設定エディタ** (`/app/config`)
+   - ゲートウェイ設定フォーム
+   - Bitwarden参照入力
+   - リアルタイムバリデーション
 
-5. **MCP Inspector** (`/app/inspector`)
-   - Tools list viewer
-   - Resources list viewer
-   - Prompts list viewer
+5. **MCPインスペクター** (`/app/inspector`)
+   - ツール一覧ビューア
+   - リソース一覧ビューア
+   - プロンプト一覧ビューア
 
-#### Data Flow
+#### データフロー
 
 ```
 User Action → Component → API Call → Backend
@@ -95,17 +95,17 @@ User Action → Component → API Call → Backend
             UI Re-render
 ```
 
-### Backend Layer
+### バックエンド層
 
-#### Technology Stack
-- **Framework**: FastAPI
-- **Language**: Python 3.11+
-- **Validation**: Pydantic
-- **Docker Integration**: Docker SDK for Python
-- **Bitwarden Integration**: Bitwarden CLI
-- **Async Runtime**: asyncio
+#### 技術スタック
+- **フレームワーク**: FastAPI
+- **言語**: Python 3.11+
+- **バリデーション**: Pydantic
+- **Docker統合**: Docker SDK for Python
+- **Bitwarden統合**: Bitwarden CLI
+- **非同期ランタイム**: asyncio
 
-#### Service Architecture
+#### サービスアーキテクチャ
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -164,11 +164,11 @@ User Action → Component → API Call → Backend
 └─────────────────────────────────────────────────┘
 ```
 
-## Data Models
+## データモデル
 
-### Core Entities
+### コアエンティティ
 
-#### Session
+#### Session (セッション)
 ```python
 class Session:
     session_id: str          # UUID v4
@@ -179,18 +179,18 @@ class Session:
     last_activity: datetime
 ```
 
-#### Container Configuration
+#### Container Configuration (コンテナ設定)
 ```python
 class ContainerConfig:
     name: str
     image: str
-    env: Dict[str, str]      # May contain Bitwarden references
+    env: Dict[str, str]      # Bitwarden参照を含む可能性あり
     ports: Dict[str, int]
     volumes: Dict[str, str]
     labels: Dict[str, str]
 ```
 
-#### Catalog Item
+#### Catalog Item (カタログアイテム)
 ```python
 class CatalogItem:
     id: str
@@ -204,9 +204,9 @@ class CatalogItem:
     tags: List[str]
 ```
 
-## Security Architecture
+## セキュリティアーキテクチャ
 
-### Authentication Flow
+### 認証フロー
 
 ```
 1. User enters credentials
@@ -224,7 +224,7 @@ class CatalogItem:
 7. All subsequent requests include session ID
 ```
 
-### Secret Management Flow
+### シークレット管理フロー
 
 ```
 1. User enters Bitwarden reference: {{ bw:item-id:field }}
@@ -243,43 +243,43 @@ class CatalogItem:
 5. On session end: Clear all cached secrets
 ```
 
-### Security Principles
+### セキュリティ原則
 
-1. **No Disk Persistence**: Secrets never written to disk
-2. **Memory-Only Storage**: Secrets kept in memory during session
-3. **Session Isolation**: Each session has isolated cache
-4. **Automatic Cleanup**: Secrets cleared on logout/timeout
-5. **Minimal Exposure**: Secrets only exposed to target containers
+1. **ディスク永続化なし**: シークレットは決してディスクに書き込まれない
+2. **メモリのみの保存**: シークレットはセッション中のみメモリに保持される
+3. **セッション分離**: 各セッションは分離されたキャッシュを持つ
+4. **自動クリーンアップ**: ログアウト/タイムアウト時にシークレットを消去
+5. **最小限の露出**: シークレットはターゲットコンテナにのみ露出される
 
-## Communication Patterns
+## 通信パターン
 
 ### REST API
 
-Standard request/response for most operations:
+ほとんどの操作に対する標準的なリクエスト/レスポンス:
 
 ```
 GET /api/containers
-→ Returns list of containers
+→ コンテナリストを返す
 
 POST /api/containers
-→ Creates new container
+→ 新規コンテナを作成
 
 PUT /api/config/gateway
-→ Updates gateway configuration
+→ ゲートウェイ設定を更新
 ```
 
 ### WebSocket
 
-Real-time log streaming:
+リアルタイムログストリーミング:
 
 ```
 WebSocket /api/containers/{id}/logs
-→ Streams container logs in real-time
-→ Bidirectional communication
-→ Automatic reconnection on disconnect
+→ コンテナログをリアルタイムでストリーミング
+→ 双方向通信
+→ 切断時の自動再接続
 ```
 
-### Event Flow
+### イベントフロー
 
 ```
 Frontend Event → API Request → Service Logic → External System
@@ -287,32 +287,32 @@ Frontend Event → API Request → Service Logic → External System
 Frontend Update ← API Response ← Service Response
 ```
 
-## Caching Strategy
+## キャッシュ戦略
 
-### Catalog Cache
+### カタログキャッシュ
 
-- **Location**: Backend memory
-- **TTL**: 1 hour (configurable)
-- **Invalidation**: Manual refresh or TTL expiry
-- **Purpose**: Reduce external HTTP requests
+- **場所**: バックエンドメモリ
+- **TTL**: 1時間（設定可能）
+- **無効化**: 手動更新またはTTL期限切れ
+- **目的**: 外部HTTPリクエストの削減
 
-### Secret Cache
+### シークレットキャッシュ
 
-- **Location**: Backend memory (per session)
-- **TTL**: Session lifetime
-- **Invalidation**: Session end
-- **Purpose**: Reduce Bitwarden API calls
+- **場所**: バックエンドメモリ（セッションごと）
+- **TTL**: セッション寿命
+- **無効化**: セッション終了
+- **目的**: Bitwarden API呼び出しの削減
 
-### Frontend Cache (SWR)
+### フロントエンドキャッシュ (SWR)
 
-- **Location**: Browser memory
-- **TTL**: Configurable per endpoint
-- **Revalidation**: On focus, on reconnect
-- **Purpose**: Improve UI responsiveness
+- **場所**: ブラウザメモリ
+- **TTL**: エンドポイントごとに設定可能
+- **再検証**: フォーカス時、再接続時
+- **目的**: UI応答性の向上
 
-## Deployment Architecture
+## デプロイアーキテクチャ
 
-### Development
+### 開発環境
 
 ```
 ┌─────────────────────────────────────┐
@@ -328,7 +328,7 @@ Frontend Update ← API Response ← Service Response
          Host Docker Engine
 ```
 
-### Production
+### 本番環境
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -349,62 +349,62 @@ Frontend Update ← API Response ← Service Response
                   └──────────────┘
 ```
 
-## Scalability Considerations
+## スケーラビリティの考慮事項
 
-### Current Limitations
+### 現在の制限
 
-- Single-server deployment
-- In-memory session storage
-- No horizontal scaling
+- シングルサーバーデプロイメント
+- メモリ内セッションストレージ
+- 水平スケーリングなし
 
-### Future Improvements
+### 将来の改善点
 
-1. **Session Storage**: Move to Redis for distributed sessions
-2. **Load Balancing**: Support multiple backend instances
-3. **Database**: Add persistent storage for configurations
-4. **Message Queue**: Add queue for long-running operations
-5. **Caching Layer**: Distributed cache (Redis/Memcached)
+1. **セッションストレージ**: 分散セッションのためにRedisへ移行
+2. **ロードバランシング**: 複数のバックエンドインスタンスのサポート
+3. **データベース**: 設定の永続ストレージを追加
+4. **メッセージキュー**: 長時間実行操作のためのキューを追加
+5. **キャッシュレイヤー**: 分散キャッシュ (Redis/Memcached)
 
-## Performance Optimization
+## パフォーマンス最適化
 
-### Frontend
+### フロントエンド
 
-1. **Code Splitting**: Next.js automatic code splitting
-2. **Image Optimization**: Next.js Image component
-3. **Lazy Loading**: Dynamic imports for heavy components
-4. **Caching**: SWR for data fetching and caching
+1. **コード分割**: Next.jsの自動コード分割
+2. **画像最適化**: Next.js Imageコンポーネント
+3. **遅延読み込み**: 重いコンポーネントの動的インポート
+4. **キャッシング**: データフェッチとキャッシングのためのSWR
 
-### Backend
+### バックエンド
 
-1. **Async Operations**: FastAPI async endpoints
-2. **Connection Pooling**: Docker SDK connection reuse
-3. **Caching**: In-memory caching for frequently accessed data
-4. **Streaming**: WebSocket for log streaming
+1. **非同期操作**: FastAPIの非同期エンドポイント
+2. **コネクションプーリング**: Docker SDKの接続再利用
+3. **キャッシング**: 頻繁にアクセスされるデータのメモリ内キャッシング
+4. **ストリーミング**: ログストリーミングのためのWebSocket
 
-## Monitoring and Observability
+## 監視と可観測性
 
-### Logging
+### ロギング
 
-- **Frontend**: Browser console (development)
-- **Backend**: Structured logging with levels
-- **Containers**: Docker logs accessible via UI
+- **フロントエンド**: ブラウザコンソール（開発時）
+- **バックエンド**: レベル付き構造化ロギング
+- **コンテナ**: UI経由でアクセス可能なDockerログ
 
-### Health Checks
+### ヘルスチェック
 
-- **Frontend**: HTTP endpoint check
-- **Backend**: `/health` endpoint
-- **Containers**: Docker health checks
+- **フロントエンド**: HTTPエンドポイントチェック
+- **バックエンド**: `/health` エンドポイント
+- **コンテナ**: Dockerヘルスチェック
 
-### Metrics (Future)
+### メトリクス（将来）
 
-- Request latency
-- Error rates
-- Container resource usage
-- Cache hit rates
+- リクエストレイテンシ
+- エラー率
+- コンテナリソース使用率
+- キャッシュヒット率
 
-## Error Handling
+## エラー処理
 
-### Frontend
+### フロントエンド
 
 ```
 Try/Catch → Error Boundary → Toast Notification
@@ -412,7 +412,7 @@ Try/Catch → Error Boundary → Toast Notification
          Log to Console (dev)
 ```
 
-### Backend
+### バックエンド
 
 ```
 Exception → Exception Handler → HTTP Error Response
@@ -420,64 +420,64 @@ Exception → Exception Handler → HTTP Error Response
          Log with Context
 ```
 
-## Testing Strategy
+## テスト戦略
 
-### Unit Tests
+### 単体テスト
 
-- **Frontend**: Jest + React Testing Library
-- **Backend**: pytest
+- **フロントエンド**: Jest + React Testing Library
+- **バックエンド**: pytest
 
-### Integration Tests
+### 統合テスト
 
-- **Backend**: pytest with Docker test containers
-- **Frontend**: Component integration tests
+- **バックエンド**: Dockerテストコンテナを使用したpytest
+- **フロントエンド**: コンポーネント統合テスト
 
-### E2E Tests
+### E2Eテスト
 
-- **Tool**: Playwright
-- **Coverage**: Critical user flows
+- **ツール**: Playwright
+- **カバレッジ**: 重要なユーザーフロー
 
-## Technology Decisions
+## 技術選定
 
-### Why Next.js?
+### なぜNext.jsか？
 
-- Server-side rendering for better SEO
-- App Router for modern routing
-- Built-in optimization
-- Great developer experience
+- SEO向上のためのサーバーサイドレンダリング
+- モダンなルーティングのためのApp Router
+- 組み込みの最適化
+- 優れた開発者体験
 
-### Why FastAPI?
+### なぜFastAPIか？
 
-- High performance
-- Automatic API documentation
-- Type safety with Pydantic
-- Async support
+- 高パフォーマンス
+- 自動APIドキュメント
+- Pydanticによる型安全性
+- 非同期サポート
 
-### Why Bitwarden?
+### なぜBitwardenか？
 
-- Industry-standard security
-- CLI available for automation
-- Self-hosting option
-- Free tier available
+- 業界標準のセキュリティ
+- 自動化のためのCLIの提供
+- セルフホスティングオプション
+- 無料枠の利用可能
 
-### Why Docker?
+### なぜDockerか？
 
-- Isolation for MCP servers
-- Easy deployment
-- Resource management
-- Wide adoption
+- MCPサーバーの分離
+- 容易なデプロイ
+- リソース管理
+- 広い普及
 
-## Future Architecture
+## 将来のアーキテクチャ
 
-### Planned Improvements
+### 計画されている改善
 
-1. **Microservices**: Split backend into smaller services
-2. **Event-Driven**: Add message queue for async operations
-3. **Multi-Tenancy**: Support multiple users/organizations
-4. **Kubernetes**: Support K8s in addition to Docker
-5. **GraphQL**: Consider GraphQL for more flexible API
+1. **マイクロサービス**: バックエンドをより小さなサービスに分割
+2. **イベント駆動**: 非同期操作のためのメッセージキューの追加
+3. **マルチテナンシー**: 複数ユーザー/組織のサポート
+4. **Kubernetes**: Dockerに加えてK8sのサポート
+5. **GraphQL**: より柔軟なAPIのためにGraphQLを検討
 
-## References
+## 参考文献
 
 - [Next.js Documentation](https://nextjs.org/docs)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)

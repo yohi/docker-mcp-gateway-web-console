@@ -1,3 +1,5 @@
+[日本語 (Japanese)](QUICK_START.ja.md)
+
 # Quick Start Guide
 
 Get up and running with Docker MCP Gateway Console in 5 minutes!

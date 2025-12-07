@@ -1,3 +1,5 @@
+[日本語 (Japanese)](FAQ.ja.md)
+
 # Frequently Asked Questions (FAQ)
 
 ## General Questions

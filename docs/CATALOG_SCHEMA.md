@@ -1,3 +1,5 @@
+[日本語 (Japanese)](CATALOG_SCHEMA.ja.md)
+
 # Catalog Schema Documentation
 
 This document describes the schema for MCP Server Catalogs used by the Docker MCP Gateway Console.

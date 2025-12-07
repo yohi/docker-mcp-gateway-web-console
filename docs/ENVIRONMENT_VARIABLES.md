@@ -1,3 +1,5 @@
+[日本語 (Japanese)](ENVIRONMENT_VARIABLES.ja.md)
+
 # Environment Variables
 
 This document describes all environment variables used by the Docker MCP Gateway Console.

@@ -1,3 +1,5 @@
+[日本語 (Japanese)](CONTRIBUTING.ja.md)
+
 # Contributing to Docker MCP Gateway Console
 
 Thank you for your interest in contributing! This document provides guidelines and instructions for contributing to the project.

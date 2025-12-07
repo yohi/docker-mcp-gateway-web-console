@@ -1,3 +1,5 @@
+[日本語 (Japanese)](E2E_SETUP_SUMMARY.ja.md)
+
 # E2E Testing Setup Summary
 
 ## What Was Implemented
