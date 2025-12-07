@@ -17,13 +17,20 @@ class LoginRequest(BaseModel):
     """Login request model."""
     method: AuthMethod
     email: EmailStr
-    api_key: Optional[str] = None
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
     master_password: Optional[str] = None
+    two_step_login_method: Optional[int] = None
+    two_step_login_code: Optional[str] = None
     
     def validate_credentials(self) -> None:
         """Validate that appropriate credentials are provided for the method."""
-        if self.method == AuthMethod.API_KEY and not self.api_key:
-            raise ValueError("API key is required for api_key authentication method")
+        if self.method == AuthMethod.API_KEY:
+            if not self.client_id or not self.client_secret:
+                raise ValueError("Client ID and Client Secret are required for api_key authentication method")
+            if not self.master_password:
+                raise ValueError("Master password is required for api_key authentication method")
+
         if self.method == AuthMethod.MASTER_PASSWORD and not self.master_password:
             raise ValueError("Master password is required for master_password authentication method")
 

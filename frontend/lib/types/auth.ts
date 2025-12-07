@@ -3,8 +3,11 @@
 export interface LoginCredentials {
   method: 'api_key' | 'master_password';
   email: string;
-  apiKey?: string;
+  clientId?: string;
+  clientSecret?: string;
   masterPassword?: string;
+  twoStepLoginMethod?: number;
+  twoStepLoginCode?: string;
 }
 
 export interface Session {

@@ -16,12 +16,23 @@ export class AuthAPIError extends Error {
 }
 
 export async function loginAPI(credentials: LoginCredentials): Promise<Session> {
+  // Convert camelCase to snake_case for backend
+  const payload = {
+    method: credentials.method,
+    email: credentials.email,
+    client_id: credentials.clientId,
+    client_secret: credentials.clientSecret,
+    master_password: credentials.masterPassword,
+    two_step_login_method: credentials.twoStepLoginMethod,
+    two_step_login_code: credentials.twoStepLoginCode,
+  };
+
   const response = await fetch(`${API_URL}/api/auth/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ credentials }),
+    body: JSON.stringify(payload),
     credentials: 'include',
   });
 
