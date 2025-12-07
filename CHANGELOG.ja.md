@@ -7,7 +7,7 @@
 フォーマットは [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) に基づいており、
 このプロジェクトは [Semantic Versioning](https://semver.org/spec/v2.0.0.html) に準拠しています。
 
-## [未リリース]
+## [Unreleased]
 
 ### 追加 (Added)
 - Docker MCP Gateway Consoleの初回リリース
