@@ -349,6 +349,9 @@ class AuthService:
             cmd = [settings.bitwarden_cli_path, "login", email, "--raw"]
             
             # Add 2FA parameters if provided
+            if (two_step_method is not None) ^ (two_step_code is not None):
+                raise ValueError("Both two_step_method and two_step_code must be provided together")
+            
             if two_step_method is not None and two_step_code:
                 cmd.extend(["--method", str(two_step_method), "--code", two_step_code])
             

@@ -218,7 +218,6 @@ export default function LoginForm() {
                     >
                       <option value={0}>認証アプリ (Authenticator)</option>
                       <option value={1}>メール (Email)</option>
-                      <option value={2}>Duo</option>
                       <option value={3}>YubiKey</option>
                     </select>
                   </div>
