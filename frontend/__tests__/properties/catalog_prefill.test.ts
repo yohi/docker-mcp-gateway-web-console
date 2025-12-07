@@ -15,7 +15,9 @@ describe('Property 10: Catalog Prefill', () => {
     fc.assert(
       fc.property(
         fc.record({
-          id: fc.string({ minLength: 1 }),
+          // Generate IDs that are valid Docker container names (alphanumeric, -, _, .)
+          // We prefix with 'id-' to ensure it starts with alphanumeric
+          id: fc.string({ minLength: 1 }).map(s => 'id-' + s.replace(/[^a-zA-Z0-9_.-]/g, '')),
           name: fc.string(),
           description: fc.string(),
           category: fc.string(),
