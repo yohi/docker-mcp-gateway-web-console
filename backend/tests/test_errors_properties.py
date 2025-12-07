@@ -2,7 +2,7 @@
 import pytest
 from fastapi import FastAPI, APIRouter
 from fastapi.testclient import TestClient
-from hypothesis import given, strategies as st
+from hypothesis import given, settings, HealthCheck, strategies as st
 from app.main import (
     auth_error_handler,
     catalog_error_handler,
@@ -144,49 +144,36 @@ class TestErrorProperties:
         assert data["message"] == message
         assert len(data["detail"]) > 0
 
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     @given(st.text(min_size=1))
-    def test_property_36_fatal_error_logging(self, message):
+    def test_property_36_fatal_error_logging(self, caplog, message):
+        caplog.clear()
         """
         Property 36: Fatal error logging (Req 10.5)
         Test that generic Exceptions result in 500 and are logged.
         """
-        # We need to capture logs. 'caplog' is a pytest fixture, but method-based tests 
-        # with hypothesis might make it tricky to pass fixtures directly if not careful.
-        # Hypothesis integrates with pytest fixtures.
-        pass
-
-    # Re-implementing test_property_36 to use caplog
-    # Hypothesis and pytest fixtures: https://hypothesis.readthedocs.io/en/latest/pytest.html
-    # It works, but we need to ensure the fixture is requested.
-    
-def test_property_36_fatal_error_logging(caplog):
-    """
-    Property 36: Fatal error logging (Req 10.5)
-    Test that generic Exceptions result in 500 and are logged.
-    """
-    message = "Unexpected failure"
-    # We verify that it logs at ERROR level
-    with caplog.at_level(logging.ERROR):
-        response = client.get(f"/raise/Exception", params={"message": message})
+        # We verify that it logs at ERROR level
+        with caplog.at_level(logging.ERROR):
+            response = client.get(f"/raise/Exception", params={"message": message})
+            
+        assert response.status_code == 500
+        data = response.json()
+        assert data["error_code"] == "INTERNAL_ERROR"
+        # The user should NOT see the raw exception message for security/usability in 500s
+        # according to typical best practices, but Requirement 10.5 says:
+        # "display a concise message to the user" and "log detailed error"
+        assert data["message"] == "An unexpected error occurred"
         
-    assert response.status_code == 500
-    data = response.json()
-    assert data["error_code"] == "INTERNAL_ERROR"
-    # The user should NOT see the raw exception message for security/usability in 500s
-    # according to typical best practices, but Requirement 10.5 says:
-    # "display a concise message to the user" and "log detailed error"
-    assert data["message"] == "An unexpected error occurred"
-    
-    # Check logs
-    assert len(caplog.records) > 0
-    # Search for the message in logs
-    found = False
-    for record in caplog.records:
-        if message in str(record.exc_info) or message in record.message:
-            found = True
-            break
-    
-    # Note: In main.py, it logs `exc` which is the exception object.
-    # formatting `exc` usually gives the message.
-    assert found, "Fatal error should be logged with details"
+        # Check logs
+        assert len(caplog.records) > 0
+        # Search for the message in logs
+        found = False
+        for record in caplog.records:
+            if message in str(record.exc_info) or message in record.message:
+                found = True
+                break
+        
+        # Note: In main.py, it logs `exc` which is the exception object.
+        # formatting `exc` usually gives the message.
+        assert found, "Fatal error should be logged with details"
 
