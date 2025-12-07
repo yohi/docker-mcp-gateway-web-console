@@ -108,7 +108,7 @@ class TestContainerServiceProperties:
         container_service = ContainerService(mock_secret_manager)
         
         # Mock Docker Client and Container
-        with patch('backend.app.services.containers.docker.DockerClient') as MockDockerClient:
+        with patch('app.services.containers.docker.DockerClient') as MockDockerClient:
             mock_client = MockDockerClient.return_value
             mock_client.ping.return_value = True
             
@@ -167,7 +167,7 @@ class TestContainerServiceProperties:
         mock_secret_manager = AsyncMock(spec=SecretManager)
         container_service = ContainerService(mock_secret_manager)
         
-        with patch('backend.app.services.containers.docker.DockerClient') as MockDockerClient:
+        with patch('app.services.containers.docker.DockerClient') as MockDockerClient:
             mock_client = MockDockerClient.return_value
             mock_client.ping.return_value = True
             
@@ -201,7 +201,7 @@ class TestContainerServiceProperties:
         mock_secret_manager = AsyncMock(spec=SecretManager)
         container_service = ContainerService(mock_secret_manager)
         
-        with patch('backend.app.services.containers.docker.DockerClient') as MockDockerClient:
+        with patch('app.services.containers.docker.DockerClient') as MockDockerClient:
             mock_client = MockDockerClient.return_value
             mock_client.ping.return_value = True
             
@@ -235,7 +235,7 @@ class TestContainerServiceProperties:
         mock_secret_manager = AsyncMock(spec=SecretManager)
         container_service = ContainerService(mock_secret_manager)
         
-        with patch('backend.app.services.containers.docker.DockerClient') as MockDockerClient:
+        with patch('app.services.containers.docker.DockerClient') as MockDockerClient:
             mock_client = MockDockerClient.return_value
             mock_client.ping.return_value = True
             
@@ -269,7 +269,7 @@ class TestContainerServiceProperties:
         mock_secret_manager = AsyncMock(spec=SecretManager)
         container_service = ContainerService(mock_secret_manager)
         
-        with patch('backend.app.services.containers.docker.DockerClient') as MockDockerClient:
+        with patch('app.services.containers.docker.DockerClient') as MockDockerClient:
             mock_client = MockDockerClient.return_value
             mock_client.ping.return_value = True
             
