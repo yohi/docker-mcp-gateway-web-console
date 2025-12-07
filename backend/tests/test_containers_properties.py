@@ -7,8 +7,6 @@ correctness properties of the Container Service across a wide range of inputs.
 import pytest
 from hypothesis import given, strategies as st, settings
 from unittest.mock import AsyncMock, MagicMock, patch
-import docker
-from docker.errors import NotFound
 
 from app.services.containers import ContainerService, ContainerError
 from app.models.containers import ContainerConfig
