@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import subprocess
 import uuid
 from datetime import datetime, timedelta
@@ -226,13 +227,17 @@ class AuthService:
             if login_request.method == AuthMethod.API_KEY:
                 # Authenticate using API key
                 bw_session_key = await self._login_with_api_key(
-                    login_request.api_key
+                    login_request.client_id,
+                    login_request.client_secret,
+                    login_request.master_password
                 )
             else:
                 # Authenticate using master password
                 bw_session_key = await self._login_with_password(
                     login_request.email,
-                    login_request.master_password
+                    login_request.master_password,
+                    login_request.two_step_login_method,
+                    login_request.two_step_login_code
                 )
             
             # Verify the session key works by unlocking the vault
@@ -246,61 +251,38 @@ class AuthService:
             logger.error(f"Bitwarden authentication failed: {e}")
             raise AuthError(f"Authentication failed: {str(e)}") from e
 
-    async def _login_with_api_key(self, api_key: str) -> str:
+    async def _login_with_api_key(self, client_id: str, client_secret: str, master_password: str) -> str:
         """
-        Login to Bitwarden using API key.
+        Login to Bitwarden using API key (Client ID & Secret).
+        This method bypasses 2FA but requires Master Password to unlock the vault.
         
         Args:
-            api_key: Bitwarden API key
+            client_id: Bitwarden Client ID
+            client_secret: Bitwarden Client Secret
+            master_password: Master Password (for unlocking)
             
         Returns:
             Bitwarden session key
             
         Raises:
-            AuthError: If login fails
+            AuthError: If login or unlock fails
         """
-        # ------------------------------------------------------------------------------
-        # [CRITICAL ISSUE] API キー認証フローが Bitwarden CLI 仕様と矛盾しており、実装上は確実に失敗する
-        #
-        # API キー認証の実装には複数の致命的な問題があります：
-        #
-        # 1. 環境変数不足: _login_with_api_key は BW_CLIENTSECRET のみを設定しており、
-        #    Bitwarden CLI が bw login --apikey に要求する BW_CLIENTID を提供していません。
-        #    ログインの段階で失敗します。
-        #
-        # 2. Vault unlock に API キーを誤用: _login_with_api_key 内で return await self._unlock_vault(api_key)
-        #    としていますが、Bitwarden CLI の bw unlock はマスターパスワードのみを受け入れ、
-        #    API キーでは unlock できません。これが失敗の主要な原因です。
-        #
-        # 3. マスターパスワードの喪失: LoginRequest には master_password フィールドが存在し
-        #    validate_credentials() で要求されますが、_authenticate_bitwarden が API キー方式を選択した際に、
-        #    _login_with_api_key(login_request.api_key) へマスターパスワードを渡していません。
-        #    Vault unlock に必要なマスターパスワードが利用できず、設計段階から実行不可能です。
-        #
-        # Bitwarden CLI 仕様では bw login --apikey (BW_CLIENTID/BW_CLIENTSECRET) → bw unlock (マスターパスワード)
-        # → セッションキー取得の流れが必須です。現実装はこの要件を満たしていません。
-        #
-        # 結果: API キー方式を選択したユーザーは常にログイン失敗に陥ります。実装を以下の方向で修正が必要です：
-        #
-        # - API キー方式では、LoginRequest から受け取る master_password を _login_with_api_key に渡し、
-        #   await _unlock_vault(login_request.master_password) として unlock する。
-        # - または BW_CLIENTID をどこから取得するか（設定から読むか、リクエストに含めるか）を決め、
-        #   bw login --apikey に必要な両環境変数を正しく設定する。
-        # - API キー方式でもマスターパスワードが不可欠である仕様を明示的に設計に反映する。
-        #
-        # マージ前に、Bitwarden CLI の実機テストを行い、Vault アクセスが正常に機能することを確認してください。
-        # ------------------------------------------------------------------------------
         process = None
         try:
             # Set API key as environment variable and login
             cmd = [settings.bitwarden_cli_path, "login", "--apikey"]
+            
+            # Use os.environ as base to keep PATH etc, but update with API keys
+            env = os.environ.copy()
+            env["BW_CLIENTID"] = client_id
+            env["BW_CLIENTSECRET"] = client_secret
             
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env={"BW_CLIENTSECRET": api_key}
+                env=env
             )
             
             # Wait for process with timeout
@@ -317,13 +299,15 @@ class AuthService:
             
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
-                raise AuthError(f"Bitwarden login failed: {error_msg}")
+                # If already logged in, we might get an error or success? 
+                # "You are already logged in!" is stderr?
+                if "You are already logged in" in error_msg:
+                    pass # Continue to unlock
+                else:
+                    raise AuthError(f"Bitwarden login failed: {error_msg}")
             
-            # Extract session key from output
-            output = stdout.decode().strip()
-            
-            # For API key login, we need to unlock the vault
-            return await self._unlock_vault(api_key)
+            # For API key login, we must unlock the vault to get the session key
+            return await self._unlock_vault(master_password)
             
         except asyncio.TimeoutError:
             raise AuthError("Bitwarden login timed out")
@@ -339,13 +323,21 @@ class AuthService:
                 except (ProcessLookupError, asyncio.TimeoutError):
                     pass
 
-    async def _login_with_password(self, email: str, password: str) -> str:
+    async def _login_with_password(
+        self,
+        email: str,
+        password: str,
+        two_step_method: Optional[int] = None,
+        two_step_code: Optional[str] = None
+    ) -> str:
         """
         Login to Bitwarden using master password.
         
         Args:
             email: User email
             password: Master password
+            two_step_method: Optional 2FA method enum value
+            two_step_code: Optional 2FA code
             
         Returns:
             Bitwarden session key
@@ -357,6 +349,10 @@ class AuthService:
         try:
             # Login with master password
             cmd = [settings.bitwarden_cli_path, "login", email, "--raw"]
+            
+            # Add 2FA parameters if provided
+            if two_step_method is not None and two_step_code:
+                cmd.extend(["--method", str(two_step_method), "--code", two_step_code])
             
             process = await asyncio.create_subprocess_exec(
                 *cmd,
