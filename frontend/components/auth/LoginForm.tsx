@@ -43,7 +43,7 @@ export default function LoginForm() {
       return;
     }
 
-    if (isTwoStepEnabled && !twoStepCode) {
+    if (method === 'master_password' && isTwoStepEnabled && !twoStepCode) {
       setLocalError('二段階認証コードを入力してください');
       return;
     }
@@ -55,7 +55,7 @@ export default function LoginForm() {
         ? { clientId, clientSecret, masterPassword }
         : { masterPassword }
       ),
-      ...(isTwoStepEnabled ? {
+      ...(method === 'master_password' && isTwoStepEnabled ? {
         twoStepLoginMethod: twoStepMethod,
         twoStepLoginCode: twoStepCode
       } : {}),

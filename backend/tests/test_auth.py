@@ -174,7 +174,18 @@ class TestAuthService:
             email="test@example.com"
         )
         
-        with pytest.raises(AuthError, match="API key is required"):
+        with pytest.raises(AuthError, match="Client ID and Client Secret are required"):
+            await auth_service.login(request)
+
+        # API key method without master password
+        request = LoginRequest(
+            method=AuthMethod.API_KEY,
+            email="test@example.com",
+            client_id="test_id",
+            client_secret="test_secret"
+        )
+        
+        with pytest.raises(AuthError, match="Master password is required for api_key"):
             await auth_service.login(request)
         
         # Master password method without password

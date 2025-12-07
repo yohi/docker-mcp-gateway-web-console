@@ -298,13 +298,11 @@ class AuthService:
                 raise AuthError("Bitwarden login timed out")
             
             if process.returncode != 0:
-                error_msg = stderr.decode().strip()
-                # If already logged in, we might get an error or success? 
-                # "You are already logged in!" is stderr?
-                if "You are already logged in" in error_msg:
-                    pass # Continue to unlock
-                else:
-                    raise AuthError(f"Bitwarden login failed: {error_msg}")
+                stdout_msg = stdout.decode().strip()
+                stderr_msg = stderr.decode().strip()
+                combined = f"{stdout_msg}\n{stderr_msg}".strip()
+                if "You are already logged in" not in combined:
+                    raise AuthError(f"Bitwarden login failed: {combined}")
             
             # For API key login, we must unlock the vault to get the session key
             return await self._unlock_vault(master_password)
