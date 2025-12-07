@@ -195,7 +195,7 @@ class TestConfigProperties:
                  with pytest.raises(ConfigError) as exc_info:
                     await service.write_gateway_config(config)
                  
-                 assert "failed to save" in str(exc_info.value).lower() or "permission denied" in str(exc_info.value).lower()
+                 assert "failed to write" in str(exc_info.value).lower() or "permission denied" in str(exc_info.value).lower()
 
         finally:
             if temp_path.exists():
