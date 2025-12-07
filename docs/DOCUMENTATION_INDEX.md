@@ -1,3 +1,5 @@
+[日本語 (Japanese)](DOCUMENTATION_INDEX.ja.md)
+
 # Documentation Index
 
 Complete index of all documentation for the Docker MCP Gateway Console project.

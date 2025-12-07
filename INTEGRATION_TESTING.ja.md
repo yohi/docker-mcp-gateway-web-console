@@ -1,18 +1,18 @@
-[日本語 (Japanese)](INTEGRATION_TESTING.ja.md)
+[English](INTEGRATION_TESTING.md)
 
-# Integration and E2E Testing Guide
+# 統合およびE2Eテストガイド
 
-This document provides comprehensive information about integration and end-to-end testing for the Docker MCP Gateway Console.
+このドキュメントでは、Docker MCP Gateway Consoleの統合テストおよびエンドツーエンド（E2E）テストに関する包括的な情報を提供します。
 
-## Overview
+## 概要
 
-The project uses a multi-layered testing approach:
+プロジェクトは多層的なテストアプローチを使用しています：
 
-1. **Unit Tests**: Test individual components and functions in isolation
-2. **Integration Tests**: Test interactions between components and services
-3. **E2E Tests**: Test complete user workflows from browser to backend
+1. **単体テスト (Unit Tests)**: 個々のコンポーネントと関数を分離してテストします
+2. **統合テスト (Integration Tests)**: コンポーネントとサービス間の相互作用をテストします
+3. **E2Eテスト (E2E Tests)**: ブラウザからバックエンドまでの完全なユーザーワークフローをテストします
 
-## Architecture
+## アーキテクチャ
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -52,74 +52,74 @@ The project uses a multi-layered testing approach:
 └─────────────────────────────────────────────────────────┘
 ```
 
-## E2E Testing with Playwright
+## Playwrightを使用したE2Eテスト
 
-### Setup
+### セットアップ
 
-1. Install dependencies:
+1. 依存関係のインストール:
 ```bash
 cd frontend
 npm install
 ```
 
-2. Install Playwright browsers:
+2. Playwrightブラウザのインストール:
 ```bash
 npx playwright install --with-deps
 ```
 
-### Running Tests
+### テストの実行
 
-#### Local Development
+#### ローカル開発
 
 ```bash
-# Start the application
+# アプリケーションの起動
 docker-compose up -d
 
-# Run E2E tests
+# E2Eテストの実行
 cd frontend
 npm run test:e2e
 ```
 
-#### With Test Environment
+#### テスト環境を使用
 
 ```bash
-# Use the test script (recommended)
+# テストスクリプトの使用（推奨）
 ./scripts/run-e2e-tests.sh
 
-# Or manually
+# または手動実行
 docker-compose -f docker-compose.test.yml up -d frontend backend
 cd frontend
 npm run test:e2e
 ```
 
-#### Interactive Mode
+#### インタラクティブモード
 
 ```bash
-# UI mode (best for development)
+# UIモード（開発に最適）
 npm run test:e2e:ui
 
-# Headed mode (see browser)
+# ヘッドレスモード以外（ブラウザを表示）
 npm run test:e2e:headed
 
-# Debug mode
+# デバッグモード
 npx playwright test --debug
 ```
 
-### Test Structure
+### テスト構造
 
 ```
 frontend/e2e/
-├── auth.spec.ts          # Authentication flows
-├── catalog.spec.ts       # Catalog browsing
-├── containers.spec.ts    # Container management
-├── inspector.spec.ts     # MCP Inspector
-├── helpers.ts            # Shared utilities
-└── README.md            # Detailed documentation
+├── auth.spec.ts          # 認証フロー
+├── catalog.spec.ts       # カタログ閲覧
+├── containers.spec.ts    # コンテナ管理
+├── inspector.spec.ts     # MCPインスペクター
+├── helpers.ts            # 共有ユーティリティ
+└── README.md            # 詳細ドキュメント
 ```
 
-### Writing E2E Tests
+### E2Eテストの作成
 
-#### Basic Test Structure
+#### 基本的なテスト構造
 
 ```typescript
 import { test, expect } from '@playwright/test';
@@ -143,7 +143,7 @@ test.describe('Feature Name', () => {
 });
 ```
 
-#### Using Mocks
+#### モックの使用
 
 ```typescript
 import { mockAuthentication, mockCatalogData } from './helpers';
@@ -165,122 +165,122 @@ test('should work with mocked data', async ({ page }) => {
 });
 ```
 
-### Best Practices
+### ベストプラクティス
 
-1. **Use Semantic Selectors**
+1. **セマンティックセレクタの使用**
    - ✅ `page.getByRole('button', { name: 'Login' })`
    - ✅ `page.getByLabel('Email')`
    - ❌ `page.locator('.btn-primary')`
 
-2. **Wait for State**
+2. **状態の待機**
    ```typescript
    await page.waitForLoadState('networkidle');
    await page.waitForURL('/dashboard');
    ```
 
-3. **Handle Async Operations**
+3. **非同期操作の処理**
    ```typescript
    await expect(page.getByText('Success')).toBeVisible({ timeout: 5000 });
    ```
 
-4. **Test User Flows, Not Implementation**
-   - Focus on what users do, not how it's implemented
-   - Test complete workflows from start to finish
+4. **実装ではなくユーザーフローのテスト**
+   - 実装方法ではなく、ユーザーが何をするかに焦点を当てる
+   - 開始から終了までの完全なワークフローをテストする
 
-5. **Keep Tests Independent**
-   - Each test should be able to run in isolation
-   - Don't rely on test execution order
+5. **テストの独立性維持**
+   - 各テストは分離して実行できる必要がある
+   - テスト実行順序に依存しない
 
-## Integration Testing
+## 統合テスト
 
-### Backend Integration Tests
+### バックエンド統合テスト
 
-Located in `backend/tests/`, these tests verify:
-- API endpoint functionality
-- Service layer interactions
-- Database operations
-- External service integrations
+`backend/tests/` に配置され、以下を検証します：
+- APIエンドポイント機能
+- サービス層の相互作用
+- データベース操作
+- 外部サービス統合
 
-#### Running Backend Tests
+#### バックエンドテストの実行
 
 ```bash
 cd backend
 pytest
 
-# With coverage
+# カバレッジ付き
 pytest --cov=app --cov-report=html
 
-# Specific test file
+# 特定のテストファイル
 pytest tests/test_auth.py
 
-# Specific test
+# 特定のテスト
 pytest tests/test_auth.py::test_login_success
 ```
 
-### Frontend Integration Tests
+### フロントエンド統合テスト
 
-Located in `frontend/__tests__/`, these tests verify:
-- Component interactions
-- Context providers
-- API client functions
-- Form submissions
+`frontend/__tests__/` に配置され、以下を検証します：
+- コンポーネントの相互作用
+- コンテキストプロバイダー
+- APIクライアント関数
+- フォーム送信
 
-#### Running Frontend Tests
+#### フロントエンドテストの実行
 
 ```bash
 cd frontend
 npm test
 
-# Watch mode
+# ウォッチモード
 npm run test:watch
 
-# With coverage
+# カバレッジ付き
 npm test -- --coverage
 ```
 
-## Docker Compose Configurations
+## Docker Compose設定
 
-### Development (`docker-compose.yml`)
+### 開発 (`docker-compose.yml`)
 
-- Standard development environment
-- Hot reloading enabled
-- Ports: 3000 (frontend), 8000 (backend)
+- 標準的な開発環境
+- ホットリローディング有効
+- ポート: 3000 (frontend), 8000 (backend)
 
-### Testing (`docker-compose.test.yml`)
+### テスト (`docker-compose.test.yml`)
 
-- Isolated test environment
-- Different ports to avoid conflicts
-- Health checks for service readiness
-- Ports: 3001 (frontend), 8001 (backend)
+- 分離されたテスト環境
+- 競合を避けるための異なるポート
+- サービス準備のためのヘルスチェック
+- ポート: 3001 (frontend), 8001 (backend)
 
-### Usage
+### 使用法
 
 ```bash
-# Development
+# 開発
 docker-compose up
 
-# Testing
+# テスト
 docker-compose -f docker-compose.test.yml up
 
-# Cleanup
+# クリーンアップ
 docker-compose down -v
 docker-compose -f docker-compose.test.yml down -v
 ```
 
-## CI/CD Integration
+## CI/CD統合
 
 ### GitHub Actions
 
-The project includes a GitHub Actions workflow (`.github/workflows/e2e-tests.yml`) that:
+プロジェクトには以下のGitHub Actionsワークフロー（`.github/workflows/e2e-tests.yml`）が含まれています：
 
-1. Sets up Node.js and Python environments
-2. Installs dependencies
-3. Starts Docker Compose services
-4. Runs E2E tests
-5. Uploads test reports and artifacts
-6. Shows logs on failure
+1. Node.jsとPython環境のセットアップ
+2. 依存関係のインストール
+3. Docker Composeサービスの起動
+4. E2Eテストの実行
+5. テストレポートとアーティファクトのアップロード
+6. 失敗時のログ表示
 
-### Running in CI
+### CIでの実行
 
 ```yaml
 # .github/workflows/e2e-tests.yml
@@ -291,11 +291,11 @@ The project includes a GitHub Actions workflow (`.github/workflows/e2e-tests.yml
     PLAYWRIGHT_BASE_URL: http://localhost:3001
 ```
 
-## Test Data Management
+## テストデータ管理
 
-### Mock Data
+### モックデータ
 
-For E2E tests, use the helper functions in `frontend/e2e/helpers.ts`:
+E2Eテストの場合、`frontend/e2e/helpers.ts` のヘルパー関数を使用します：
 
 ```typescript
 // Mock authentication
@@ -313,14 +313,14 @@ await mockContainerList(page, [
 await mockInspectorData(page, 'container-id');
 ```
 
-### Test Credentials
+### テスト資格情報
 
-For integration tests that require real Bitwarden access:
+実際のBitwardenアクセスが必要な統合テストの場合：
 
-1. Create a test Bitwarden account
-2. Store credentials in environment variables
-3. Use separate vault for test data
-4. Never commit credentials to repository
+1. テスト用Bitwardenアカウントを作成
+2. 資格情報を環境変数に保存
+3. テストデータ用に別の保管庫を使用
+4. 資格情報をリポジトリにコミットしない
 
 ```bash
 # .env.test
@@ -328,59 +328,59 @@ BITWARDEN_TEST_EMAIL=test@example.com
 BITWARDEN_TEST_API_KEY=test-api-key
 ```
 
-## Debugging
+## デバッグ
 
-### Playwright Debugging
+### Playwrightデバッグ
 
 ```bash
-# UI mode (interactive)
+# UIモード（インタラクティブ）
 npm run test:e2e:ui
 
-# Debug mode (step through)
+# デバッグモード（ステップ実行）
 npx playwright test --debug
 
-# Specific test in debug mode
+# デバッグモードでの特定テスト
 npx playwright test auth.spec.ts --debug
 
-# Show browser
+# ブラウザ表示
 npm run test:e2e:headed
 ```
 
-### Viewing Test Reports
+### テストレポートの表示
 
 ```bash
-# After test run
+# テスト実行後
 npx playwright show-report
 
-# Open specific report
+# 特定のレポートを開く
 npx playwright show-report playwright-report/
 ```
 
-### Analyzing Failures
+### 失敗の分析
 
-1. **Screenshots**: Automatically captured on failure
-2. **Traces**: Captured on first retry
-3. **Videos**: Optional, configure in `playwright.config.ts`
-4. **Logs**: Check Docker Compose logs
+1. **スクリーンショット**: 失敗時に自動キャプチャ
+2. **トレース**: 初回リトライ時にキャプチャ
+3. **ビデオ**: オプション、`playwright.config.ts` で設定
+4. **ログ**: Docker Composeログを確認
 
 ```bash
-# View logs
+# ログ表示
 docker-compose -f docker-compose.test.yml logs backend
 docker-compose -f docker-compose.test.yml logs frontend
 
-# Follow logs
+# ログ追跡
 docker-compose -f docker-compose.test.yml logs -f
 ```
 
-## Performance Testing
+## パフォーマンステスト
 
-### Load Testing
+### 負荷テスト
 
-For load testing, consider using:
-- [k6](https://k6.io/) for API load testing
-- [Lighthouse](https://developers.google.com/web/tools/lighthouse) for frontend performance
+負荷テストには、以下を検討してください：
+- [k6](https://k6.io/) API負荷テスト用
+- [Lighthouse](https://developers.google.com/web/tools/lighthouse) フロントエンドパフォーマンス用
 
-### Example k6 Script
+### k6スクリプト例
 
 ```javascript
 import http from 'k6/http';
@@ -400,72 +400,72 @@ export default function() {
 }
 ```
 
-## Troubleshooting
+## トラブルシューティング
 
-### Common Issues
+### 一般的な問題
 
-#### Tests Failing Locally
+#### ローカルでのテスト失敗
 
-1. **Port conflicts**: Check if ports 3000/8000 are in use
-2. **Stale containers**: Run `docker-compose down -v`
-3. **Browser issues**: Run `npx playwright install`
-4. **Cache issues**: Clear `.next` and `node_modules`
+1. **ポート競合**: ポート 3000/8000 が使用中でないか確認
+2. **古いコンテナ**: `docker-compose down -v` を実行
+3. **ブラウザの問題**: `npx playwright install` を実行
+4. **キャッシュの問題**: `.next` と `node_modules` をクリア
 
-#### Flaky Tests
+#### 不安定なテスト
 
-1. Add explicit waits: `waitForLoadState('networkidle')`
-2. Increase timeouts: `{ timeout: 10000 }`
-3. Check for race conditions
-4. Use retry logic in config
+1. 明示的な待機を追加: `waitForLoadState('networkidle')`
+2. タイムアウトを増やす: `{ timeout: 10000 }`
+3. 競合状態を確認
+4. 設定でリトライロジックを使用
 
-#### CI Failures
+#### CIでの失敗
 
-1. Check GitHub Actions logs
-2. Download test artifacts
-3. Review screenshots and traces
-4. Verify environment variables
+1. GitHub Actionsログを確認
+2. テストアーティファクトをダウンロード
+3. スクリーンショットとトレースをレビュー
+4. 環境変数を確認
 
-### Getting Help
+### ヘルプを得る
 
-1. Check [Playwright documentation](https://playwright.dev)
-2. Review test logs and reports
-3. Check Docker Compose logs
-4. Open an issue with:
-   - Test output
-   - Screenshots/traces
-   - Environment details
+1. [Playwrightドキュメント](https://playwright.dev)を確認
+2. テストログとレポートを確認
+3. Docker Composeログを確認
+4. 以下を含めてIssueを作成：
+   - テスト出力
+   - スクリーンショット/トレース
+   - 環境詳細
 
-## Maintenance
+## メンテナンス
 
-### Updating Dependencies
+### 依存関係の更新
 
 ```bash
-# Frontend
+# フロントエンド
 cd frontend
 npm update
 npx playwright install
 
-# Backend
+# バックエンド
 cd backend
 pip install --upgrade -r requirements.txt
 ```
 
-### Updating Tests
+### テストの更新
 
-When adding new features:
+新機能を追加する場合：
 
-1. Write E2E tests for user workflows
-2. Write integration tests for API endpoints
-3. Write unit tests for business logic
-4. Update test documentation
+1. ユーザーワークフローのE2Eテストを作成
+2. APIエンドポイントの統合テストを作成
+3. ビジネスロジックの単体テストを作成
+4. テストドキュメントを更新
 
-### Test Coverage Goals
+### テストカバレッジ目標
 
-- Unit tests: 80%+ coverage
-- Integration tests: Key workflows covered
-- E2E tests: Critical user paths covered
+- 単体テスト: 80%以上のカバレッジ
+- 統合テスト: 主要なワークフローをカバー
+- E2Eテスト: 重要なユーザーパスをカバー
 
-## Resources
+## リソース
 
 - [Playwright Documentation](https://playwright.dev)
 - [Jest Documentation](https://jestjs.io)

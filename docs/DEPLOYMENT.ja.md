@@ -1,86 +1,86 @@
-[日本語 (Japanese)](DEPLOYMENT.ja.md)
+[English](DEPLOYMENT.md)
 
-# Deployment Guide
+# デプロイメントガイド
 
-This guide covers deploying the Docker MCP Gateway Console to production environments.
+このガイドでは、Docker MCP Gateway Consoleを本番環境にデプロイする方法について説明します。
 
-## Table of Contents
+## 目次
 
-- [Prerequisites](#prerequisites)
-- [Deployment Options](#deployment-options)
-- [Option 1: Docker Compose (Recommended)](#option-1-docker-compose-recommended)
-- [Option 2: Separate Services](#option-2-separate-services)
-- [Option 3: Cloud Platforms](#option-3-cloud-platforms)
-- [Security Hardening](#security-hardening)
-- [Monitoring and Maintenance](#monitoring-and-maintenance)
-- [Backup and Recovery](#backup-and-recovery)
+- [前提条件](#前提条件)
+- [デプロイオプション](#デプロイオプション)
+- [オプション 1: Docker Compose（推奨）](#オプション-1-docker-compose推奨)
+- [オプション 2: 個別のサービス](#オプション-2-個別のサービス)
+- [オプション 3: クラウドプラットフォーム](#オプション-3-クラウドプラットフォーム)
+- [セキュリティ強化](#セキュリティ強化)
+- [監視とメンテナンス](#監視とメンテナンス)
+- [バックアップと復旧](#バックアップと復旧)
 
-## Prerequisites
+## 前提条件
 
-Before deploying to production:
+本番環境へのデプロイ前に以下が必要です :
 
-1. **Domain and SSL Certificate**
-   - Register a domain name
-   - Obtain SSL/TLS certificates (Let's Encrypt recommended)
+1. **ドメインとSSL証明書**
+   - ドメイン名の登録
+   - SSL/TLS証明書の取得（Let's Encrypt推奨）
 
-2. **Server Requirements**
-   - Linux server (Ubuntu 22.04 LTS recommended)
-   - Minimum 2 CPU cores
-   - Minimum 4GB RAM
-   - 20GB+ disk space
+2. **サーバー要件**
+   - Linuxサーバー（Ubuntu 22.04 LTS推奨）
+   - 最小 2 CPUコア
+   - 最小 4GB RAM
+   - 20GB+ ディスク容量
    - Docker Engine 20.10+
    - Docker Compose v2+
 
-3. **Bitwarden Setup**
-   - Bitwarden account with API access
-   - Bitwarden CLI installed on the server
-   - API keys or master password for authentication
+3. **Bitwarden設定**
+   - APIアクセス可能なBitwardenアカウント
+   - サーバーにBitwarden CLIがインストールされていること
+   - 認証用のAPIキーまたはマスターパスワード
 
-4. **Network Configuration**
-   - Open ports 80 (HTTP) and 443 (HTTPS)
-   - Configure firewall rules
-   - Set up reverse proxy (Nginx or Caddy recommended)
+4. **ネットワーク設定**
+   - ポート 80 (HTTP) および 443 (HTTPS) の開放
+   - ファイアウォールルールの設定
+   - リバースプロキシのセットアップ（NginxまたはCaddy推奨）
 
-## Deployment Options
+## デプロイオプション
 
-### Option 1: Docker Compose (Recommended)
+### オプション 1: Docker Compose（推奨）
 
-This is the simplest deployment method, suitable for single-server deployments.
+これは最もシンプルなデプロイ方法で、単一サーバーでのデプロイに適しています。
 
-#### Step 1: Prepare the Server
+#### ステップ 1: サーバーの準備
 
 ```bash
-# Update system
+# システムの更新
 sudo apt update && sudo apt upgrade -y
 
-# Install Docker
+# Dockerのインストール
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 
-# Install Docker Compose
+# Docker Composeのインストール
 sudo apt install docker-compose-plugin
 
-# Install Bitwarden CLI
+# Bitwarden CLIのインストール
 sudo npm install -g @bitwarden/cli
 
-# Verify installations
+# インストールの確認
 docker --version
 docker compose version
 bw --version
 ```
 
-#### Step 2: Clone and Configure
+#### ステップ 2: クローンと設定
 
 ```bash
-# Clone repository
+# リポジトリのクローン
 git clone <repository-url>
 cd docker-mcp-gateway-console
 
-# Create production environment files
+# 本番環境ファイルの作成
 cp frontend/.env.local.example frontend/.env.local
 cp backend/.env.example backend/.env
 
-# Edit environment variables
+# 環境変数の編集
 nano frontend/.env.local
 nano backend/.env
 ```
@@ -100,9 +100,9 @@ CORS_ORIGINS=https://yourdomain.com
 LOG_LEVEL=WARNING
 ```
 
-#### Step 3: Create Production Docker Compose
+#### ステップ 3: 本番用Docker Composeの作成
 
-Create `docker-compose.prod.yml`:
+`docker-compose.prod.yml` を作成します :
 
 ```yaml
 version: '3.8'
@@ -169,9 +169,9 @@ networks:
     driver: bridge
 ```
 
-#### Step 4: Configure Nginx
+#### ステップ 4: Nginxの設定
 
-Create `nginx/nginx.conf`:
+`nginx/nginx.conf` を作成します :
 
 ```nginx
 events {
@@ -187,14 +187,14 @@ http {
         server backend:8000;
     }
 
-    # Redirect HTTP to HTTPS
+    # HTTPからHTTPSへのリダイレクト
     server {
         listen 80;
         server_name yourdomain.com;
         return 301 https://$server_name$request_uri;
     }
 
-    # Frontend
+    # フロントエンド
     server {
         listen 443 ssl http2;
         server_name yourdomain.com;
@@ -217,7 +217,7 @@ http {
         }
     }
 
-    # Backend API
+    # バックエンドAPI
     server {
         listen 443 ssl http2;
         server_name api.yourdomain.com;
@@ -239,7 +239,7 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # WebSocket support for log streaming
+        # ログストリーミングのためのWebSocketサポート
         location /api/containers/ {
             proxy_pass http://backend;
             proxy_http_version 1.1;
@@ -255,61 +255,61 @@ http {
 }
 ```
 
-#### Step 5: Obtain SSL Certificates
+#### ステップ 5: SSL証明書の取得
 
-Using Let's Encrypt with Certbot:
+CertbotとLet's Encryptを使用：
 
 ```bash
-# Install Certbot
+# Certbotのインストール
 sudo apt install certbot
 
-# Obtain certificates
+# 証明書の取得
 sudo certbot certonly --standalone -d yourdomain.com -d api.yourdomain.com
 
-# Copy certificates to nginx directory
+# 証明書をnginxディレクトリにコピー
 sudo mkdir -p nginx/ssl
 sudo cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem nginx/ssl/
 sudo cp /etc/letsencrypt/live/yourdomain.com/privkey.pem nginx/ssl/
 sudo chmod 644 nginx/ssl/*.pem
 ```
 
-#### Step 6: Deploy
+#### ステップ 6: デプロイ
 
 ```bash
-# Build and start services
+# サービスのビルドと起動
 docker compose -f docker-compose.prod.yml up -d
 
-# Check status
+# ステータス確認
 docker compose -f docker-compose.prod.yml ps
 
-# View logs
+# ログ表示
 docker compose -f docker-compose.prod.yml logs -f
 ```
 
-#### Step 7: Set Up Auto-Renewal for SSL
+#### ステップ 7: SSL自動更新の設定
 
 ```bash
-# Add cron job for certificate renewal
+# 証明書更新のcronジョブ追加
 sudo crontab -e
 
-# Add this line to renew certificates monthly
+# 証明書を毎月更新する行を追加
 0 0 1 * * certbot renew --quiet && docker compose -f /path/to/docker-compose.prod.yml restart nginx
 ```
 
-### Option 2: Separate Services
+### オプション 2: 個別のサービス
 
-Deploy frontend and backend on separate servers for better scalability.
+スケーラビリティ向上のため、フロントエンドとバックエンドを別々のサーバーにデプロイします。
 
-#### Backend Server
+#### バックエンドサーバー
 
 ```bash
-# On backend server
+# バックエンドサーバーにて
 cd backend
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Install as systemd service
+# systemdサービスとしてインストール
 sudo nano /etc/systemd/system/mcp-backend.service
 ```
 
@@ -332,73 +332,73 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-# Enable and start service
+# サービスの有効化と起動
 sudo systemctl enable mcp-backend
 sudo systemctl start mcp-backend
 sudo systemctl status mcp-backend
 ```
 
-#### Frontend Server
+#### フロントエンドサーバー
 
 ```bash
-# On frontend server
+# フロントエンドサーバーにて
 cd frontend
 npm install
 npm run build
 
-# Install PM2 for process management
+# プロセス管理用PM2のインストール
 npm install -g pm2
 
-# Start with PM2
+# PM2で起動
 pm2 start npm --name "mcp-frontend" -- start
 pm2 save
 pm2 startup
 ```
 
-### Option 3: Cloud Platforms
+### オプション 3: クラウドプラットフォーム
 
-#### AWS Deployment
+#### AWS デプロイメント
 
-1. **Use ECS (Elastic Container Service)**
-   - Create ECR repositories for frontend and backend
-   - Push Docker images to ECR
-   - Create ECS task definitions
-   - Deploy to ECS Fargate
+1. **ECS (Elastic Container Service) の使用**
+   - フロントエンドとバックエンド用のECRリポジトリを作成
+   - DockerイメージをECRにプッシュ
+   - ECSタスク定義を作成
+   - ECS Fargateへデプロイ
 
-2. **Use EC2**
-   - Launch EC2 instance (t3.medium or larger)
-   - Follow Docker Compose deployment steps
-   - Configure security groups (ports 80, 443)
-   - Use Elastic IP for static IP address
+2. **EC2 の使用**
+   - EC2インスタンスの起動（t3.medium以上）
+   - Docker Composeデプロイ手順に従う
+   - セキュリティグループの設定（ポート80, 443）
+   - 静的IPアドレス用にElastic IPを使用
 
 #### Google Cloud Platform
 
-1. **Use Cloud Run**
-   - Build and push images to Google Container Registry
-   - Deploy frontend and backend as separate Cloud Run services
-   - Configure custom domains
+1. **Cloud Run の使用**
+   - Google Container Registryへイメージをビルドしてプッシュ
+   - フロントエンドとバックエンドを個別のCloud Runサービスとしてデプロイ
+   - カスタムドメインの設定
 
-2. **Use Compute Engine**
-   - Create VM instance
-   - Follow Docker Compose deployment steps
+2. **Compute Engine の使用**
+   - VMインスタンスを作成
+   - Docker Composeデプロイ手順に従う
 
 #### DigitalOcean
 
-1. **Use App Platform**
-   - Connect GitHub repository
-   - Configure build settings
-   - Deploy automatically on push
+1. **App Platform の使用**
+   - GitHubリポジトリを接続
+   - ビルド設定を行う
+   - プッシュ時に自動デプロイ
 
-2. **Use Droplet**
-   - Create Droplet (4GB RAM minimum)
-   - Follow Docker Compose deployment steps
+2. **Droplet の使用**
+   - Dropletを作成（4GB RAM以上）
+   - Docker Composeデプロイ手順に従う
 
-## Security Hardening
+## セキュリティ強化
 
-### 1. Firewall Configuration
+### 1. ファイアウォール設定
 
 ```bash
-# Using UFW (Ubuntu)
+# UFW (Ubuntu) を使用
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow ssh
@@ -407,14 +407,14 @@ sudo ufw allow 443/tcp
 sudo ufw enable
 ```
 
-### 2. Docker Security
+### 2. Dockerセキュリティ
 
 ```bash
-# Run Docker daemon in rootless mode (optional)
+# Dockerデーモンをルートレスモードで実行（オプション）
 dockerd-rootless-setuptool.sh install
 
-# Limit container resources
-# Add to docker-compose.prod.yml:
+# コンテナリソースの制限
+# docker-compose.prod.yml に追加:
 services:
   backend:
     deploy:
@@ -424,84 +424,84 @@ services:
           memory: 1G
 ```
 
-### 3. Application Security
+### 3. アプリケーションセキュリティ
 
-- Use strong session secrets
-- Enable rate limiting
-- Implement request validation
-- Regular security updates
+- 強固なセッションシークレットの使用
+- レート制限の有効化
+- リクエストバリデーションの実装
+- 定期的なセキュリティアップデート
 
-### 4. Network Security
+### 4. ネットワークセキュリティ
 
-- Use VPN for administrative access
-- Implement IP whitelisting for sensitive endpoints
-- Enable DDoS protection (Cloudflare, AWS Shield)
+- 管理アクセスにVPNを使用
+- 機密エンドポイントへのIPホワイトリスト実装
+- DDoS保護の有効化（Cloudflare, AWS Shield）
 
-## Monitoring and Maintenance
+## 監視とメンテナンス
 
-### Health Checks
+### ヘルスチェック
 
 ```bash
-# Check service health
+# サービスヘルスの確認
 curl https://api.yourdomain.com/health
 
-# Check frontend
+# フロントエンドの確認
 curl https://yourdomain.com
 ```
 
-### Logging
+### ロギング
 
 ```bash
-# View backend logs
+# バックエンドログの表示
 docker compose -f docker-compose.prod.yml logs -f backend
 
-# View frontend logs
+# フロントエンドログの表示
 docker compose -f docker-compose.prod.yml logs -f frontend
 
-# View nginx logs
+# nginxログの表示
 tail -f nginx/logs/access.log
 tail -f nginx/logs/error.log
 ```
 
-### Monitoring Tools
+### 監視ツール
 
-Consider integrating:
-- **Prometheus + Grafana**: Metrics and dashboards
-- **ELK Stack**: Log aggregation and analysis
-- **Uptime Robot**: Uptime monitoring
-- **Sentry**: Error tracking
+以下との統合を検討してください：
+- **Prometheus + Grafana**: メトリクスとダッシュボード
+- **ELK Stack**: ログ収集と分析
+- **Uptime Robot**: 稼働監視
+- **Sentry**: エラー追跡
 
-### Updates
+### アップデート
 
 ```bash
-# Pull latest changes
+# 最新の変更を取得
 git pull origin main
 
-# Rebuild and restart
+# リビルドと再起動
 docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d
 
-# Clean up old images
+# 古いイメージのクリーンアップ
 docker image prune -a
 ```
 
-## Backup and Recovery
+## バックアップと復旧
 
-### What to Backup
+### バックアップ対象
 
-1. **Configuration files**
-   - `.env` files
+1. **設定ファイル**
+   - `.env` ファイル
    - `docker-compose.prod.yml`
    - `nginx.conf`
 
-2. **Application data**
-   - Gateway configurations
-   - Session data (if persisted)
+2. **アプリケーションデータ**
+   - ゲートウェイ設定
+   - セッションデータ（永続化している場合）
 
-3. **SSL certificates**
+3. **SSL証明書**
    - `/etc/letsencrypt/`
 
-### Backup Script
+### バックアップスクリプト
 
 ```bash
 #!/bin/bash
@@ -510,93 +510,93 @@ docker image prune -a
 BACKUP_DIR="/backups/mcp-gateway"
 DATE=$(date +%Y%m%d_%H%M%S)
 
-# Create backup directory
+# バックアップディレクトリ作成
 mkdir -p $BACKUP_DIR
 
-# Backup configuration
+# 設定のバックアップ
 tar -czf $BACKUP_DIR/config_$DATE.tar.gz \
   frontend/.env.local \
   backend/.env \
   docker-compose.prod.yml \
-  nginx/
+  nginx/ 
 
-# Backup data
+# データのバックアップ
 tar -czf $BACKUP_DIR/data_$DATE.tar.gz \
-  backend/data/
+  backend/data/ 
 
-# Keep only last 7 days of backups
+# 過去7日間のバックアップのみ保持
 find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
 
-echo "Backup completed: $DATE"
+echo "バックアップ完了: $DATE"
 ```
 
-### Automated Backups
+### 自動バックアップ
 
 ```bash
-# Add to crontab
+# crontabに追加
 crontab -e
 
-# Daily backup at 2 AM
+# 毎日午前2時にバックアップ
 0 2 * * * /opt/mcp-gateway/backup.sh
 ```
 
-### Recovery
+### 復旧
 
 ```bash
-# Stop services
+# サービスの停止
 docker compose -f docker-compose.prod.yml down
 
-# Restore configuration
+# 設定の復元
 tar -xzf config_YYYYMMDD_HHMMSS.tar.gz
 
-# Restore data
+# データの復元
 tar -xzf data_YYYYMMDD_HHMMSS.tar.gz
 
-# Restart services
+# サービスの再起動
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-## Troubleshooting
+## トラブルシューティング
 
-### Service Won't Start
+### サービスが起動しない
 
 ```bash
-# Check logs
+# ログ確認
 docker compose -f docker-compose.prod.yml logs
 
-# Check Docker daemon
+# Dockerデーモン確認
 sudo systemctl status docker
 
-# Check disk space
+# ディスク容量確認
 df -h
 ```
 
-### SSL Certificate Issues
+### SSL証明書の問題
 
 ```bash
-# Test certificate
+# 証明書テスト
 openssl s_client -connect yourdomain.com:443
 
-# Renew certificate manually
+# 手動更新
 sudo certbot renew --force-renewal
 ```
 
-### Performance Issues
+### パフォーマンスの問題
 
 ```bash
-# Check resource usage
+# リソース使用率確認
 docker stats
 
-# Check system resources
+# システムリソース確認
 htop
 
-# Optimize Docker
+# Docker最適化
 docker system prune -a
 ```
 
-## Support
+## サポート
 
-For additional help:
-- Review application logs
-- Check [GitHub Issues](repository-url/issues)
-- Consult [Requirements Documentation](.kiro/specs/docker-mcp-gateway-console/requirements.md)
+追加のヘルプが必要な場合：
+- アプリケーションログを確認
+- [GitHub Issues](repository-url/issues)を確認
+- [要件定義ドキュメント](.kiro/specs/docker-mcp-gateway-console/requirements.md)を参照

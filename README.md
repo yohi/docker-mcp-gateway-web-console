@@ -1,3 +1,5 @@
+[日本語 (Japanese)](README.ja.md)
+
 # Docker MCP Gateway Console
 
 A comprehensive web console for managing Docker-based MCP (Model Context Protocol) servers with Bitwarden integration for secure secret management. This application provides a user-friendly interface to deploy, configure, and monitor MCP servers while keeping your API keys and sensitive credentials secure.
