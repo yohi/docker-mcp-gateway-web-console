@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CatalogItem } from '@/lib/types/catalog';
 import { ContainerConfig } from '@/lib/types/containers';
+import { mapCatalogItemToConfig } from '@/lib/utils/transformers';
 import ContainerConfigurator from '@/components/containers/ContainerConfigurator';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { MainLayout } from '@/components/layout';
@@ -59,11 +60,7 @@ export default function NewContainerPage() {
   }
 
   // Prepare initial config from catalog item (requirement 3.3)
-  const initialConfig: Partial<ContainerConfig> = {
-    name: selectedItem.id,
-    image: selectedItem.docker_image,
-    env: selectedItem.default_env,
-  };
+  const initialConfig = mapCatalogItemToConfig(selectedItem);
 
   return (
     <ProtectedRoute>
