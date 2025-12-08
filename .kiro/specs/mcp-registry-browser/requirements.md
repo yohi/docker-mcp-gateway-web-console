@@ -19,13 +19,13 @@
 #### Acceptance Criteria
 1. When [ユーザーがカタログページにアクセスした], the [Frontend Application] shall [サーバーリストのローディング状態を表示する]
 2. The [Frontend Application] shall [各MCPサーバーの名前、説明、およびベンダー情報をカードまたはリスト形式で表示する]
-3. Where [サーバーが既にローカル環境にインストールされている], the [Frontend Application] shall [「インストール済み」ステータスを該当アイテムに表示し、重複インストールを警告または防止する] (Ref: Product.md - Core Capabilities)
+3. Where [サーバーが既にローカル環境にインストールされている], the [Frontend Application] shall [「インストール済み」ステータスを該当アイテムに表示し、重複インストールを警告または防止する] (Ref: design.md - 6.1 重複防止)
 
 ### Requirement 3: 簡易インストールフロー (Simplified Installation Flow)
 **Objective:** As a User, I want to install an MCP server with minimal configuration, so that I can quickly start using it without complex CLI commands.
 
 #### Acceptance Criteria
-1. When [ユーザーがカタログから「インストール」を選択した], the [Frontend Application] shall [必要な環境変数やBitwarden参照設定を入力するための設定モーダルを表示する] (Ref: Tech.md - Secure Secret Management)
+1. When [ユーザーがカタログから「インストール」を選択した], the [Frontend Application] shall [必要な環境変数やBitwarden参照設定を入力するための設定モーダルを表示する] (Ref: tasks.md - 2.3. Install Modalの実装 (Bitwarden Integration))
 2. When [ユーザーが設定を確認しインストールを実行した], the [Backend Service] shall [Dockerイメージのプルとコンテナの作成・起動をバックグラウンドで開始する]
 3. While [インストールが進行中である], the [Frontend Application] shall [進行状況（スピナーやプログレスバー）を表示し、操作をブロックまたは制限する]
 4. If [コンテナの起動に失敗した], then the [Backend Service] shall [エラー詳細を返し、Frontend Applicationはユーザーに解決策またはエラーメッセージを表示する]
