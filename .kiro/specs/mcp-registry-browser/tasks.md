@@ -2,19 +2,19 @@
 
 ## 1. Backend Implementation
 
-- [ ] 1.1. カタログ用データモデルの作成
+- [x] 1.1. カタログ用データモデルの作成
   - `app/schemas/catalog.py`を作成し、`RegistryItem` Pydanticモデルを定義する
   - 外部レジストリJSONの構造（`name`, `description`, `vendor`, `image`, `required_envs`等）に合わせる
   - _Requirements: 1.1_
 
-- [ ] 1.2. CatalogServiceの実装
+- [x] 1.2. CatalogServiceの実装
   - `app/services/catalog.py`を作成する
   - `fetch_catalog()`メソッドを実装し、`https://raw.githubusercontent.com/docker/mcp-registry/main/registry.json`からデータを取得する
   - シンプルなメモリ内キャッシュ（またはTTL付きLRUキャッシュ）を実装して都度の外部通信を防ぐ
   - 取得失敗時のエラーハンドリング（空リスト返却など）を実装する
   - _Requirements: 1.1, 1.2_
 
-- [ ] 1.3. Catalog API Routerの実装
+- [x] 1.3. Catalog API Routerの実装
   - `app/routers/catalog.py`を作成し、`GET /api/catalog`エンドポイントを実装する
   - `main.py`にルーターを登録する
   - `CatalogService`を利用してデータを返却するテストコード(`tests/api/test_catalog.py`)を作成する

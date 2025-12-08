@@ -18,52 +18,40 @@ def catalog_service():
 
 @pytest.fixture
 def sample_catalog_data():
-    """Sample catalog data for testing."""
-    return {
-        "version": "1.0",
-        "servers": [
-            {
-                "id": "test-server-1",
-                "name": "Test Server 1",
-                "description": "A test MCP server for utilities",
-                "category": "utilities",
-                "docker_image": "test/server1:latest",
-                "default_env": {
-                    "PORT": "8080",
-                    "API_KEY": "{{ bw:test-item:api_key }}"
-                },
-                "required_secrets": ["API_KEY"]
-            },
-            {
-                "id": "test-server-2",
-                "name": "Test Server 2",
-                "description": "Another test server for AI tasks",
-                "category": "ai",
-                "docker_image": "test/server2:latest",
-                "default_env": {
-                    "MODEL": "gpt-4"
-                },
-                "required_secrets": []
-            },
-            {
-                "id": "test-server-3",
-                "name": "Data Server",
-                "description": "A server for data processing",
-                "category": "data",
-                "docker_image": "test/data-server:latest",
-                "default_env": {},
-                "required_secrets": []
-            }
-        ]
-    }
+    """Sample catalog data (Registry format) for testing."""
+    return [
+        {
+            "name": "fetch",
+            "description": "Web fetch tool",
+            "vendor": "Docker Inc.",
+            "image": "docker/mcp-fetch:latest",
+            "required_envs": ["API_KEY"]
+        },
+        {
+            "name": "filesystem",
+            "description": "File system access",
+            "vendor": "Docker Inc.",
+            "image": "docker/mcp-filesystem:latest",
+            "required_envs": []
+        }
+    ]
 
 
 @pytest.fixture
 def sample_catalog_items(sample_catalog_data):
     """Sample CatalogItem objects for testing."""
-    return [
-        CatalogItem(**server) for server in sample_catalog_data["servers"]
-    ]
+    items = []
+    for item in sample_catalog_data:
+        items.append(CatalogItem(
+            id=item["name"],
+            name=item["name"],
+            description=item["description"],
+            category="general",
+            docker_image=item["image"],
+            default_env={},
+            required_secrets=item["required_envs"]
+        ))
+    return items
 
 
 class TestCatalogService:
@@ -72,38 +60,37 @@ class TestCatalogService:
     @pytest.mark.asyncio
     async def test_search_by_keyword(self, catalog_service, sample_catalog_items):
         """Test keyword search in catalog."""
-        # Search for "test" - should match first two items
+        # Search for "fetch" - should match first item
         results = await catalog_service.search_catalog(
             sample_catalog_items,
-            query="test"
+            query="fetch"
         )
-        assert len(results) == 2
-        assert all("test" in item.name.lower() or "test" in item.description.lower() 
-                   for item in results)
+        assert len(results) == 1
+        assert results[0].name == "fetch"
 
     @pytest.mark.asyncio
     async def test_search_by_category(self, catalog_service, sample_catalog_items):
         """Test category filtering."""
-        # Filter by "utilities" category
+        # Filter by "general" category
         results = await catalog_service.search_catalog(
             sample_catalog_items,
-            category="utilities"
+            category="general"
         )
-        assert len(results) == 1
-        assert results[0].category == "utilities"
+        assert len(results) == 2
+        assert all(item.category == "general" for item in results)
 
     @pytest.mark.asyncio
     async def test_search_combined_filters(self, catalog_service, sample_catalog_items):
         """Test combined keyword and category filtering."""
-        # Search for "server" in "ai" category
+        # Search for "fetch" in "general" category
         results = await catalog_service.search_catalog(
             sample_catalog_items,
-            query="server",
-            category="ai"
+            query="fetch",
+            category="general"
         )
         assert len(results) == 1
-        assert results[0].category == "ai"
-        assert "server" in results[0].name.lower()
+        assert results[0].category == "general"
+        assert "fetch" in results[0].name.lower()
 
     @pytest.mark.asyncio
     async def test_search_no_results(self, catalog_service, sample_catalog_items):
@@ -283,16 +270,15 @@ class TestCatalogFetch:
         items, is_cached = await catalog_service.fetch_catalog(source_url)
         
         # Verify results
-        assert len(items) == 3
+        assert len(items) == 2
         assert is_cached is False
-        assert items[0].id == "test-server-1"
-        assert items[1].id == "test-server-2"
-        assert items[2].id == "test-server-3"
+        assert items[0].id == "fetch"
+        assert items[1].id == "filesystem"
         
         # Verify cache was updated
         cached = await catalog_service.get_cached_catalog(source_url)
         assert cached is not None
-        assert len(cached) == 3
+        assert len(cached) == 2
 
     @pytest.mark.asyncio
     async def test_fetch_catalog_fallback_to_cache(self, catalog_service, sample_catalog_items, monkeypatch):
