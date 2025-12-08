@@ -24,6 +24,15 @@ export async function mockAuthentication(page: Page) {
     sameSite: 'Lax',
   }]);
 
+  // Ensure session id is available for API headers used in hooks
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem('session_id', 'test-session-id');
+    } catch (e) {
+      // ignore storage errors in headless context
+    }
+  });
+
   // Mock the session validation API
   await page.route('**/api/auth/session', route => {
     route.fulfill({
@@ -31,7 +40,12 @@ export async function mockAuthentication(page: Page) {
       contentType: 'application/json',
       body: JSON.stringify({
         valid: true,
-        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        session: {
+          session_id: 'test-session-id',
+          user_email: 'test@example.com',
+          created_at: new Date(Date.now() - 60 * 1000).toISOString(),
+          expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        },
       }),
     });
   });
@@ -66,12 +80,25 @@ export async function mockCatalogData(page: Page, customServers?: any[]) {
   ];
 
   await page.route('**/api/catalog**', route => {
+    const url = new URL(route.request().url());
+    const q = url.searchParams.get('q') || url.searchParams.get('query') || '';
+    const category = url.searchParams.get('category') || '';
+
+    const filtered = servers.filter((item) => {
+      const matchesQuery =
+        q === '' ||
+        item.name.toLowerCase().includes(q.toLowerCase()) ||
+        item.description.toLowerCase().includes(q.toLowerCase());
+      const matchesCategory = category === '' || item.category === category;
+      return matchesQuery && matchesCategory;
+    });
+
     route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        servers: servers,
-        total: servers.length,
+        servers: filtered,
+        total: filtered.length,
         cached: false,
       }),
     });
@@ -82,7 +109,7 @@ export async function mockCatalogData(page: Page, customServers?: any[]) {
  * Mock container list data
  */
 export async function mockContainerList(page: Page, containers: any[] = []) {
-  await page.route('**/api/containers', route => {
+  await page.route('**/api/containers**', route => {
     if (route.request().method() === 'GET') {
       route.fulfill({
         status: 200,
@@ -203,11 +230,15 @@ export async function clickButton(page: Page, name: string | RegExp) {
 /**
  * Wait for toast notification
  */
-export async function waitForToast(page: Page, message?: string | RegExp) {
-  const toast = message
-    ? page.getByText(message)
-    : page.locator('[role="alert"]').or(page.locator('.toast'));
+export async function waitForToast(page: Page, message?: string | RegExp, timeout: number = 8000) {
+  // Prefer role="alert" when message is not specified
+  if (!message) {
+    const toast = page.locator('[role="alert"]').or(page.locator('.toast'));
+    await toast.first().waitFor({ state: 'visible', timeout });
+    return toast.first();
+  }
 
-  await toast.waitFor({ state: 'visible', timeout: 5000 });
-  return toast;
+  const toast = page.getByText(message);
+  await toast.first().waitFor({ state: 'visible', timeout });
+  return toast.first();
 }

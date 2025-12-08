@@ -7,6 +7,7 @@ interface SecretReferenceInputProps {
   onChange: (value: string) => void;
   placeholder?: string;
   label?: string;
+  inputId?: string;
   error?: string;
   onBlur?: () => void;
 }
@@ -21,6 +22,7 @@ export default function SecretReferenceInput({
   placeholder = 'Enter value or {{ bw:item-id:field }}',
   label,
   error,
+  inputId,
   onBlur,
 }: SecretReferenceInputProps) {
   const [isReference, setIsReference] = useState(false);
@@ -38,13 +40,14 @@ export default function SecretReferenceInput({
   return (
     <div className="flex flex-col gap-1">
       {label && (
-        <label className="text-sm font-medium text-gray-700">
+        <label className="text-sm font-medium text-gray-700" htmlFor={inputId}>
           {label}
         </label>
       )}
       <div className="relative">
         <input
           type="text"
+          id={inputId}
           value={value}
           onChange={handleChange}
           onBlur={onBlur}

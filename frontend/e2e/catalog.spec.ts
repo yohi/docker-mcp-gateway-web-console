@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { mockAuthentication, mockCatalogData, waitForToast } from './helpers';
+import { mockAuthentication, mockCatalogData, mockContainerList, waitForToast } from './helpers';
 
 /**
  * E2E tests for Catalog browsing and installation flow
@@ -43,8 +43,9 @@ test.describe('Catalog Browser', () => {
     await page.waitForTimeout(500);
 
     // Verify filtered results
-    await expect(page.getByText('Test MCP Server')).toBeVisible();
-    await expect(page.getByText('Another Test Server')).not.toBeVisible();
+    const serverNames = page.getByTestId('server-name');
+    await expect(serverNames.filter({ hasText: 'Test MCP Server' })).toHaveCount(1);
+    await expect(serverNames.filter({ hasText: 'Another Test Server' })).toHaveCount(0);
   });
 
   test('should display server cards with required information', async ({ page }) => {
@@ -71,12 +72,44 @@ test.describe('Catalog Browser', () => {
     // Search for something that won't match
     const searchInput = page.getByPlaceholder(/search/i);
     await searchInput.fill('xyznonexistentserver123');
-    await page.waitForTimeout(500);
+    // Wait for SWR refetch debounce
+    await page.waitForTimeout(800);
 
     // Should show empty state message
     await expect(
-      page.getByText(/No servers found|該当するアイテムがありません/i)
+      page.getByRole('heading', { name: 'No servers found' })
     ).toBeVisible();
+  });
+});
+
+test.describe('Catalog Installed State', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuthentication(page);
+    await mockCatalogData(page);
+    await mockContainerList(page, [
+      {
+        id: 'existing-container',
+        name: 'test-mcp-server',
+        image: 'test/mcp-server:latest',
+        status: 'running',
+        created_at: new Date().toISOString(),
+        ports: { '8080': 8080 },
+      },
+    ]);
+    await page.goto('/catalog');
+  });
+
+  test('should show installed status and disable install', async ({ page }) => {
+    await page.waitForLoadState('networkidle');
+
+    const serverCards = page.locator('[data-testid="catalog-card"]');
+    await expect(serverCards).toHaveCount(2);
+
+    const firstCard = serverCards.first();
+    await expect(
+      firstCard.getByText(/実行中|インストール済み/)
+    ).toBeVisible({ timeout: 10000 });
+    await expect(firstCard.getByRole('button', { name: 'インストール' })).toHaveCount(0);
   });
 });
 
@@ -111,8 +144,8 @@ test.describe('Catalog Installation Flow', () => {
     // 4. Fill required secret
     await keyInput.fill('my-secret-key');
 
-    // 5. Mock Install API
-    await page.route('**/api/containers', async (route) => {
+    // 5. Mock Install API (includes query strings)
+    await page.route('**/api/containers**', async (route) => {
       if (route.request().method() === 'POST') {
         const postData = route.request().postDataJSON();
         // Verify payload
@@ -144,9 +177,9 @@ test.describe('Catalog Installation Flow', () => {
     await installButton.click();
 
     // 7. Verify Success Toast
-    await waitForToast(page, /installed successfully|をインストールしました/i);
+    await waitForToast(page, /installed successfully|インストールされました|インストールしました/i, 8000);
 
     // 8. Verify Modal Closes
-    await expect(modal).not.toBeVisible();
+    await expect(modal).not.toBeVisible({ timeout: 5000 });
   });
 });
