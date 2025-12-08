@@ -107,6 +107,7 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
                         onChange={(val) => setFormData(prev => ({ ...prev, [key]: val }))}
                         onBlur={() => setTouched(prev => ({ ...prev, [key]: true }))}
                         required={item.required_envs.includes(key)}
+                        disabled={isLoading}
                         placeholder={
                           item.required_envs.includes(key)
                             ? '必須 (値 または {{ bw:... }})'

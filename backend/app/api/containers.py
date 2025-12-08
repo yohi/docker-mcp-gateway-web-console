@@ -152,13 +152,13 @@ async def create_container(
     except HTTPException:
         raise
     except RuntimeError as e:
-        logger.exception(f"Failed to create container: {e}")
+        logger.exception("Failed to create container")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         ) from e
     except Exception as e:
-        logger.exception(f"Unexpected error creating container: {e}")
+        logger.exception("Unexpected error creating container")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while creating container"
@@ -185,13 +185,13 @@ async def install_container(
     except HTTPException:
         raise
     except RuntimeError as e:
-        logger.exception(f"Failed to install container: {e}")
+        logger.exception("Failed to install container")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         ) from e
     except Exception as e:
-        logger.exception(f"Unexpected error installing container: {e}")
+        logger.exception("Unexpected error installing container")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while installing container"
