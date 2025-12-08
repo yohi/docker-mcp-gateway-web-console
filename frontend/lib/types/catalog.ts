@@ -17,7 +17,7 @@ export interface CatalogResponse {
 }
 
 export interface CatalogSearchParams {
-  source: string;
+  source?: string;
   q?: string;
   category?: string;
 }

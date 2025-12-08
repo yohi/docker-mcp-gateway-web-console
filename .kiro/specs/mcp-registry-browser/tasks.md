@@ -22,24 +22,24 @@
 
 ## 2. Frontend Implementation
 
-- [ ] 2.1. API Clientの更新
+- [x] 2.1. API Clientの更新
   - `frontend/lib/api/catalog.ts`を作成し、`fetchCatalog`関数を実装する
   - 型定義をBackendのレスポンスに合わせる
   - _Requirements: 1.3_
 
-- [ ] 2.2. Catalog Page & Card Componentの実装
+- [x] 2.2. Catalog Page & Card Componentの実装
   - `frontend/app/catalog/page.tsx`を作成し、グリッドレイアウトを実装する
   - `frontend/components/catalog/CatalogCard.tsx`を作成し、サーバー情報を表示する
   - `useContainers`フックを利用して、インストール済み（同名/同イメージ実行中）の場合にステータス表示を切り替えるロジックを入れる
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 2.3. Install Modalの実装 (Bitwarden Integration)
+- [x] 2.3. Install Modalの実装 (Bitwarden Integration)
   - `frontend/components/catalog/InstallModal.tsx`を作成する
   - `RegistryItem.required_envs`に基づき動的に入力フォームを生成する
   - 環境変数名に安易なヒューリスティック(KEY, SECRET等)がある場合、既存の`BitwardenSelector`を表示する
   - _Requirements: 3.1_
 
-- [ ] 2.4. Install Actionの統合
+- [x] 2.4. Install Actionの統合
   - モーダルの「インストール」ボタン押下時に `POST /api/containers/install` (既存API利用想定) を呼び出す処理を実装する
   - `useInstallation`フック（既存または新規作成）でインストール中のローディング表示を行う
   - 成功/失敗のトースト通知を実装する

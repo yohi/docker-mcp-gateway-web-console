@@ -4,9 +4,11 @@ import { CatalogResponse, CatalogSearchParams } from '../types/catalog';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-export async function fetchCatalog(source: string): Promise<CatalogResponse> {
+export async function fetchCatalog(source?: string): Promise<CatalogResponse> {
   const url = new URL(`${API_BASE_URL}/api/catalog`);
-  url.searchParams.append('source', source);
+  if (source) {
+    url.searchParams.append('source', source);
+  }
 
   const response = await fetch(url.toString());
 
@@ -20,12 +22,14 @@ export async function fetchCatalog(source: string): Promise<CatalogResponse> {
 
 export async function searchCatalog(params: CatalogSearchParams): Promise<CatalogResponse> {
   const url = new URL(`${API_BASE_URL}/api/catalog/search`);
-  url.searchParams.append('source', params.source);
-  
+  if (params.source) {
+    url.searchParams.append('source', params.source);
+  }
+
   if (params.q) {
     url.searchParams.append('q', params.q);
   }
-  
+
   if (params.category) {
     url.searchParams.append('category', params.category);
   }
@@ -42,7 +46,7 @@ export async function searchCatalog(params: CatalogSearchParams): Promise<Catalo
 
 export async function clearCatalogCache(source?: string): Promise<void> {
   const url = new URL(`${API_BASE_URL}/api/catalog/cache`);
-  
+
   if (source) {
     url.searchParams.append('source', source);
   }

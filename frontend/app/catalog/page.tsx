@@ -1,24 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+// import { useRouter } from 'next/navigation'; // Unused
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { MainLayout } from '@/components/layout';
 import CatalogList from '@/components/catalog/CatalogList';
+import InstallModal from '@/components/catalog/InstallModal';
 import { CatalogItem } from '@/lib/types/catalog';
 
 export default function CatalogPage() {
-  const router = useRouter();
   const [catalogSource, setCatalogSource] = useState(
     process.env.NEXT_PUBLIC_CATALOG_URL || 'https://example.com/catalog.json'
   );
   const [inputSource, setInputSource] = useState(catalogSource);
 
+  const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
+
   const handleInstall = (item: CatalogItem) => {
-    // Navigate to container configuration page with prefilled data
-    // Store the selected item in sessionStorage for the next page
-    sessionStorage.setItem('selectedCatalogItem', JSON.stringify(item));
-    router.push('/containers/new');
+    setSelectedItem(item);
   };
 
   const handleSourceChange = () => {
@@ -63,6 +62,13 @@ export default function CatalogPage() {
 
           {/* Catalog list */}
           <CatalogList catalogSource={catalogSource} onInstall={handleInstall} />
+
+          {/* Install Modal */}
+          <InstallModal
+            isOpen={!!selectedItem}
+            item={selectedItem}
+            onClose={() => setSelectedItem(null)}
+          />
         </div>
       </MainLayout>
     </ProtectedRoute>

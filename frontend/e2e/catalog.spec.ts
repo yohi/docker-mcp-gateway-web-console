@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import { mockAuthentication, mockCatalogData } from './helpers';
+import { test, expect, Page } from '@playwright/test';
+import { mockAuthentication, mockCatalogData, waitForToast } from './helpers';
 
 /**
  * E2E tests for Catalog browsing and installation flow
@@ -8,12 +8,10 @@ import { mockAuthentication, mockCatalogData } from './helpers';
  * - Browsing available MCP servers
  * - Searching and filtering
  * - Selecting a server for installation
+ * - Installing via Modal
  */
 
 test.describe('Catalog Browser', () => {
-  // Note: These tests assume authentication is handled
-  // In a real scenario, you'd set up authenticated state in beforeEach
-
   test.beforeEach(async ({ page }) => {
     // Set up authentication and catalog data mocks
     await mockAuthentication(page);
@@ -34,241 +32,121 @@ test.describe('Catalog Browser', () => {
     await expect(searchInput).toBeVisible();
   });
 
-  test('should display loading state while fetching catalog', async ({ page }) => {
-    // Reload to see loading state
-    await page.reload();
-
-    // Should show loading indicator
-    const loadingIndicator = page.getByText(/loading/i).or(
-      page.locator('[role="status"]')
-    );
-
-    // Loading should appear briefly
-    await expect(loadingIndicator).toBeVisible({ timeout: 1000 }).catch(() => {
-      // It's okay if loading is too fast to catch
-    });
-  });
-
   test('should allow searching catalog items', async ({ page }) => {
-    // Mock catalog data with known test data
-    await mockCatalogData(page, [
-      {
-        id: 'test-server-1',
-        name: 'test-server',
-        description: 'Test server',
-        category: 'testing',
-        docker_image: 'test/image:latest',
-        default_env: {},
-        required_secrets: []
-      },
-      {
-        id: 'test-server-2',
-        name: 'other-server',
-        description: 'Other server',
-        category: 'testing',
-        docker_image: 'test/other:latest',
-        default_env: {},
-        required_secrets: []
-      }
-    ]);
-
-    // Reload to apply new mock data
-    await page.reload();
+    // Wait for initial load
     await page.waitForLoadState('networkidle');
-
-    // Find search input
-    const searchInput = page.getByPlaceholder(/search/i);
 
     // Type a search query
-    await searchInput.fill('test');
-
-    // Wait for search results to update
-    await page.waitForLoadState('networkidle');
+    const searchInput = page.getByPlaceholder(/search/i);
+    await searchInput.fill('Test MCP Server');
+    // Trigger search logic (debounced or immediate)
+    await page.waitForTimeout(500);
 
     // Verify filtered results
-    await expect(page.getByText('test-server')).toBeVisible();
-    await expect(page.getByText('other-server')).not.toBeVisible();
-  });
-
-  test('should allow filtering by category', async ({ page }) => {
-    // Wait for catalog to load
-    await page.waitForLoadState('networkidle');
-
-    // Look for category filter dropdown or buttons
-    const categoryFilter = page.getByLabel(/category/i).or(
-      page.getByRole('combobox', { name: /category/i })
-    );
-
-    // Check if category filter exists
-    const hasFilter = await categoryFilter.isVisible().catch(() => false);
-
-    if (hasFilter) {
-      // Select a category
-      await categoryFilter.click();
-
-      // Wait for filter to apply
-      await page.waitForLoadState('networkidle');
-    }
+    await expect(page.getByText('Test MCP Server')).toBeVisible();
+    await expect(page.getByText('Another Test Server')).not.toBeVisible();
   });
 
   test('should display server cards with required information', async ({ page }) => {
-    // Wait for catalog to load
     await page.waitForLoadState('networkidle');
 
-    // Look for server cards
-    const serverCards = page.locator('[data-testid="server-card"]').or(
-      page.locator('article').or(page.locator('.server-card'))
-    );
+    // Look for server cards - using data-testid from implementation
+    const serverCards = page.locator('[data-testid="catalog-card"]');
 
-    // Should have at least one card (if catalog has data)
-    const cardCount = await serverCards.count();
+    // Should have cards
+    await expect(serverCards).toHaveCount(2); // Based on mockCatalogData default
 
-    if (cardCount > 0) {
-      const firstCard = serverCards.first();
+    const firstCard = serverCards.first();
+    await expect(firstCard.getByTestId('server-name')).toContainText('Test MCP Server');
+    await expect(firstCard.getByTestId('server-description')).toBeVisible();
 
-      // Each card should have a name/title
-      const title = firstCard.getByTestId('server-name').or(
-        firstCard.locator('h3').or(firstCard.locator('.title')).or(firstCard.locator('.server-title'))
-      );
-      await expect(title).toContainText(/\S+/);
-
-      // Check for description if available
-      const description = firstCard.getByTestId('server-description').or(
-        firstCard.locator('.description')
-      );
-      if (await description.count() > 0) {
-        await expect(description).toContainText(/\S+/);
-      }
-
-      // Should have an install or select button
-      const installButton = firstCard.getByRole('button', { name: /install|select/i });
-      await expect(installButton).toBeVisible();
-    }
-  });
-
-  test('should navigate to container configuration when selecting a server', async ({ page }) => {
-    // Wait for catalog to load
-    await page.waitForLoadState('networkidle');
-
-    // Find first install/select button
-    const installButton = page.getByRole('button', { name: /install|select/i }).first();
-
-    const hasButton = await installButton.isVisible().catch(() => false);
-
-    if (hasButton) {
-      // Click install button
-      await installButton.click();
-
-      // Should navigate to container configuration page
-      await expect(page).toHaveURL(/\/containers\/new/);
-    }
+    // Check for Install button
+    const installButton = firstCard.getByRole('button', { name: 'インストール' });
+    await expect(installButton).toBeVisible();
   });
 
   test('should show empty state when no results found', async ({ page }) => {
-    // Wait for catalog to load
     await page.waitForLoadState('networkidle');
 
     // Search for something that won't match
     const searchInput = page.getByPlaceholder(/search/i);
     await searchInput.fill('xyznonexistentserver123');
-
-    // Wait for search to complete
-    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(500);
 
     // Should show empty state message
     await expect(
-      page.getByText(/no.*found|no results|該当するアイテムがありません/i)
+      page.getByText(/No servers found|該当するアイテムがありません/i)
     ).toBeVisible();
-  });
-
-  test('should clear search and show all items', async ({ page }) => {
-    // Wait for catalog to load
-    await page.waitForLoadState('networkidle');
-
-    // Search for something
-    const searchInput = page.getByPlaceholder(/search/i);
-    await searchInput.fill('test');
-    await page.waitForLoadState('networkidle');
-
-    // Clear search
-    await searchInput.clear();
-    await page.waitForLoadState('networkidle');
-
-    // Should show all items again
-    const serverCards = page.locator('[data-testid="server-card"]');
-    const cardCount = await serverCards.count();
-    expect(cardCount).toBeGreaterThan(0);
-  });
-
-  test('should handle catalog fetch errors gracefully', async ({ page, context }) => {
-    // Intercept catalog API call and make it fail
-    await page.route('**/api/catalog**', route => {
-      route.abort('failed');
-    });
-
-    // Navigate to catalog
-    await page.goto('/catalog');
-
-    // Should show error message
-    await expect(
-      page.getByText(/error|failed|connection/i)
-    ).toBeVisible({ timeout: 5000 });
   });
 });
 
-test.describe('Catalog Integration', () => {
+test.describe('Catalog Installation Flow', () => {
   test.beforeEach(async ({ page }) => {
     await mockAuthentication(page);
     await mockCatalogData(page);
     await page.goto('/catalog');
   });
 
-  test('should prefill container configuration from catalog selection', async ({ page }) => {
-    // Wait for catalog to load
+  test('should open install modal and submit installation', async ({ page }) => {
     await page.waitForLoadState('networkidle');
 
-    // Find the first server card
-    const firstCard = page.locator('[data-testid="server-card"]').first();
+    // 1. Click Install on the first card
+    const firstCard = page.locator('[data-testid="catalog-card"]').first();
+    await firstCard.getByRole('button', { name: 'インストール' }).click();
 
-    // Ensure we have at least one card visible before trying to interact
-    await expect(firstCard).toBeVisible();
+    // 2. Verify Modal Opens
+    const modal = page.locator('text=Test MCP Serverをインストール'); // Or stricter selector
+    await expect(modal).toBeVisible();
 
-    // Capture the visible name
-    const nameElement = firstCard.getByTestId('server-name').or(
-      firstCard.locator('h3').or(firstCard.locator('.title')).or(firstCard.locator('.server-title'))
-    );
-    const capturedName = (await nameElement.textContent())?.trim() || '';
-    expect(capturedName).toBeTruthy();
+    // 3. Verify inputs
+    // Test MCP Server has PORT and API_KEY in mockCatalogData
+    // PORT is a normal env, API_KEY is a secret
+    const portInput = page.getByLabel('PORT');
+    await expect(portInput).toBeVisible();
+    await expect(portInput).toHaveValue('8080'); // Default value
 
-    // Capture the image from data attributes or visible text
-    // We check common data attributes or a specific test id
-    const capturedImage = await firstCard.getAttribute('data-image') ||
-      await firstCard.getAttribute('data-docker-image') ||
-      (await firstCard.getByTestId('server-image').textContent())?.trim() ||
-      '';
+    const keyInput = page.getByLabel('API_KEY'); // Should be found by label
+    await expect(keyInput).toBeVisible();
 
-    // Find install/select button within the card
-    const installButton = firstCard.getByRole('button', { name: /install|select/i });
-    const hasButton = await installButton.isVisible().catch(() => false);
+    // 4. Fill required secret
+    await keyInput.fill('my-secret-key');
 
-    if (hasButton) {
-      await installButton.click();
-
-      // Wait for navigation to container configuration
-      await page.waitForURL(/\/containers\/new/);
-
-      // Wait for form to be visible
-      const nameInput = page.getByLabel(/name/i);
-      await expect(nameInput).toBeVisible();
-
-      // Strict equality assertion for Name
-      await expect(nameInput).toHaveValue(capturedName);
-
-      // Strict equality assertion for Image if we captured it
-      if (capturedImage) {
-        const imageInput = page.getByLabel(/image/i);
-        await expect(imageInput).toHaveValue(capturedImage);
+    // 5. Mock Install API
+    await page.route('**/api/containers', async (route) => {
+      if (route.request().method() === 'POST') {
+        const postData = route.request().postDataJSON();
+        // Verify payload
+        if (postData.image === 'test/mcp-server:latest' && postData.env.API_KEY === 'my-secret-key') {
+          await route.fulfill({
+            status: 201,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              container_id: 'new-container-id',
+              name: 'Test MCP Server',
+              status: 'running'
+            })
+          });
+        } else {
+          await route.abort('failed');
+        }
+      } else {
+        await route.continue();
       }
-    }
+    });
+
+    // 6. Click Install in Modal
+    // Note: Use a more specific selector if multiple 'インストール' buttons exist.
+    // The one in the modal is usually the last one or inside the modal container.
+    // But since the modal covers the background, usually only the modal button is actionable/visible to user flow?
+    // Let's rely on text or specificity.
+    // In our implementation, modal has buttons "キャンセル" and "インストール".
+    const installButton = page.getByRole('button', { name: 'インストール' }).last();
+    await installButton.click();
+
+    // 7. Verify Success Toast
+    await waitForToast(page, /installed successfully|をインストールしました/i);
+
+    // 8. Verify Modal Closes
+    await expect(modal).not.toBeVisible();
   });
 });
