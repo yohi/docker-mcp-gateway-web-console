@@ -7,6 +7,7 @@ export interface CatalogItem {
   vendor: string;
   category: string;
   docker_image: string;
+  icon_url: string;
   default_env: Record<string, string>;
   required_envs: string[];
   required_secrets: string[];

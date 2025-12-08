@@ -9,7 +9,7 @@ import { CatalogItem } from '@/lib/types/catalog';
 
 const DEFAULT_CATALOG_URL =
   process.env.NEXT_PUBLIC_CATALOG_URL ||
-  'https://registry.modelcontextprotocol.io/v0/servers';
+  'https://api.github.com/repos/docker/mcp-registry/contents/servers';
 
 export default function CatalogPage() {
   const [catalogSource, setCatalogSource] = useState(DEFAULT_CATALOG_URL);

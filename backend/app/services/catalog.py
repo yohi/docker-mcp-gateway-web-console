@@ -1,5 +1,7 @@
 """Catalog Service for MCP server catalog management."""
 
+import asyncio
+import base64
 import json
 import logging
 import re
@@ -7,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
+import yaml
 
 from ..config import settings
 from ..models.catalog import Catalog, CatalogItem
@@ -80,13 +83,19 @@ class CatalogService:
             return catalog_items, False
 
         except Exception as e:
-            if source_url == LEGACY_RAW_URL:
+            if source_url in {LEGACY_RAW_URL, settings.catalog_default_url}:
+                # primary失敗時はもう片方へフェイルオーバー
+                fallback = (
+                    settings.catalog_default_url
+                    if source_url == LEGACY_RAW_URL
+                    else LEGACY_RAW_URL
+                )
                 try:
                     logger.info(
-                        f"Primary catalog URL {source_url} failed; falling back to {settings.catalog_default_url}"
+                        f"Primary catalog URL {source_url} failed; falling back to {fallback}"
                     )
-                    catalog_items = await self._fetch_from_url(settings.catalog_default_url)
-                    await self.update_cache(settings.catalog_default_url, catalog_items)
+                    catalog_items = await self._fetch_from_url(fallback)
+                    await self.update_cache(fallback, catalog_items)
                     return catalog_items, False
                 except Exception as fe:
                     logger.warning(f"Fallback fetch failed: {fe}")
@@ -119,7 +128,10 @@ class CatalogService:
         """
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(source_url)
+                response = await client.get(
+                    source_url,
+                    headers=self._github_headers(source_url),
+                )
                 response.raise_for_status()
 
                 # Parse JSON response
@@ -127,6 +139,27 @@ class CatalogService:
 
                 # Validate and parse catalog structure
                 if isinstance(data, list):
+                    # GitHub contents API 形式 (https://api.github.com/repos/docker/mcp-registry/contents/servers)
+                    if self._is_github_contents_payload(data):
+                        dir_items = [
+                            item
+                            for item in data
+                            if isinstance(item, dict) and item.get("type") == "dir"
+                        ]
+
+                        tasks = [
+                            self._fetch_github_server_yaml(client, item) for item in dir_items
+                        ]
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                        converted: List[CatalogItem] = []
+                        for item, result in zip(dir_items, results):
+                            if isinstance(result, Exception) or result is None:
+                                converted.append(self._convert_github_content_item(item))
+                            else:
+                                converted.append(result)
+                        return converted
+
                     # New Registry format (list of RegistryItem)
                     items: List[CatalogItem] = []
                     for item_data in data:
@@ -172,6 +205,130 @@ class CatalogService:
             raise CatalogError(f"Invalid JSON in catalog response: {e}") from e
         except Exception as e:
             raise CatalogError(f"Failed to parse catalog data: {e}") from e
+
+    def _is_github_contents_payload(self, data: List[Any]) -> bool:
+        """
+        GitHub Contents API の形式かどうかを判定する。
+        """
+        if not data:
+            return False
+
+        return all(
+            isinstance(item, dict)
+            and {"name", "path", "type", "html_url"}.issubset(item.keys())
+            for item in data
+        )
+
+    def _convert_github_content_item(self, item: dict) -> CatalogItem:
+        """
+        GitHub Contents API のエントリを CatalogItem に変換する。
+        """
+        name = item.get("name") or "unknown"
+        path = item.get("path") or name
+        html_url = item.get("html_url") or ""
+
+        description = f"docker/mcp-registry: {path}"
+        vendor = "docker"
+
+        return CatalogItem(
+            id=name,
+            name=name,
+            description=description,
+            vendor=vendor,
+            category="general",
+            docker_image="",
+            icon_url="",
+            default_env={},
+            required_envs=[],
+            required_secrets=[],
+        )
+
+    async def _fetch_github_server_yaml(
+        self, client: httpx.AsyncClient, item: dict
+    ) -> Optional[CatalogItem]:
+        """
+        GitHub Contents API のディレクトリエントリから server.yaml を取得し、CatalogItem に変換する。
+        """
+        path = item.get("path")
+        if not path:
+            return None
+
+        server_yaml_url = f"https://api.github.com/repos/docker/mcp-registry/contents/{path}/server.yaml"
+
+        try:
+            response = await client.get(
+                server_yaml_url,
+                headers=self._github_headers(server_yaml_url),
+            )
+            if response.status_code == 404:
+                return None
+
+            response.raise_for_status()
+            payload = response.json()
+            content = payload.get("content")
+            if not content:
+                return None
+
+            decoded = base64.b64decode(content)
+            data = yaml.safe_load(decoded) or {}
+
+            name = (
+                data.get("about", {}).get("title")
+                or data.get("name")
+                or item.get("name")
+                or "unknown"
+            )
+            description = (
+                data.get("about", {}).get("description")
+                or data.get("meta", {}).get("description")
+                or f"docker/mcp-registry: {path}"
+            )
+            vendor = (
+                data.get("source", {}).get("project")
+                or data.get("meta", {}).get("vendor")
+                or "docker"
+            )
+            category = data.get("meta", {}).get("category") or "general"
+            docker_image = data.get("image") or ""
+            icon_url = (
+                data.get("about", {}).get("icon")
+                or data.get("meta", {}).get("icon")
+                or ""
+            )
+
+            required_envs: List[str] = data.get("required_envs") or []
+            if not isinstance(required_envs, list):
+                required_envs = []
+            required_secrets = [
+                env for env in required_envs if self._is_secret_env(env)
+            ]
+
+            return CatalogItem(
+                id=item.get("name") or name,
+                name=name,
+                description=description,
+                vendor=vendor,
+                category=category,
+                docker_image=docker_image,
+                icon_url=icon_url,
+                default_env={},
+                required_envs=required_envs,
+                required_secrets=required_secrets,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to fetch server.yaml for {path}: {e}")
+            return None
+
+    def _github_headers(self, url: str) -> Dict[str, str]:
+        """
+        GitHub API へのアクセス時に Authorization ヘッダーを付与する。
+        """
+        if "api.github.com" not in url:
+            return {}
+        token = settings.github_token
+        if not token:
+            return {}
+        return {"Authorization": f"Bearer {token}"}
 
     def _extract_servers(self, data: Any) -> Optional[List[dict]]:
         """
@@ -243,6 +400,7 @@ class CatalogService:
                 vendor=vendor,
                 category=server_data.get("category", "general"),
                 docker_image=docker_image,
+                icon_url=server_data.get("icon", ""),
                 default_env=default_env,
                 required_envs=required_envs,
                 required_secrets=required_secrets,
@@ -279,6 +437,7 @@ class CatalogService:
             vendor=vendor,
             category=item.get("category", "general"),
             docker_image=image,
+            icon_url=item.get("icon", ""),
             default_env={},
             required_envs=required_envs,
             required_secrets=required_secrets,

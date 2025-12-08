@@ -20,8 +20,10 @@ class Settings(BaseSettings):
 
     # Catalog Configuration
     catalog_cache_ttl_seconds: int = 3600
-    # 公式MCPレジストリ (registry.modelcontextprotocol.io) を既定とする
-    catalog_default_url: str = "https://registry.modelcontextprotocol.io/v0/servers"
+    # 公式MCPレジストリ (github.com/docker/mcp-registry) を既定とする
+    catalog_default_url: str = "https://api.github.com/repos/docker/mcp-registry/contents/servers"
+    # GitHub API のレート制限回避用トークン（任意）
+    github_token: str = ""
 
     # CORS Configuration
     cors_origins: str = "http://localhost:3000"

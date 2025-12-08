@@ -32,15 +32,31 @@ export default function CatalogCard({ item, onInstall }: CatalogCardProps) {
             data-testid="catalog-card"
         >
             <div className="flex-1">
-                <h3
-                    className="text-lg font-semibold text-gray-900 mb-2"
-                    data-testid="server-name"
-                >
-                    {item.name}
-                </h3>
-                <p className="text-xs text-gray-500 mb-2" data-testid="server-vendor">
-                    {item.vendor || '提供元未指定'}
-                </p>
+                <div className="flex items-center gap-3 mb-2">
+                    {item.icon_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={item.icon_url}
+                            alt={`${item.name} icon`}
+                            className="w-10 h-10 rounded-md border border-gray-200 object-cover bg-white"
+                        />
+                    ) : (
+                        <div className="w-10 h-10 rounded-md bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-500 text-sm font-semibold">
+                            {item.name.slice(0, 2).toUpperCase()}
+                        </div>
+                    )}
+                    <div>
+                        <h3
+                            className="text-lg font-semibold text-gray-900"
+                            data-testid="server-name"
+                        >
+                            {item.name}
+                        </h3>
+                        <p className="text-xs text-gray-500" data-testid="server-vendor">
+                            {item.vendor || '提供元未指定'}
+                        </p>
+                    </div>
+                </div>
 
                 <p
                     className="text-sm text-gray-600 mb-3 line-clamp-3"

@@ -13,6 +13,7 @@ class CatalogItem(BaseModel):
     vendor: str = Field(default="", description="Vendor/Author of the MCP server")
     category: str = Field(..., description="Category (e.g., 'utilities', 'ai', 'data')")
     docker_image: str = Field(..., description="Docker image name and tag")
+    icon_url: str = Field(default="", description="Icon URL for the MCP server")
     default_env: Dict[str, str] = Field(
         default_factory=dict,
         description="Default environment variables (may contain Bitwarden references)"

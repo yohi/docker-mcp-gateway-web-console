@@ -1,5 +1,6 @@
 """Tests for Catalog Service."""
 
+import base64
 import json
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
@@ -121,6 +122,143 @@ class TestCatalogService:
         assert items[0].required_envs == ["API_KEY", "PORT"]
         assert "API_KEY" in items[0].required_secrets
         assert "PORT" not in items[0].required_secrets
+
+    @pytest.mark.asyncio
+    async def test_fetch_from_url_github_contents(self, catalog_service, monkeypatch):
+        """GitHub Contents API 形式を CatalogItem に変換できることを確認する。"""
+        github_payload = [
+            {
+                "name": "fetch",
+                "path": "servers/fetch",
+                "sha": "abc",
+                "html_url": "https://github.com/docker/mcp-registry/tree/main/servers/fetch",
+                "download_url": None,
+                "type": "dir",
+            },
+            {
+                "name": "README.md",
+                "path": "servers/README.md",
+                "sha": "def",
+                "html_url": "https://github.com/docker/mcp-registry/blob/main/servers/README.md",
+                "download_url": "https://raw.githubusercontent.com/docker/mcp-registry/main/servers/README.md",
+                "type": "file",
+            },
+        ]
+
+        class MockResponse:
+            def json(self):
+                return github_payload
+
+            def raise_for_status(self):
+                return None
+
+        mock_response = MockResponse()
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                return mock_response
+
+        import httpx
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        items = await catalog_service._fetch_from_url(
+            "https://api.github.com/repos/docker/mcp-registry/contents/servers"
+        )
+
+        assert len(items) == 1
+        item = items[0]
+        assert item.id == "fetch"
+        assert item.name == "fetch"
+        assert "docker/mcp-registry: servers/fetch" == item.description
+        assert item.vendor == "docker"
+
+    @pytest.mark.asyncio
+    async def test_fetch_from_url_github_server_yaml(self, catalog_service, monkeypatch):
+        """GitHub contents + server.yaml からメタデータを取り込めることを確認する。"""
+        contents_payload = [
+            {
+                "name": "SQLite",
+                "path": "servers/SQLite",
+                "sha": "abc",
+                "html_url": "https://github.com/docker/mcp-registry/tree/main/servers/SQLite",
+                "type": "dir",
+            }
+        ]
+
+        server_yaml = """name: SQLite
+image: mcp/sqlite
+type: server
+meta:
+  category: database
+  icon: https://example.com/icon.png
+  tags:
+    - sqlite
+about:
+  title: SQLite (Archived)
+  description: DB ops
+"""
+
+        server_yaml_response = {
+            "content": base64.b64encode(server_yaml.encode()).decode(),
+        }
+
+        class MockResponse:
+            def __init__(self, payload, status=200):
+                self._payload = payload
+                self.status_code = status
+
+            def json(self):
+                return self._payload
+
+            def raise_for_status(self):
+                if self.status_code >= 400:
+                    raise Exception("error")
+
+        async def mock_get(url, *args, **kwargs):
+            if url.endswith("/server.yaml"):
+                return MockResponse(server_yaml_response)
+            return MockResponse(contents_payload)
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, url, *args, **kwargs):
+                return await mock_get(url, *args, **kwargs)
+
+        import httpx
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        items = await catalog_service._fetch_from_url(
+            "https://api.github.com/repos/docker/mcp-registry/contents/servers"
+        )
+
+        assert len(items) == 1
+        item = items[0]
+        assert item.id == "SQLite"
+        assert item.name == "SQLite (Archived)"
+        assert item.description == "DB ops"
+        assert item.vendor == "docker"
+        assert item.category == "database"
+        assert item.docker_image == "mcp/sqlite"
+        assert item.icon_url == "https://example.com/icon.png"
 
     @pytest.mark.asyncio
     async def test_search_empty_query(self, catalog_service, sample_catalog_items):
@@ -361,7 +499,7 @@ class TestCatalogFetch:
         monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
 
         items = await catalog_service._fetch_from_url(
-            "https://registry.modelcontextprotocol.io/v0/servers"
+            "https://api.github.com/repos/docker/mcp-registry/contents/servers"
         )
 
         assert len(items) == 1
