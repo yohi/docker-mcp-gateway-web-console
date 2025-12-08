@@ -98,37 +98,42 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
             {fields.length === 0 ? (
               <p className="text-gray-500 italic">設定可能な環境変数はありません。</p>
             ) : (
-              fields.map(key => (
-                <div key={key}>
-                  {isSecret(key) ? (
-                    <SecretReferenceInput
-                      label={key}
-                      value={formData[key]}
-                      onChange={(val) => setFormData(prev => ({ ...prev, [key]: val }))}
-                      onBlur={() => setTouched(prev => ({ ...prev, [key]: true }))}
-                      placeholder={item.required_secrets.includes(key) ? '必須 (または {{ bw:... }})' : '{{ bw:... }}'}
-                      error={
-                        item.required_secrets.includes(key) &&
-                        !formData[key] &&
-                        (touched[key] || submitAttempted)
-                          ? '必須項目です'
-                          : undefined
-                      }
-                    />
-                  ) : (
-                    <div className="flex flex-col gap-1">
-                      <label className="text-sm font-medium text-gray-700">{key}</label>
-                      <input
-                        type="text"
+              fields.map(key => {
+                const fieldId = `env-${key}`;
+                return (
+                  <div key={key}>
+                    {isSecret(key) ? (
+                      <SecretReferenceInput
+                        label={key}
+                        inputId={fieldId}
                         value={formData[key]}
-                        onChange={(e) => setFormData(prev => ({ ...prev, [key]: e.target.value }))}
+                        onChange={(val) => setFormData(prev => ({ ...prev, [key]: val }))}
                         onBlur={() => setTouched(prev => ({ ...prev, [key]: true }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={item.required_secrets.includes(key) ? '必須 (または {{ bw:... }})' : '{{ bw:... }}'}
+                        error={
+                          item.required_secrets.includes(key) &&
+                          !formData[key] &&
+                          (touched[key] || submitAttempted)
+                            ? '必須項目です'
+                            : undefined
+                        }
                       />
-                    </div>
-                  )}
-                </div>
-              ))
+                    ) : (
+                      <div className="flex flex-col gap-1" data-testid={`env-input-${key}`}>
+                        <label className="text-sm font-medium text-gray-700" htmlFor={fieldId}>{key}</label>
+                        <input
+                          id={fieldId}
+                          type="text"
+                          value={formData[key]}
+                          onChange={(e) => setFormData(prev => ({ ...prev, [key]: e.target.value }))}
+                          onBlur={() => setTouched(prev => ({ ...prev, [key]: true }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
