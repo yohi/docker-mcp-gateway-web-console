@@ -16,6 +16,8 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
   const { showSuccess, showError } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
     if (isOpen && item) {
@@ -27,6 +29,12 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
         }
       });
       setFormData(initialData);
+      const initialTouched = Object.keys(initialData).reduce<Record<string, boolean>>((acc, key) => {
+        acc[key] = false;
+        return acc;
+      }, {});
+      setTouched(initialTouched);
+      setSubmitAttempted(false);
     }
   }, [isOpen, item]);
 
@@ -44,6 +52,7 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
   };
 
   const handleInstall = async () => {
+    setSubmitAttempted(true);
     // Validation for required secrets
     const missingSecrets = item.required_secrets.filter(key => !formData[key]);
     if (missingSecrets.length > 0) {
@@ -61,7 +70,7 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
         volumes: {},
         labels: {},
       });
-      showSuccess(`Server ${item.name} installed successfully`);
+      showSuccess(`サーバー ${item.name} がインストールされました`);
       onClose();
     } catch (err: any) {
       showError(err.message || 'Installation failed');
@@ -96,8 +105,15 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
                       label={key}
                       value={formData[key]}
                       onChange={(val) => setFormData(prev => ({ ...prev, [key]: val }))}
+                      onBlur={() => setTouched(prev => ({ ...prev, [key]: true }))}
                       placeholder={item.required_secrets.includes(key) ? '必須 (または {{ bw:... }})' : '{{ bw:... }}'}
-                      error={item.required_secrets.includes(key) && !formData[key] ? '必須項目です' : undefined}
+                      error={
+                        item.required_secrets.includes(key) &&
+                        !formData[key] &&
+                        (touched[key] || submitAttempted)
+                          ? '必須項目です'
+                          : undefined
+                      }
                     />
                   ) : (
                     <div className="flex flex-col gap-1">
@@ -106,6 +122,7 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
                         type="text"
                         value={formData[key]}
                         onChange={(e) => setFormData(prev => ({ ...prev, [key]: e.target.value }))}
+                        onBlur={() => setTouched(prev => ({ ...prev, [key]: true }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>

@@ -110,6 +110,6 @@ describe('Catalog Page Integration', () => {
             }));
         });
 
-        expect(mockShowSuccess).toHaveBeenCalledWith(expect.stringContaining('installed successfully'));
+        expect(mockShowSuccess).toHaveBeenCalledWith(expect.stringContaining('サーバー Test Server がインストールされました'));
     });
 });

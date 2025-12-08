@@ -13,9 +13,6 @@ interface CatalogListProps {
 }
 
 export default function CatalogList({ catalogSource, onInstall }: CatalogListProps) {
-  // ...
-  // ...
-
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategory] = useState('');
 

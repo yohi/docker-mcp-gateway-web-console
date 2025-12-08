@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-// import { useRouter } from 'next/navigation'; // Unused
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { MainLayout } from '@/components/layout';
 import CatalogList from '@/components/catalog/CatalogList';
