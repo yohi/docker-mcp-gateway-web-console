@@ -1,7 +1,7 @@
 # 技術設計書: MCP Registry Browser
 
 ## 1. はじめに
-本設計書は、Docker MCP GatewayのためのRegistry Browser機能の実装を定義します。この機能により、ユーザーは `github.com/docker/mcp-registry` からMCPサーバーの推奨リストを閲覧し、数クリックの簡略化されたワークフローでインストールできるようになります。従来の手動による `docker run` コマンドを、GUIベースの探索・設定プロセスに置き換えます。
+本設計書は、Docker MCP GatewayのためのRegistry Browser機能の実装を定義します。この機能により、ユーザーは [github.com/docker/mcp-registry](https://github.com/docker/mcp-registry) からMCPサーバーの推奨リストを閲覧し、数クリックの簡略化されたワークフローでインストールできるようになります。従来の手動による `docker run` コマンドを、GUIベースの探索・設定プロセスに置き換えます。
 
 ## 2. アーキテクチャ
 
@@ -13,15 +13,15 @@ graph TD
     User[ユーザー] -->|閲覧/インストール| FE[フロントエンド]
     FE -->|GET /api/catalog| API[バックエンド API]
     API -->|JSON取得| Ext[GitHub: docker/mcp-registry]
-    
+
     FE -->|POST /api/containers/install| API
     API -->|デプロイ| Docker[Docker Engine]
-    
+
     subgraph Backend Services
         CatalogService[カタログサービス]
         ContainerService[コンテナサービス]
     end
-    
+
     API --> CatalogService
     API --> ContainerService
 ```
@@ -35,7 +35,7 @@ sequenceDiagram
     participant FE as フロントエンド
     participant API as バックエンド API
     participant CS as コンテナサービス
-    
+
     U->>FE: アイテムの「インストール」をクリック
     FE->>U: 設定モーダルを表示 (環境変数/シークレット)
     U->>FE: 設定を入力して確認
@@ -53,10 +53,10 @@ sequenceDiagram
 #### `app/services/catalog.py`
 **責務**: レジストリのメタデータを取得しキャッシュする。
 
-| メソッド | 説明 |
-|--------|-------------|
-| `fetch_catalog()` | 設定されたURLからレジストリJSONをGETする。結果をキャッシュ（メモリ内または短いTTL）する。 |
-| `get_item_details(id)` | 必要に応じて特定のバージョン/タグの詳細を解決する。 |
+| メソッド               | 説明                                                                                      |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `fetch_catalog()`      | 設定されたURLからレジストリJSONをGETする。結果をキャッシュ（メモリ内または短いTTL）する。 |
+| `get_item_details(id)` | 必要に応じて特定のバージョン/タグの詳細を解決する。                                       |
 
 **データソース**:
 - プライマリ: `https://raw.githubusercontent.com/docker/mcp-registry/main/registry.json` (URLは検証/設定可能にする)
@@ -120,11 +120,11 @@ class RegistryItem(BaseModel):
 
 ## 7. 要件トレーサビリティ
 
-| 要件ID | 概要 | コンポーネント |
-|-------------|---------|------------|
-| 1.1, 1.3 | カタログ取得 | `CatalogService`, `app/api/catalog`, `schemas/catalog` |
-| 1.2 | 取得エラーハンドリング | `CatalogService` (try/except), フロントエンドのエラーバナー |
-| 2.1, 2.2 | 閲覧 UI | `app/catalog/page.tsx`, `CatalogCard` |
-| 2.3 | インストール済みチェック | フロントエンド (`useContainers` vs カタログリストの照合) |
-| 3.1 | 設定モーダル | `InstallModal`, `BitwardenSelector` 統合 |
-| 3.2, 3.3 | インストールと進捗 | `useInstallation` フック, `ContainerService` (非同期) |
+| 要件ID   | 概要                     | コンポーネント                                              |
+| -------- | ------------------------ | ----------------------------------------------------------- |
+| 1.1, 1.3 | カタログ取得             | `CatalogService`, `app/api/catalog`, `schemas/catalog`      |
+| 1.2      | 取得エラーハンドリング   | `CatalogService` (try/except), フロントエンドのエラーバナー |
+| 2.1, 2.2 | 閲覧 UI                  | `app/catalog/page.tsx`, `CatalogCard`                       |
+| 2.3      | インストール済みチェック | フロントエンド (`useContainers` vs カタログリストの照合)    |
+| 3.1      | 設定モーダル             | `InstallModal`, `BitwardenSelector` 統合                    |
+| 3.2, 3.3 | インストールと進捗       | `useInstallation` フック, `ContainerService` (非同期)       |

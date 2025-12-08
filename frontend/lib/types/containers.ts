@@ -44,3 +44,22 @@ export interface LogEntry {
   message: string;
   stream: "stdout" | "stderr";
 }
+
+export interface ContainerInstallPayload {
+  containerId: string;
+  installOptions?: Record<string, unknown>;
+}
+
+export interface ContainerInstallResponse {
+  success: boolean;
+  container_id: string;
+  message?: string;
+  warnings?: string[];
+}
+
+export interface InstallationError {
+  message: string;
+  status?: number;
+  detail?: string;
+  data?: unknown;
+}

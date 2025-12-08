@@ -5,6 +5,9 @@ import {
   ContainerConfig,
   ContainerCreateResponse,
   ContainerActionResponse,
+  ContainerInstallPayload,
+  ContainerInstallResponse,
+  InstallationError,
 } from '../types/containers';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -52,6 +55,47 @@ export async function createContainer(config: ContainerConfig): Promise<Containe
   }
 
   return response.json();
+}
+
+export async function installContainer(
+  payload: ContainerInstallPayload
+): Promise<ContainerInstallResponse> {
+  const sessionId = getSessionId();
+  const url = `${API_BASE_URL}/api/containers/install`;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionId,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error
+        ? `インストール要求の送信に失敗しました: ${err.message}`
+        : 'インストール要求の送信に失敗しました';
+    throw { message } satisfies InstallationError;
+  }
+
+  const responseBody = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const errorInfo: InstallationError = {
+      status: response.status,
+      message:
+        (responseBody && (responseBody.detail || responseBody.message)) ||
+        'コンテナのインストールに失敗しました',
+      detail: responseBody?.detail,
+      data: responseBody,
+    };
+    throw errorInfo;
+  }
+
+  return (responseBody || {}) as ContainerInstallResponse;
 }
 
 export async function startContainer(containerId: string): Promise<ContainerActionResponse> {

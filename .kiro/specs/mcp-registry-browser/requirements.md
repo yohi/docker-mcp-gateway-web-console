@@ -1,7 +1,7 @@
 # Requirements Document
 
 ## Project Description (Input)
-カタログをhttps://github.com/docker/mcp-registryからリスト化して数回のクリックでインストールできるように簡略化したい
+カタログを[docker/mcp-registry](https://github.com/docker/mcp-registry)からリスト化して数回のクリックでインストールできるように簡略化したい
 
 ## Requirements
 
