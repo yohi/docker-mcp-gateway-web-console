@@ -14,7 +14,11 @@ export default function CatalogCard({ item, onInstall }: CatalogCardProps) {
 
     const status = useMemo(() => {
         if (isLoading) return 'loading';
-        const container = containers.find(c => c.image === item.docker_image);
+        const normalizedName = item.name.toLowerCase();
+        const container = containers.find(c =>
+            c.image === item.docker_image ||
+            c.name.toLowerCase() === normalizedName
+        );
         if (container) {
             if (container.status === 'running') return 'running';
             return 'installed';
@@ -34,6 +38,9 @@ export default function CatalogCard({ item, onInstall }: CatalogCardProps) {
                 >
                     {item.name}
                 </h3>
+                <p className="text-xs text-gray-500 mb-2" data-testid="server-vendor">
+                    {item.vendor || '提供元未指定'}
+                </p>
 
                 <p
                     className="text-sm text-gray-600 mb-3 line-clamp-3"

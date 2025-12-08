@@ -60,6 +60,7 @@ test.describe('Catalog Browser', () => {
     const firstCard = serverCards.first();
     await expect(firstCard.getByTestId('server-name')).toContainText('Test MCP Server');
     await expect(firstCard.getByTestId('server-description')).toBeVisible();
+    await expect(firstCard.getByTestId('server-vendor')).toContainText('Test Vendor');
 
     // Check for Install button
     const installButton = firstCard.getByRole('button', { name: 'インストール' });
@@ -181,5 +182,23 @@ test.describe('Catalog Installation Flow', () => {
 
     // 8. Verify Modal Closes
     await expect(modal).not.toBeVisible({ timeout: 5000 });
+  });
+
+  test('should block installation when required envs are missing', async ({ page }) => {
+    await page.waitForLoadState('networkidle');
+
+    const firstCard = page.locator('[data-testid="catalog-card"]').first();
+    await firstCard.getByRole('button', { name: 'インストール' }).click();
+
+    const modal = page.locator('text=Test MCP Serverをインストール');
+    await expect(modal).toBeVisible();
+
+    const keyInput = page.getByLabel('API_KEY');
+    await keyInput.fill(''); // clear required secret
+
+    const installButton = page.getByRole('button', { name: 'インストール' }).last();
+    await installButton.click();
+
+    await waitForToast(page, /必須項目が未入力です/i, 5000);
   });
 });

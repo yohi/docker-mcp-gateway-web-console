@@ -2,8 +2,9 @@
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -12,6 +13,8 @@ from ..models.catalog import Catalog, CatalogItem
 from ..schemas.catalog import RegistryItem
 
 logger = logging.getLogger(__name__)
+
+LEGACY_RAW_URL = "https://raw.githubusercontent.com/docker/mcp-registry/main/registry.json"
 
 
 class CatalogError(Exception):
@@ -66,6 +69,17 @@ class CatalogService:
             return catalog_items, False
 
         except Exception as e:
+            if source_url == LEGACY_RAW_URL:
+                try:
+                    logger.info(
+                        f"Primary catalog URL {source_url} failed; falling back to {settings.catalog_default_url}"
+                    )
+                    catalog_items = await self._fetch_from_url(settings.catalog_default_url)
+                    await self.update_cache(settings.catalog_default_url, catalog_items)
+                    return catalog_items, False
+                except Exception as fe:
+                    logger.warning(f"Fallback fetch failed: {fe}")
+
             logger.warning(f"Failed to fetch catalog from {source_url}: {e}")
 
             # Try to use cached data as fallback
@@ -92,6 +106,15 @@ class CatalogService:
         Raises:
             CatalogError: If fetch or parsing fails
         """
+        def _is_secret_env(key: str) -> bool:
+            upper = key.upper()
+            return (
+                "KEY" in upper
+                or "SECRET" in upper
+                or "TOKEN" in upper
+                or "PASSWORD" in upper
+            )
+
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(source_url)
@@ -109,19 +132,28 @@ class CatalogService:
                             # Parse as RegistryItem first to validate
                             reg_item = RegistryItem(**item_data)
                             # Convert to internal CatalogItem
+                            required_envs = reg_item.required_envs
+                            required_secrets = [env for env in required_envs if _is_secret_env(env)]
                             items.append(CatalogItem(
                                 id=reg_item.name,
                                 name=reg_item.name,
                                 description=reg_item.description,
+                                vendor=reg_item.vendor or "",
                                 category="general",  # Default category
                                 docker_image=reg_item.image,
                                 default_env={},
-                                required_secrets=reg_item.required_envs
+                                required_envs=required_envs,
+                                required_secrets=required_secrets
                             ))
                         except Exception as e:
                             logger.warning(f"Skipping invalid registry item: {e}")
                     return items
                 else:
+                    # Attempt to parse Hub explore.data structure
+                    servers = self._extract_servers(data)
+                    if servers is not None:
+                        return [self._convert_explore_server(item) for item in servers if item]
+
                     # Legacy or Catalog format
                     catalog = Catalog(**data)
                     return catalog.servers
@@ -136,6 +168,64 @@ class CatalogService:
             raise CatalogError(f"Invalid JSON in catalog response: {e}") from e
         except Exception as e:
             raise CatalogError(f"Failed to parse catalog data: {e}") from e
+
+    def _extract_servers(self, data: Any) -> Optional[List[dict]]:
+        """
+        Explore data (hub.docker.com/mcp/explore.data) から servers 配列を抽出する。
+        """
+        if isinstance(data, dict):
+            if "servers" in data and isinstance(data["servers"], list):
+                return data["servers"]
+            for v in data.values():
+                res = self._extract_servers(v)
+                if res is not None:
+                    return res
+        elif isinstance(data, list):
+            for v in data:
+                res = self._extract_servers(v)
+                if res is not None:
+                    return res
+        return None
+
+    def _convert_explore_server(self, item: dict) -> CatalogItem:
+        """
+        hub.docker.com/mcp/explore.data のサーバー要素を CatalogItem に変換する。
+        """
+        def _slug(text: str) -> str:
+            s = re.sub(r"\s+", "-", text.strip().lower())
+            return re.sub(r"[^a-z0-9_-]", "", s)
+
+        title = item.get("title") or item.get("name") or "unknown"
+        slug = item.get("slug") or item.get("id") or _slug(title)
+        image = item.get("image") or item.get("container") or ""
+        vendor = item.get("owner") or item.get("publisher") or ""
+        description = item.get("description") or ""
+
+        secrets = item.get("secrets", [])
+        required_envs: List[str] = []
+        required_secrets: List[str] = []
+        if isinstance(secrets, list):
+            for s in secrets:
+                if isinstance(s, dict):
+                    env_name = s.get("env") or s.get("name")
+                    if env_name:
+                        required_envs.append(env_name)
+                        required_secrets.append(env_name)
+                elif isinstance(s, str):
+                    required_envs.append(s)
+                    required_secrets.append(s)
+
+        return CatalogItem(
+            id=slug,
+            name=title,
+            description=description,
+            vendor=vendor,
+            category=item.get("category", "general"),
+            docker_image=image,
+            default_env={},
+            required_envs=required_envs,
+            required_secrets=required_secrets,
+        )
 
     async def get_cached_catalog(self, source_url: str) -> Optional[List[CatalogItem]]:
         """

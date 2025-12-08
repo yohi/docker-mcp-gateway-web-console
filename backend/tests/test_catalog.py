@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient, Response
@@ -25,7 +26,7 @@ def sample_catalog_data():
             "description": "Web fetch tool",
             "vendor": "Docker Inc.",
             "image": "docker/mcp-fetch:latest",
-            "required_envs": ["API_KEY"]
+                "required_envs": ["API_KEY", "PORT"]
         },
         {
             "name": "filesystem",
@@ -46,10 +47,12 @@ def sample_catalog_items(sample_catalog_data):
             id=item["name"],
             name=item["name"],
             description=item["description"],
+            vendor=item["vendor"],
             category="general",
             docker_image=item["image"],
             default_env={},
-            required_secrets=item["required_envs"]
+            required_envs=item["required_envs"],
+            required_secrets=["API_KEY"] if "API_KEY" in item["required_envs"] else []
         ))
     return items
 
@@ -100,6 +103,24 @@ class TestCatalogService:
             query="nonexistent"
         )
         assert len(results) == 0
+
+    @pytest.mark.asyncio
+    @patch("app.services.catalog.httpx.AsyncClient")
+    async def test_fetch_from_url_required_envs_and_secrets(self, mock_client, catalog_service, sample_catalog_data):
+        """Registry required_envs should map to required_envs and secrets heuristic."""
+        mock_response = AsyncMock()
+        mock_response.json.return_value = sample_catalog_data
+        mock_response.raise_for_status.return_value = None
+
+        client_instance = AsyncMock()
+        client_instance.get.return_value = mock_response
+        mock_client.return_value.__aenter__.return_value = client_instance
+
+        items = await catalog_service._fetch_from_url("http://example.com/catalog.json")
+
+        assert items[0].required_envs == ["API_KEY", "PORT"]
+        assert "API_KEY" in items[0].required_secrets
+        assert "PORT" not in items[0].required_secrets
 
     @pytest.mark.asyncio
     async def test_search_empty_query(self, catalog_service, sample_catalog_items):
@@ -207,9 +228,11 @@ class TestCatalogModels:
             id="test-1",
             name="Test Server",
             description="A test server",
+            vendor="Test Vendor",
             category="utilities",
             docker_image="test/server:latest",
             default_env={"PORT": "8080"},
+            required_envs=["PORT", "API_KEY"],
             required_secrets=["API_KEY"]
         )
         
@@ -217,6 +240,7 @@ class TestCatalogModels:
         assert item.name == "Test Server"
         assert item.category == "utilities"
         assert item.default_env["PORT"] == "8080"
+        assert "PORT" in item.required_envs
         assert "API_KEY" in item.required_secrets
 
     def test_catalog_item_defaults(self):
@@ -229,6 +253,8 @@ class TestCatalogModels:
             docker_image="test/server:latest"
         )
         
+        assert item.vendor == ""
+        assert item.required_envs == []
         assert item.default_env == {}
         assert item.required_secrets == []
 

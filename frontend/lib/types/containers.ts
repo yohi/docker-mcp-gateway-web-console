@@ -45,8 +45,7 @@ export interface LogEntry {
   stream: "stdout" | "stderr";
 }
 
-export interface ContainerInstallPayload {
-  containerId: string;
+export interface ContainerInstallPayload extends ContainerConfig {
   installOptions?: Record<string, unknown>;
 }
 

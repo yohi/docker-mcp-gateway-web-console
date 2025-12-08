@@ -10,11 +10,16 @@ class CatalogItem(BaseModel):
     id: str = Field(..., description="Unique identifier for the catalog item")
     name: str = Field(..., description="Display name of the MCP server")
     description: str = Field(..., description="Description of the MCP server")
+    vendor: str = Field(default="", description="Vendor/Author of the MCP server")
     category: str = Field(..., description="Category (e.g., 'utilities', 'ai', 'data')")
     docker_image: str = Field(..., description="Docker image name and tag")
     default_env: Dict[str, str] = Field(
         default_factory=dict,
         description="Default environment variables (may contain Bitwarden references)"
+    )
+    required_envs: List[str] = Field(
+        default_factory=list,
+        description="List of required environment variable names (secrets or not)"
     )
     required_secrets: List[str] = Field(
         default_factory=list,

@@ -154,6 +154,63 @@ async def create_container(
         )
 
 
+@router.post("/install", response_model=ContainerCreateResponse, status_code=status.HTTP_201_CREATED)
+async def install_container(
+    config: ContainerConfig,
+    session_id: Annotated[str, Depends(get_session_id)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    container_service: Annotated[ContainerService, Depends(get_container_service)],
+):
+    """
+    Install (create and start) a new Docker container.
+    
+    本エンドポイントはUIのインストールフロー用エイリアスで、`POST /containers` と同等の処理を行う。
+    セッション検証後、環境変数のBitwarden参照解決を行い、コンテナを作成・起動してIDを返却する。
+    """
+    try:
+        is_valid = await auth_service.validate_session(session_id)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired session"
+            )
+
+        session = await auth_service.get_session(session_id)
+        if session is None:
+            logger.warning(f"Session {session_id} not found after validation (install)")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired session"
+            )
+
+        container_id = await container_service.create_container(
+            config=config,
+            session_id=session_id,
+            bw_session_key=session.bw_session_key,
+        )
+
+        return ContainerCreateResponse(
+            container_id=container_id,
+            name=config.name,
+            status="running",
+        )
+
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        logger.error(f"Failed to install container: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error installing container: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while installing container"
+        )
+
+
 @router.post("/{container_id}/start", response_model=ContainerActionResponse)
 async def start_container(
     container_id: str,

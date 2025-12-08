@@ -14,8 +14,11 @@ async def test_get_catalog_background_fetch():
             id="test-1", 
             name="Test", 
             description="Desc", 
+            vendor="Vendor",
             category="test", 
-            docker_image="img"
+            docker_image="img",
+            required_envs=[],
+            required_secrets=[]
         )
     ]
     
@@ -58,8 +61,11 @@ async def test_get_catalog_no_cache():
             id="fresh-1", 
             name="Fresh", 
             description="Desc", 
+            vendor="Vendor",
             category="test", 
-            docker_image="img"
+            docker_image="img",
+            required_envs=[],
+            required_secrets=[]
         )
     ]
     
