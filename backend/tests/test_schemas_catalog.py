@@ -2,11 +2,7 @@
 import pytest
 from pydantic import ValidationError
 
-# We expect the module to be created
-try:
-    from app.schemas.catalog import RegistryItem
-except ImportError:
-    RegistryItem = None
+from app.schemas.catalog import RegistryItem
 
 class TestRegistryItem:
     """Test suite for RegistryItem schema."""
