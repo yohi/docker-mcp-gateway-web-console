@@ -9,6 +9,7 @@ import httpx
 
 from ..config import settings
 from ..models.catalog import Catalog, CatalogItem
+from ..schemas.catalog import RegistryItem
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +101,30 @@ class CatalogService:
                 data = response.json()
 
                 # Validate and parse catalog structure
-                catalog = Catalog(**data)
-
-                return catalog.servers
+                if isinstance(data, list):
+                    # New Registry format (list of RegistryItem)
+                    items: List[CatalogItem] = []
+                    for item_data in data:
+                        try:
+                            # Parse as RegistryItem first to validate
+                            reg_item = RegistryItem(**item_data)
+                            # Convert to internal CatalogItem
+                            items.append(CatalogItem(
+                                id=reg_item.name,
+                                name=reg_item.name,
+                                description=reg_item.description,
+                                category="general",  # Default category
+                                docker_image=reg_item.image,
+                                default_env={},
+                                required_secrets=reg_item.required_envs
+                            ))
+                        except Exception as e:
+                            logger.warning(f"Skipping invalid registry item: {e}")
+                    return items
+                else:
+                    # Legacy or Catalog format
+                    catalog = Catalog(**data)
+                    return catalog.servers
 
         except httpx.HTTPStatusError as e:
             raise CatalogError(

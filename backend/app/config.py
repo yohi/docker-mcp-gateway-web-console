@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     # Catalog Configuration
     catalog_cache_ttl_seconds: int = 3600
+    catalog_default_url: str = "https://raw.githubusercontent.com/docker/mcp-registry/main/registry.json"
 
     # CORS Configuration
     cors_origins: str = "http://localhost:3000"

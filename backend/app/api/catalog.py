@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ..models.catalog import CatalogResponse, CatalogSearchRequest
 from ..services.catalog import CatalogError, CatalogService
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,16 +20,17 @@ catalog_service = CatalogService()
 
 @router.get("", response_model=CatalogResponse)
 async def get_catalog(
-    source: str = Query(..., description="URL of the catalog JSON file")
+    source: Optional[str] = Query(None, description="URL of the catalog JSON file")
 ) -> CatalogResponse:
     """
     Fetch catalog data from a remote source.
     
     This endpoint fetches the catalog of available MCP servers from the specified URL.
+    if no URL is provided, it uses the default registry URL.
     If the fetch fails, it attempts to return cached data if available.
     
     Args:
-        source: URL of the catalog JSON file
+        source: URL of the catalog JSON file (optional)
         
     Returns:
         CatalogResponse with list of available MCP servers
@@ -36,9 +38,12 @@ async def get_catalog(
     Raises:
         HTTPException: If catalog cannot be fetched and no cache is available
     """
+    # Use default URL if source is not provided
+    source_url = source or settings.catalog_default_url
+    
     try:
         # Check if we have valid cached data first
-        cached_items = await catalog_service.get_cached_catalog(source)
+        cached_items = await catalog_service.get_cached_catalog(source_url)
         
         if cached_items is not None:
             # We have valid cache, try to fetch fresh data in background
@@ -49,7 +54,7 @@ async def get_catalog(
                 except Exception as e:
                     logger.error(f"Background fetch failed for {url}: {e}")
 
-            asyncio.create_task(_background_fetch(source))
+            asyncio.create_task(_background_fetch(source_url))
 
             return CatalogResponse(
                 servers=cached_items,
@@ -58,7 +63,7 @@ async def get_catalog(
             )
         else:
             # No cache, must fetch fresh data
-            items, is_cached = await catalog_service.fetch_catalog(source)
+            items, is_cached = await catalog_service.fetch_catalog(source_url)
             return CatalogResponse(
                 servers=items,
                 total=len(items),
@@ -81,7 +86,7 @@ async def get_catalog(
 
 @router.get("/search", response_model=CatalogResponse)
 async def search_catalog(
-    source: str = Query(..., description="URL of the catalog JSON file"),
+    source: Optional[str] = Query(None, description="URL of the catalog JSON file"),
     q: str = Query(default="", description="Search keyword"),
     category: Optional[str] = Query(default=None, description="Category filter")
 ) -> CatalogResponse:
@@ -90,9 +95,10 @@ async def search_catalog(
     
     This endpoint allows searching the catalog by keyword and filtering by category.
     The search looks for matches in both the name and description fields.
+    if no URL is provided, it uses the default registry URL.
     
     Args:
-        source: URL of the catalog JSON file
+        source: URL of the catalog JSON file (optional)
         q: Search keyword (searches in name and description)
         category: Category filter (exact match)
         
@@ -102,9 +108,11 @@ async def search_catalog(
     Raises:
         HTTPException: If catalog cannot be fetched
     """
+    source_url = source or settings.catalog_default_url
+    
     try:
         # Fetch catalog data (will use cache if available)
-        items, is_cached = await catalog_service.fetch_catalog(source)
+        items, is_cached = await catalog_service.fetch_catalog(source_url)
         
         # Apply search and filters
         filtered_items = await catalog_service.search_catalog(

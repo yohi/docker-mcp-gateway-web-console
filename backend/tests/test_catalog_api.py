@@ -77,3 +77,25 @@ async def test_get_catalog_no_cache():
         
         mock_service.get_cached_catalog.assert_awaited_once()
         mock_service.fetch_catalog.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_get_catalog_default_url():
+    """
+    Test that get_catalog uses default URL if source is not provided.
+    """
+    with patch("app.api.catalog.catalog_service") as mock_service:
+        mock_service.get_cached_catalog = AsyncMock(return_value=None)
+        mock_service.fetch_catalog = AsyncMock(return_value=([], False))
+        
+        async with AsyncClient(app=app, base_url="http://test") as ac:
+            # call without source
+            response = await ac.get("/api/catalog")
+            
+        assert response.status_code == 200
+        
+        # Expect default URL from settings (mocked or real)
+        # We assume the default settings value is used
+        from app.config import settings
+        expected_url = settings.catalog_default_url
+        
+        mock_service.get_cached_catalog.assert_awaited_once_with(expected_url)
