@@ -10,6 +10,7 @@ interface SecretReferenceInputProps {
   inputId?: string;
   error?: string;
   onBlur?: () => void;
+  required?: boolean;
 }
 
 /**
@@ -24,6 +25,7 @@ export default function SecretReferenceInput({
   error,
   inputId,
   onBlur,
+  required = false,
 }: SecretReferenceInputProps) {
   const [isReference, setIsReference] = useState(false);
 
@@ -52,6 +54,8 @@ export default function SecretReferenceInput({
           onChange={handleChange}
           onBlur={onBlur}
           placeholder={placeholder}
+          required={required}
+          aria-required={required}
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
             error
               ? 'border-red-500 focus:ring-red-500'

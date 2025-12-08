@@ -88,6 +88,44 @@ async def list_containers(
         )
 
 
+async def _create_container_internal(
+    config: ContainerConfig,
+    session_id: str,
+    auth_service: AuthService,
+    container_service: ContainerService,
+    operation_name: str = "create",
+) -> ContainerCreateResponse:
+    """コンテナ作成処理の共通内部ヘルパー。"""
+    is_valid = await auth_service.validate_session(session_id)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session"
+        )
+
+    session = await auth_service.get_session(session_id)
+    if session is None:
+        logger.warning(
+            f"Session {session_id} not found after validation ({operation_name})"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session"
+        )
+
+    container_id = await container_service.create_container(
+        config=config,
+        session_id=session_id,
+        bw_session_key=session.bw_session_key,
+    )
+
+    return ContainerCreateResponse(
+        container_id=container_id,
+        name=config.name,
+        status="running",
+    )
+
+
 @router.post("", response_model=ContainerCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_container(
     config: ContainerConfig,
@@ -108,50 +146,23 @@ async def create_container(
     Requires valid session authentication.
     """
     try:
-        # Validate session and get session info
-        is_valid = await auth_service.validate_session(session_id)
-        if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired session"
-            )
-        
-        # Get session to access bw_session_key
-        session = await auth_service.get_session(session_id)
-        if session is None:
-            logger.warning(f"Session {session_id} not found after validation (race condition)")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired session"
-            )
-        
-        # Create and start container
-        container_id = await container_service.create_container(
-            config=config,
-            session_id=session_id,
-            bw_session_key=session.bw_session_key,
+        return await _create_container_internal(
+            config, session_id, auth_service, container_service, "create"
         )
-        
-        return ContainerCreateResponse(
-            container_id=container_id,
-            name=config.name,
-            status="running",
-        )
-        
     except HTTPException:
         raise
     except RuntimeError as e:
-        logger.error(f"Failed to create container: {e}")
+        logger.exception(f"Failed to create container: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
-        )
+        ) from e
     except Exception as e:
-        logger.error(f"Unexpected error creating container: {e}")
+        logger.exception(f"Unexpected error creating container: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while creating container"
-        )
+        ) from e
 
 
 @router.post("/install", response_model=ContainerCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -168,47 +179,23 @@ async def install_container(
     セッション検証後、環境変数のBitwarden参照解決を行い、コンテナを作成・起動してIDを返却する。
     """
     try:
-        is_valid = await auth_service.validate_session(session_id)
-        if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired session"
-            )
-
-        session = await auth_service.get_session(session_id)
-        if session is None:
-            logger.warning(f"Session {session_id} not found after validation (install)")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired session"
-            )
-
-        container_id = await container_service.create_container(
-            config=config,
-            session_id=session_id,
-            bw_session_key=session.bw_session_key,
+        return await _create_container_internal(
+            config, session_id, auth_service, container_service, "install"
         )
-
-        return ContainerCreateResponse(
-            container_id=container_id,
-            name=config.name,
-            status="running",
-        )
-
     except HTTPException:
         raise
     except RuntimeError as e:
-        logger.error(f"Failed to install container: {e}")
+        logger.exception(f"Failed to install container: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
-        )
+        ) from e
     except Exception as e:
-        logger.error(f"Unexpected error installing container: {e}")
+        logger.exception(f"Unexpected error installing container: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while installing container"
-        )
+        ) from e
 
 
 @router.post("/{container_id}/start", response_model=ContainerActionResponse)

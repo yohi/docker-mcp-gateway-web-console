@@ -18,6 +18,11 @@ from ..schemas.catalog import RegistryItem
 logger = logging.getLogger(__name__)
 
 LEGACY_RAW_URL = "https://raw.githubusercontent.com/docker/mcp-registry/main/registry.json"
+# servers 配列探索時の再帰最大深度。設定値が存在すればそれを利用する。
+DEFAULT_SERVER_SEARCH_MAX_DEPTH = 64
+SERVER_SEARCH_MAX_DEPTH = max(
+    1, getattr(settings, "catalog_server_search_max_depth", DEFAULT_SERVER_SEARCH_MAX_DEPTH)
+)
 
 
 class CatalogError(Exception):
@@ -330,20 +335,24 @@ class CatalogService:
             return {}
         return {"Authorization": f"Bearer {token}"}
 
-    def _extract_servers(self, data: Any) -> Optional[List[dict]]:
+    def _extract_servers(self, data: Any, depth: int = 0) -> Optional[List[dict]]:
         """
         外部レジストリレスポンスから servers 配列を抽出する。
+        深さが SERVER_SEARCH_MAX_DEPTH を超えた場合は探索を打ち切る。
         """
+        if depth >= SERVER_SEARCH_MAX_DEPTH:
+            return None
+
         if isinstance(data, dict):
             if "servers" in data and isinstance(data["servers"], list):
                 return data["servers"]
             for v in data.values():
-                res = self._extract_servers(v)
+                res = self._extract_servers(v, depth + 1)
                 if res is not None:
                     return res
         elif isinstance(data, list):
             for v in data:
-                res = self._extract_servers(v)
+                res = self._extract_servers(v, depth + 1)
                 if res is not None:
                     return res
         return None

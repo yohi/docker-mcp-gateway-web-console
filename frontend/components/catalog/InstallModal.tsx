@@ -17,9 +17,7 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
-  const { install, isLoading } = useInstallation({
-    onError: (err) => showError(err.message || 'Installation failed'),
-  });
+  const { install, isLoading } = useInstallation();
 
   useEffect(() => {
     if (isOpen && item) {
@@ -108,9 +106,14 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
                         value={formData[key]}
                         onChange={(val) => setFormData(prev => ({ ...prev, [key]: val }))}
                         onBlur={() => setTouched(prev => ({ ...prev, [key]: true }))}
-                        placeholder={item.required_secrets.includes(key) ? '必須 (または {{ bw:... }})' : '{{ bw:... }}'}
+                        required={item.required_envs.includes(key)}
+                        placeholder={
+                          item.required_envs.includes(key)
+                            ? '必須 (値 または {{ bw:... }})'
+                            : '任意 ({{ bw:... }} も可)'
+                        }
                         error={
-                          item.required_secrets.includes(key) &&
+                          item.required_envs.includes(key) &&
                           !formData[key] &&
                           (touched[key] || submitAttempted)
                             ? '必須項目です'

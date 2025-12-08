@@ -9,7 +9,11 @@ import pytest
 from httpx import AsyncClient, Response
 
 from app.models.catalog import CatalogItem
-from app.services.catalog import CatalogError, CatalogService
+from app.services.catalog import (
+    CatalogError,
+    CatalogService,
+    SERVER_SEARCH_MAX_DEPTH,
+)
 
 
 @pytest.fixture
@@ -638,3 +642,16 @@ class TestCatalogFetch:
             await catalog_service.fetch_catalog(source_url)
 
         assert "no cached data available" in str(exc_info.value).lower()
+
+    def test_extract_servers_depth_guard(self, catalog_service):
+        """過剰なネストでは servers 探索を打ち切ることを確認する。"""
+        nested: dict = {}
+        current = nested
+        for _ in range(SERVER_SEARCH_MAX_DEPTH + 5):
+            current["child"] = {}
+            current = current["child"]
+        current["servers"] = [{"name": "too-deep"}]
+
+        result = catalog_service._extract_servers(nested)
+
+        assert result is None

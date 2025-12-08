@@ -24,7 +24,7 @@ export default function CatalogCard({ item, onInstall }: CatalogCardProps) {
             return 'installed';
         }
         return 'not_installed';
-    }, [containers, isLoading, item.docker_image]);
+    }, [containers, isLoading, item.docker_image, item.name]);
 
     return (
         <div
