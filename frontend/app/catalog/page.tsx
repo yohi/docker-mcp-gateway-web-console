@@ -9,7 +9,7 @@ import { CatalogItem } from '@/lib/types/catalog';
 
 const DEFAULT_CATALOG_URL =
   process.env.NEXT_PUBLIC_CATALOG_URL ||
-  'https://hub.docker.com/mcp/explore.data';
+  'https://registry.modelcontextprotocol.io/v0/servers';
 
 export default function CatalogPage() {
   const [catalogSource, setCatalogSource] = useState(DEFAULT_CATALOG_URL);

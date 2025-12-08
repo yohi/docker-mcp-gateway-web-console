@@ -20,8 +20,8 @@ class Settings(BaseSettings):
 
     # Catalog Configuration
     catalog_cache_ttl_seconds: int = 3600
-    # Docker MCP Catalog explore data (Hub JSON) を既定とする
-    catalog_default_url: str = "https://hub.docker.com/mcp/explore.data"
+    # 公式MCPレジストリ (registry.modelcontextprotocol.io) を既定とする
+    catalog_default_url: str = "https://registry.modelcontextprotocol.io/v0/servers"
 
     # CORS Configuration
     cors_origins: str = "http://localhost:3000"

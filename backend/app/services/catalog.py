@@ -40,6 +40,17 @@ class CatalogService:
         self._cache: Dict[str, tuple[List[CatalogItem], datetime]] = {}
         self._cache_ttl = timedelta(seconds=settings.catalog_cache_ttl_seconds)
 
+    @staticmethod
+    def _is_secret_env(key: str) -> bool:
+        """環境変数名からシークレットかどうかを推測する。"""
+        upper = key.upper()
+        return (
+            "KEY" in upper
+            or "SECRET" in upper
+            or "TOKEN" in upper
+            or "PASSWORD" in upper
+        )
+
     async def fetch_catalog(self, source_url: str) -> Tuple[List[CatalogItem], bool]:
         """
         Fetch catalog data from a remote URL.
@@ -106,15 +117,6 @@ class CatalogService:
         Raises:
             CatalogError: If fetch or parsing fails
         """
-        def _is_secret_env(key: str) -> bool:
-            upper = key.upper()
-            return (
-                "KEY" in upper
-                or "SECRET" in upper
-                or "TOKEN" in upper
-                or "PASSWORD" in upper
-            )
-
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(source_url)
@@ -133,7 +135,9 @@ class CatalogService:
                             reg_item = RegistryItem(**item_data)
                             # Convert to internal CatalogItem
                             required_envs = reg_item.required_envs
-                            required_secrets = [env for env in required_envs if _is_secret_env(env)]
+                            required_secrets = [
+                                env for env in required_envs if self._is_secret_env(env)
+                            ]
                             items.append(CatalogItem(
                                 id=reg_item.name,
                                 name=reg_item.name,
@@ -171,7 +175,7 @@ class CatalogService:
 
     def _extract_servers(self, data: Any) -> Optional[List[dict]]:
         """
-        Explore data (hub.docker.com/mcp/explore.data) から servers 配列を抽出する。
+        外部レジストリレスポンスから servers 配列を抽出する。
         """
         if isinstance(data, dict):
             if "servers" in data and isinstance(data["servers"], list):
@@ -189,8 +193,61 @@ class CatalogService:
 
     def _convert_explore_server(self, item: dict) -> CatalogItem:
         """
-        hub.docker.com/mcp/explore.data のサーバー要素を CatalogItem に変換する。
+        外部レジストリのサーバー要素を CatalogItem に変換する。
+        registry.modelcontextprotocol.io 形式と旧 hub explore 形式の両方を扱う。
         """
+        # MCP Registry (registry.modelcontextprotocol.io) 形式
+        if isinstance(item, dict) and isinstance(item.get("server"), dict):
+            server_data = item["server"]
+            name = server_data.get("name") or "unknown"
+            description = server_data.get("description") or ""
+
+            repository = server_data.get("repository") or {}
+            vendor = ""
+            if isinstance(repository, dict):
+                vendor = repository.get("source") or repository.get("url") or ""
+            if not vendor and "/" in name:
+                vendor = name.split("/")[0]
+
+            packages = server_data.get("packages") or []
+            docker_image = ""
+            if isinstance(packages, list):
+                for pkg in packages:
+                    if not isinstance(pkg, dict):
+                        continue
+                    identifier = pkg.get("identifier") or ""
+                    registry_type = (
+                        pkg.get("registryType") or pkg.get("type") or ""
+                    ).lower()
+                    if registry_type == "oci" and identifier:
+                        docker_image = identifier
+                        break
+                    if not docker_image and identifier:
+                        docker_image = identifier
+
+            default_env = server_data.get("default_env")
+            if not isinstance(default_env, dict):
+                default_env = {}
+
+            required_envs = server_data.get("required_envs") or []
+            if not isinstance(required_envs, list):
+                required_envs = []
+            required_secrets = [
+                env for env in required_envs if self._is_secret_env(env)
+            ]
+
+            return CatalogItem(
+                id=name,
+                name=name,
+                description=description,
+                vendor=vendor,
+                category=server_data.get("category", "general"),
+                docker_image=docker_image,
+                default_env=default_env,
+                required_envs=required_envs,
+                required_secrets=required_secrets,
+            )
+
         def _slug(text: str) -> str:
             s = re.sub(r"\s+", "-", text.strip().lower())
             return re.sub(r"[^a-z0-9_-]", "", s)
