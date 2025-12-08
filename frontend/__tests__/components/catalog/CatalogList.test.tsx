@@ -11,17 +11,27 @@ jest.mock('swr', () => ({
   default: jest.fn(),
 }));
 
+// Mock useContainers
+jest.mock('../../../hooks/useContainers', () => ({
+  useContainers: () => ({
+    containers: [],
+    isLoading: false,
+    isError: false,
+    refresh: jest.fn(),
+  }),
+}));
+
 // Mock SearchBar to avoid timer issues and simplify testing
 jest.mock('../../../components/catalog/SearchBar', () => {
   return function MockSearchBar({ onSearch, categories, initialQuery, initialCategory }: any) {
     return (
       <div data-testid="search-bar">
-        <input 
+        <input
           data-testid="search-input"
           value={initialQuery}
           onChange={(e) => onSearch(e.target.value, initialCategory)}
         />
-        <select 
+        <select
           data-testid="category-select"
           value={initialCategory}
           onChange={(e) => onSearch(initialQuery, e.target.value)}
@@ -134,7 +144,7 @@ describe('CatalogList', () => {
 
     render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} />);
 
-    const installButtons = screen.getAllByText('Install');
+    const installButtons = screen.getAllByText('インストール');
     fireEvent.click(installButtons[0]);
 
     expect(mockOnInstall).toHaveBeenCalledWith(mockItems[0]);
@@ -170,9 +180,9 @@ describe('CatalogList', () => {
       );
     });
   });
-  
+
   it('extracts and passes categories to SearchBar', () => {
-     mockUseSWR.mockReturnValue({
+    mockUseSWR.mockReturnValue({
       data: { servers: mockItems, cached: false },
       error: undefined,
       isLoading: false,
@@ -180,7 +190,7 @@ describe('CatalogList', () => {
     });
 
     render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} />);
-    
+
     // Check if categories are passed to the mock search bar (rendered as options)
     // Scope to the select element to avoid matching badges in ServerCard
     const select = screen.getByTestId('category-select');

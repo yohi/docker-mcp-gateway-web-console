@@ -8,6 +8,7 @@ interface SecretReferenceInputProps {
   placeholder?: string;
   label?: string;
   error?: string;
+  onBlur?: () => void;
 }
 
 /**
@@ -20,6 +21,7 @@ export default function SecretReferenceInput({
   placeholder = 'Enter value or {{ bw:item-id:field }}',
   label,
   error,
+  onBlur,
 }: SecretReferenceInputProps) {
   const [isReference, setIsReference] = useState(false);
 
@@ -45,6 +47,7 @@ export default function SecretReferenceInput({
           type="text"
           value={value}
           onChange={handleChange}
+          onBlur={onBlur}
           placeholder={placeholder}
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
             error

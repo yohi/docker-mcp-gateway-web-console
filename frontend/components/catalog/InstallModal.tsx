@@ -1,83 +1,139 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { CatalogItem } from '@/lib/types/catalog';
+import { createContainer } from '@/lib/api/containers';
 import { useToast } from '@/contexts/ToastContext';
-import { useInstallation } from '@/hooks/useInstallation';
-import { ContainerInstallPayload } from '@/lib/types/containers';
+import SecretReferenceInput from '../config/SecretReferenceInput';
 
 interface InstallModalProps {
   isOpen: boolean;
-  payload: ContainerInstallPayload;
+  item: CatalogItem | null;
   onClose: () => void;
 }
 
-/**
- * カタログから呼び出されるインストール用モーダル。
- * Installボタンは `install(payload)` を叩き、`isLoading` をスピナー/ボタン制御に利用する。
- */
-export default function InstallModal({ isOpen, payload, onClose }: InstallModalProps) {
+export default function InstallModal({ isOpen, item, onClose }: InstallModalProps) {
   const { showSuccess, showError } = useToast();
-  const [showDetails, setShowDetails] = useState(false);
-  const { install, isLoading, error } = useInstallation({
-    onSuccess: (response) => {
-      showSuccess(response.message ?? 'インストール要求を送信しました');
-    },
-    onError: (err) => {
-      showError(err.message);
-    },
-  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
-  if (!isOpen) {
+  useEffect(() => {
+    if (isOpen && item) {
+      const initialData: Record<string, string> = { ...item.default_env };
+      // Ensure required secrets are present in formData
+      item.required_secrets.forEach(secret => {
+        if (!initialData.hasOwnProperty(secret)) {
+          initialData[secret] = '';
+        }
+      });
+      setFormData(initialData);
+      const initialTouched = Object.keys(initialData).reduce<Record<string, boolean>>((acc, key) => {
+        acc[key] = false;
+        return acc;
+      }, {});
+      setTouched(initialTouched);
+      setSubmitAttempted(false);
+    }
+  }, [isOpen, item]);
+
+  if (!isOpen || !item) {
     return null;
   }
 
-  const handleInstall = async () => {
-    // Installボタン: install(payload) を呼び出し、結果は呼び出し元でトースト表示
-    await install(payload);
-    onClose();
+  const isSecret = (key: string) => {
+    // Check if key is explicitly in required_secrets or matches heuristic
+    return item.required_secrets.includes(key) ||
+      key.toUpperCase().includes('KEY') ||
+      key.toUpperCase().includes('SECRET') ||
+      key.toUpperCase().includes('TOKEN') ||
+      key.toUpperCase().includes('PASSWORD');
   };
+
+  const handleInstall = async () => {
+    setSubmitAttempted(true);
+    // Validation for required secrets
+    const missingSecrets = item.required_secrets.filter(key => !formData[key]);
+    if (missingSecrets.length > 0) {
+      showError(`Missing required secrets: ${missingSecrets.join(', ')}`);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await createContainer({
+        name: item.name,
+        image: item.docker_image,
+        env: formData,
+        ports: {},
+        volumes: {},
+        labels: {},
+      });
+      showSuccess(`サーバー ${item.name} がインストールされました`);
+      onClose();
+    } catch (err: any) {
+      showError(err.message || 'Installation failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Sort keys to put required secrets first/top or organize nicely? 
+  // For now just existing order.
+  const fields = Object.keys(formData);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-xl rounded-lg bg-white shadow-lg">
+      <div className="w-full max-w-xl rounded-lg bg-white shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
         <div className="border-b border-gray-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">サーバーをインストール</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{item.name}をインストール</h2>
           <p className="mt-1 text-sm text-gray-600">
-            インストール時のAPI呼び出しには useInstallation を利用します。`isLoading` をスピナーやボタンの
-            disable制御に使用してください。
+            必要な環境変数を設定してください。Bitwardenの参照も利用可能です。
           </p>
         </div>
 
-        {error && (
-          <div className="mx-6 mt-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error.message}
-          </div>
-        )}
-
-        <div className="px-6 py-4 space-y-4">
-          <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold">送信ペイロード</span>
-              <button
-                type="button"
-                onClick={() => setShowDetails((prev) => !prev)}
-                className="text-xs font-medium text-blue-600 hover:text-blue-800"
-              >
-                {showDetails ? '閉じる' : '確認'}
-              </button>
-            </div>
-            {showDetails && (
-              <pre className="mt-2 overflow-x-auto text-xs text-gray-800">{JSON.stringify(payload, null, 2)}</pre>
+        <div className="p-6 overflow-y-auto">
+          <div className="space-y-4">
+            {fields.length === 0 ? (
+              <p className="text-gray-500 italic">設定可能な環境変数はありません。</p>
+            ) : (
+              fields.map(key => (
+                <div key={key}>
+                  {isSecret(key) ? (
+                    <SecretReferenceInput
+                      label={key}
+                      value={formData[key]}
+                      onChange={(val) => setFormData(prev => ({ ...prev, [key]: val }))}
+                      onBlur={() => setTouched(prev => ({ ...prev, [key]: true }))}
+                      placeholder={item.required_secrets.includes(key) ? '必須 (または {{ bw:... }})' : '{{ bw:... }}'}
+                      error={
+                        item.required_secrets.includes(key) &&
+                        !formData[key] &&
+                        (touched[key] || submitAttempted)
+                          ? '必須項目です'
+                          : undefined
+                      }
+                    />
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-sm font-medium text-gray-700">{key}</label>
+                      <input
+                        type="text"
+                        value={formData[key]}
+                        onChange={(e) => setFormData(prev => ({ ...prev, [key]: e.target.value }))}
+                        onBlur={() => setTouched(prev => ({ ...prev, [key]: true }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  )}
+                </div>
+              ))
             )}
-          </div>
-
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <span className="inline-flex h-2 w-2 rounded-full bg-green-500"></span>
-            install(payload) が解決すると onSuccess を、失敗時は onError を経由し UI でトーストやエラー表示を行えます。
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
+        <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4 bg-gray-50">
           <button
             type="button"
             onClick={onClose}

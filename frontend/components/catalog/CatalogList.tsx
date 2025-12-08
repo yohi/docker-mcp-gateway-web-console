@@ -5,7 +5,7 @@ import useSWR from 'swr';
 import { CatalogItem } from '@/lib/types/catalog';
 import { searchCatalog } from '@/lib/api/catalog';
 import SearchBar from './SearchBar';
-import ServerCard from './ServerCard';
+import CatalogCard from './CatalogCard'; // Changed import
 
 interface CatalogListProps {
   catalogSource: string;
@@ -140,7 +140,7 @@ export default function CatalogList({ catalogSource, onInstall }: CatalogListPro
             </>
           )}
         </p>
-        
+
         {servers.length > 0 && (
           <button
             onClick={() => mutate()}
@@ -180,7 +180,7 @@ export default function CatalogList({ catalogSource, onInstall }: CatalogListPro
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {servers.map((item) => (
-            <ServerCard key={item.id} item={item} onInstall={onInstall} />
+            <CatalogCard key={item.id} item={item} onInstall={onInstall} />
           ))}
         </div>
       )}

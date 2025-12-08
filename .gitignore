@@ -52,6 +52,7 @@ test-results/
 GEMINI.md
 .gemini/
 .agent/
+.selena/
 
 # Kiro
 # .kiro/settings/rules
