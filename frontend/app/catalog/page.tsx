@@ -5,6 +5,7 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { MainLayout } from '@/components/layout';
 import CatalogList from '@/components/catalog/CatalogList';
 import InstallModal from '@/components/catalog/InstallModal';
+import CatalogDetailModal from '@/components/catalog/CatalogDetailModal';
 import { CatalogItem } from '@/lib/types/catalog';
 
 const DEFAULT_CATALOG_URL =
@@ -16,9 +17,15 @@ export default function CatalogPage() {
   const [inputSource, setInputSource] = useState(catalogSource);
 
   const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
+  const [detailItem, setDetailItem] = useState<CatalogItem | null>(null);
 
   const handleInstall = (item: CatalogItem) => {
+    setDetailItem(null);
     setSelectedItem(item);
+  };
+
+  const handleSelect = (item: CatalogItem) => {
+    setDetailItem(item);
   };
 
   const handleSourceChange = () => {
@@ -62,13 +69,21 @@ export default function CatalogPage() {
           </div>
 
           {/* Catalog list */}
-          <CatalogList catalogSource={catalogSource} onInstall={handleInstall} />
+          <CatalogList catalogSource={catalogSource} onInstall={handleInstall} onSelect={handleSelect} />
 
           {/* Install Modal */}
           <InstallModal
             isOpen={!!selectedItem}
             item={selectedItem}
             onClose={() => setSelectedItem(null)}
+          />
+
+          {/* Detail Modal */}
+          <CatalogDetailModal
+            isOpen={!!detailItem}
+            item={detailItem}
+            onClose={() => setDetailItem(null)}
+            onInstall={handleInstall}
           />
         </div>
       </MainLayout>
