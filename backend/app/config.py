@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     # CORS Configuration
     cors_origins: str = "http://localhost:3000"
 
+    # OAuth Configuration
+    oauth_authorize_url: str = "https://auth.example.com/authorize"
+    oauth_token_url: str = "https://auth.example.com/token"
+    oauth_client_id: str = "mcp-console"
+    oauth_redirect_uri: str = "http://localhost:8000/api/catalog/oauth/callback"
+    oauth_request_timeout_seconds: int = 10
+
     # Application Configuration
     log_level: str = "INFO"
     # Security: Only log request bodies in debug/non-production environments
