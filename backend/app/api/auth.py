@@ -30,27 +30,31 @@ def get_auth_service() -> AuthService:
 
 
 async def get_session_id(
-    authorization: Annotated[str | None, Header()] = None
+    authorization: Annotated[str | None, Header()] = None,
+    x_session_id: Annotated[str | None, Header(alias="X-Session-ID")] = None,
 ) -> str:
     """
     Extract session ID from Authorization header.
     
     Expected format: "Bearer <session_id>"
+    互換性のために X-Session-ID ヘッダーも受け付ける。
     """
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing authorization header"
-        )
-    
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            return parts[1]
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authorization header format. Expected: Bearer <session_id>"
         )
-    
-    return parts[1]
+
+    if x_session_id:
+        return x_session_id
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Missing authorization header"
+    )
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -70,7 +74,9 @@ async def login(
         
         return LoginResponse(
             session_id=session.session_id,
-            expires_at=session.expires_at
+            expires_at=session.expires_at,
+            user_email=session.user_email,
+            created_at=session.created_at
         )
         
     except AuthError as e:
@@ -135,8 +141,11 @@ async def validate_session(
             session = await auth_service.get_session(session_id)
             return SessionValidationResponse(
                 valid=True,
+                session_id=session.session_id if session else None,
+                user_email=session.user_email if session else None,
+                created_at=session.created_at if session else None,
                 expires_at=session.expires_at
-            )
+            ) if session else SessionValidationResponse(valid=False)
         else:
             return SessionValidationResponse(valid=False)
             

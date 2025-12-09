@@ -14,6 +14,14 @@ function getSessionId(): string {
   return localStorage.getItem('session_id') || '';
 }
 
+function buildAuthHeaders(): Record<string, string> {
+  const sessionId = getSessionId();
+  if (!sessionId) {
+    throw new Error('セッションが見つかりません。再ログインしてください。');
+  }
+  return { Authorization: `Bearer ${sessionId}` };
+}
+
 async function fetchInspectorData<T>(
   containerId: string,
   endpoint: string,
@@ -25,13 +33,11 @@ async function fetchInspectorData<T>(
     throw new Error('Invalid containerId');
   }
 
-  const sessionId = getSessionId();
+  const headers = buildAuthHeaders();
   const url = `${API_BASE_URL}/api/inspector/${trimmedContainerId}/${endpoint}`;
 
   const response = await fetch(url, {
-    headers: {
-      'X-Session-ID': sessionId,
-    },
+    headers,
   });
 
   if (!response.ok) {

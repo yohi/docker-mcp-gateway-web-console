@@ -419,17 +419,22 @@ class AuthService:
         process = None
         try:
             cmd = [settings.bitwarden_cli_path, "unlock", "--raw"]
+            env = os.environ.copy()
+            # 非対話実行のため、環境変数経由でパスワードを渡す
+            env["BW_PASSWORD"] = password
             
             process = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdin=asyncio.subprocess.PIPE,
+                "--passwordenv",
+                "BW_PASSWORD",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
             
             try:
                 stdout, stderr = await asyncio.wait_for(
-                    process.communicate(input=password.encode()),
+                    process.communicate(),
                     timeout=settings.bitwarden_cli_timeout_seconds
                 )
             except asyncio.TimeoutError:
@@ -438,16 +443,21 @@ class AuthService:
                     await asyncio.wait_for(process.wait(), timeout=5.0)
                 raise AuthError("Bitwarden unlock timed out")
             
+            stdout_msg = stdout.decode().strip()
+            stderr_msg = stderr.decode().strip()
+            
             if process.returncode != 0:
-                error_msg = stderr.decode().strip()
-                raise AuthError(f"Bitwarden unlock failed: {error_msg}")
+                raise AuthError(
+                    f"Bitwarden unlock failed: {stderr_msg or stdout_msg or 'Unknown error'}"
+                )
             
-            session_key = stdout.decode().strip()
+            if not stdout_msg:
+                detail = "No session key returned from unlock"
+                if stderr_msg:
+                    detail = f"{detail}: {stderr_msg}"
+                raise AuthError(detail)
             
-            if not session_key:
-                raise AuthError("No session key returned from unlock")
-            
-            return session_key
+            return stdout_msg
             
         except asyncio.TimeoutError:
             raise AuthError("Bitwarden unlock timed out")

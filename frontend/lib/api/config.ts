@@ -14,14 +14,20 @@ function getSessionId(): string {
   return localStorage.getItem('session_id') || '';
 }
 
-export async function fetchGatewayConfig(): Promise<GatewayConfig> {
+function buildAuthHeaders(): Record<string, string> {
   const sessionId = getSessionId();
+  if (!sessionId) {
+    throw new Error('セッションが見つかりません。再ログインしてください。');
+  }
+  return { Authorization: `Bearer ${sessionId}` };
+}
+
+export async function fetchGatewayConfig(): Promise<GatewayConfig> {
+  const headers = buildAuthHeaders();
   const url = `${API_BASE_URL}/api/config/gateway`;
 
   const response = await fetch(url, {
-    headers: {
-      'X-Session-ID': sessionId,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -34,7 +40,7 @@ export async function fetchGatewayConfig(): Promise<GatewayConfig> {
 }
 
 export async function saveGatewayConfig(config: GatewayConfig): Promise<ConfigWriteResponse> {
-  const sessionId = getSessionId();
+  const headers = buildAuthHeaders();
   const url = `${API_BASE_URL}/api/config/gateway`;
 
   const requestBody: ConfigWriteRequest = { config };
@@ -43,7 +49,7 @@ export async function saveGatewayConfig(config: GatewayConfig): Promise<ConfigWr
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'X-Session-ID': sessionId,
+      ...headers,
     },
     body: JSON.stringify(requestBody),
   });

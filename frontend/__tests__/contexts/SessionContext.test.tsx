@@ -11,6 +11,19 @@ const mockLoginAPI = authAPI.loginAPI as jest.MockedFunction<typeof authAPI.logi
 const mockLogoutAPI = authAPI.logoutAPI as jest.MockedFunction<typeof authAPI.logoutAPI>;
 const mockCheckSessionAPI = authAPI.checkSessionAPI as jest.MockedFunction<typeof authAPI.checkSessionAPI>;
 
+const mockGetItem = jest.fn();
+const mockSetItem = jest.fn();
+const mockRemoveItem = jest.fn();
+
+Object.defineProperty(window, 'localStorage', {
+  value: {
+    getItem: mockGetItem,
+    setItem: mockSetItem,
+    removeItem: mockRemoveItem,
+  },
+  writable: true,
+});
+
 // Test component that uses the session context
 function TestComponent() {
   const { session, isLoading, error, login, logout } = useSession();
@@ -39,6 +52,10 @@ function TestComponent() {
 describe('SessionProvider', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetItem.mockClear();
+    mockSetItem.mockClear();
+    mockRemoveItem.mockClear();
+    mockGetItem.mockReturnValue(null);
   });
 
   it('checks session on mount', async () => {

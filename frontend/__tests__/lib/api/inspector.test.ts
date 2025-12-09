@@ -32,7 +32,7 @@ describe('Inspector API', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining('/api/inspector/container-1/tools'),
       expect.objectContaining({
-        headers: { 'X-Session-ID': 'test-session-id' },
+        headers: { Authorization: 'Bearer test-session-id' },
       })
     );
     expect(result).toEqual(mockData);
