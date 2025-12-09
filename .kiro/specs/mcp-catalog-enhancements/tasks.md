@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 0. 永続化・データモデルと GC を確定し実装する
+- [x] 0. 永続化・データモデルと GC を確定し実装する
   - 使用ストレージを決定（例: Postgres/SQLite）し、Credential/Session/Job/GatewayAllowEntry/SignaturePolicy のスキーマとマイグレーションを追加する
   - TTL/GC（credential 30 日、job 24h、session idle 30 分）とロック方針を定義し、クラッシュ後も一貫性が保たれるようにする
   - 相関 ID 付き監査ログの書き込みポイントを整理し、秘密情報を除外する

@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     # Session Configuration
     session_timeout_minutes: int = 30
+    state_db_path: str = "data/state.db"
+    credential_retention_days: int = 30
+    job_retention_hours: int = 24
 
     # Catalog Configuration
     catalog_cache_ttl_seconds: int = 3600
