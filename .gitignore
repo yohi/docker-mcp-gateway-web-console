@@ -53,6 +53,7 @@ GEMINI.md
 .gemini/
 .agent/
 .selena/
+.serena/
 
 # Kiro
 # .kiro/settings/rules
