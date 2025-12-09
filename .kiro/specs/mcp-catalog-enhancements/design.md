@@ -270,13 +270,11 @@ export interface CatalogService {
 }
 ```
 
-> **コメント (Migration Phases)**
-> 依存関係が不明確で、ロールバック時の state cleanup が不十分。以下を明確化してください。
-> - Phase1「audit-only signature」はセッション管理（Phase3）なしで適用される前提か？署名検証対象が存在しない状態の audit-only の運用価値が不明。
-> - Phase3 `session_pool_cost_priority` フラグ名: セッション機能全体を有効化するのか、cost_priority だけを有効化するのか曖昧。Session Manager 初出だが base session（ephemeral）有効化タイミングが不明。
-> - Phase5「Signature enforcement ON」で、Phase1-4 に保存・実行中のイメージ（audit-only で許可済み）の扱いを明示：新セッションのみ対象か、既存セッション再検証か。
-> - Rollback 戦略が「フラグで即時無効化」のみ。例: Phase4 UI rollback 時、生成済み session の `metrics_endpoint` 参照が無効になる順序と cleanup が不明。
-> - 推奨: Phase 図の下に dependency/rollback matrix を追加。特に Phase5 rollback では `signature_enforced` OFF、進行中セッションは既存ポリシー継続（audit/enforcement 混在）、新規セッションは audit-only へ戻し、cleanup で `SignaturePolicy.enforcement` を除去し `enforcement_disabled` を監査ログに記録する流れを定義する。
+### Migration Phases 補足
+- Phase1 はセッション管理なしで audit-only 署名検証を先行適用し、署名メタデータ収集と運用警告の検証を目的とする。対象はカタログの署名付きイメージのみで、セッションは未提供。
+- Phase3 の `session_pool_cost_priority` は Session Manager 全体と cost-priority スケジューラを同時に有効化するゲート。OFF ではセッション経路は閉鎖し直実行のみ、ON にした瞬間に base session（常駐プール）と ephemeral session（使い捨て）の作成が許可され、cost_priority=true ならプール上限超過時に LRU 破棄で優先度制御する。
+- Phase5 Signature enforcement は「新規セッション起動時・新規イメージ pull 時」に適用し、Phase1-4 で audit-only によって許可済みかつ稼働中のセッション/イメージは再検証せず継続する。同一イメージを新セッションで使う場合は再検証され enforcement を適用する。一括再検証は行わない。
+- Phase4/Phase5 ロールバックの順序を固定: (1) 対応フラグを即時 OFF（例: `verify_signatures_enforced`）→ (2) UI/エージェントに rollback mark を通知し `metrics_endpoint` など in-flight 参照を無効化して再取得させる → (3) 有効化時に追加した state を順序付き cleanup（例: `SignaturePolicy.enforcement` フィールド、enforcement キャッシュを削除）→ (4) 監査ログに `enforcement_disabled` 等を記録 → (5) 進行中セッションは直前のポリシーのまま継続、新規セッションは audit-only にフォールバック。
 
 - **Session Manager**
   - 役割: セッション単位のゲートウェイコンテナ起動/停止、cgroup 制限、mTLS 証明書生成/マウント、アイドル 30 分 GC。
@@ -403,8 +401,19 @@ Phase4 --> Phase5[Phase5: Signature enforcement ON\naudit grace end]
 Phase5 --> Phase6[Phase6: External gateways ON\nhealthcheck enforced]
 Phase6 --> Phase7[Phase7: Cleanup legacy cache\nrotate keys, purge old tokens]
 ```
-- フラグ制御: `audit_only_signature`, `external_gateway_enabled`, `session_pool_cost_priority`, `verify_signatures_enforced` を段階的に切替。
-- ロールバック: フラグで即時無効化し、署名検証/ゲートウェイを旧動作にフォールバック。
+- フラグ制御: `audit_only_signature`, `external_gateway_enabled`, `session_pool_cost_priority`（Session Manager + cost-priority スケジューラを同時 gating）、`verify_signatures_enforced` を段階的に切替。Phase3 で flag ON にした時点で base/ephemeral セッションの作成 API を開放する。
+- Phase5 適用範囲: enforcement は「新規セッション起動・新規イメージ pull」にのみ適用し、既存セッションや稼働中イメージは再検証せず継続。同一イメージを新規セッションで用いる場合は再検証して enforcement を適用。
+- Phase4/Phase5 ロールバック順序: 対応フラグ OFF → in-flight 参照の invalidation/通知（例: `metrics_endpoint` 再取得）→ enforcement 由来 state の削除（`SignaturePolicy.enforcement` 等）→ 監査ログ `enforcement_disabled` 記録 → 進行中は直前ポリシー継続、新規は audit-only へ戻す。
+- 依存関係/ロールバックマトリクス（Phase 図の補足）:
+
+| Phase | 前提/依存 | ロールバック手順 | ロールバック後状態 (進行中 / 新規) |
+| --- | --- | --- | --- |
+| Phase1 audit-only signature | `audit_only_signature=true`、Session Manager 無効 | フラグ OFF のみ | 進行中: なし / 新規: 署名検証なし |
+| Phase2 OAuth + TokenStore | Phase1 完了、`oauth_enabled=true` | `oauth_enabled` OFF、TokenStore を read-only 化、相関 ID は維持 | 進行中: 発行済み token は TTL まで有効 / 新規: OAuth 不可 |
+| Phase3 Session Manager + mTLS | Phase2 完了、`session_pool_cost_priority` ON | フラグ OFF → セッション作成 API を閉じる → 既存セッション終了時に temp/cgroup/cert を順次 GC | 進行中: セッションは終了まで継続 / 新規: 受け付けず直実行のみ |
+| Phase4 UI rollout | Phase3 完了、UI feature flags ON | UI flag OFF → `metrics_endpoint` 等 UI 参照を invalidation → stale セッション表示をクリア | 進行中: セッションは継続 / 新規: API は有効だが UI で開始不可 |
+| Phase5 Signature enforcement ON | Phase4 完了、`verify_signatures_enforced=true` | フラグ OFF → enforcement state 削除 → `enforcement_disabled` を監査ログ記録 | 進行中: 起動時ポリシーのまま (enforcement/audit-only 混在可) / 新規: audit-only へ戻る |
+| Phase6 External gateways ON | Phase5 完了、`external_gateway_enabled=true` | フラグ OFF → healthcheck 停止 → 外部 gateway cache を無効化 | 進行中: 既存接続はヘルスチェック停止まで継続 / 新規: 外部 gateway 不可 |
 - 検証チェックポイント/成功判定: 各 Phase で pytest/Playwright/契約テストを実施し、監査ログへ記録し、以下の成功基準を全て満たした場合のみ次 Phase に進行。不合格は即時ロールバック（該当フラグ OFF と state cleanup）。
   - Phase0 Design Signoff: テスト 5/5 (100%) lint/link check。パフォーマンス: 静的レビュー latency p95<1s。耐障害: failure tolerance=0、同時セッション 0。監査: correlation_id 100%、PII 検出 0。
   - Phase1 audit-only signature: テスト 18/18 (100%)。パフォーマンス: catalog search latency p95<2s、resource cleanup<5m。耐障害: failure tolerance<=1/1000 requests、同時セッション 0。監査: correlation_id 100%、署名検証結果と audit-only フラグを全ログ、PII 検出 0。
