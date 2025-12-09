@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
-import { createContainer } from '@/lib/api/containers';
 import { useToast } from '@/contexts/ToastContext';
+import { useInstallation } from '@/hooks/useInstallation';
 import SecretReferenceInput from '../config/SecretReferenceInput';
 
 interface InstallModalProps {
@@ -14,18 +14,18 @@ interface InstallModalProps {
 
 export default function InstallModal({ isOpen, item, onClose }: InstallModalProps) {
   const { showSuccess, showError } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const { install, isLoading } = useInstallation();
 
   useEffect(() => {
     if (isOpen && item) {
       const initialData: Record<string, string> = { ...item.default_env };
-      // Ensure required secrets are present in formData
-      item.required_secrets.forEach(secret => {
-        if (!initialData.hasOwnProperty(secret)) {
-          initialData[secret] = '';
+      // Ensure required envs are present in formData
+      item.required_envs.forEach(env => {
+        if (!initialData.hasOwnProperty(env)) {
+          initialData[env] = '';
         }
       });
       setFormData(initialData);
@@ -53,16 +53,15 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
 
   const handleInstall = async () => {
     setSubmitAttempted(true);
-    // Validation for required secrets
-    const missingSecrets = item.required_secrets.filter(key => !formData[key]);
-    if (missingSecrets.length > 0) {
-      showError(`Missing required secrets: ${missingSecrets.join(', ')}`);
+    // Validation for required envs
+    const missing = item.required_envs.filter(key => !formData[key]);
+    if (missing.length > 0) {
+      showError(`必須項目が未入力です: ${missing.join(', ')}`);
       return;
     }
 
-    setIsLoading(true);
     try {
-      await createContainer({
+      await install({
         name: item.name,
         image: item.docker_image,
         env: formData,
@@ -74,8 +73,6 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
       onClose();
     } catch (err: any) {
       showError(err.message || 'Installation failed');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -109,9 +106,15 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
                         value={formData[key]}
                         onChange={(val) => setFormData(prev => ({ ...prev, [key]: val }))}
                         onBlur={() => setTouched(prev => ({ ...prev, [key]: true }))}
-                        placeholder={item.required_secrets.includes(key) ? '必須 (または {{ bw:... }})' : '{{ bw:... }}'}
+                        required={item.required_envs.includes(key)}
+                        disabled={isLoading}
+                        placeholder={
+                          item.required_envs.includes(key)
+                            ? '必須 (値 または {{ bw:... }})'
+                            : '任意 ({{ bw:... }} も可)'
+                        }
                         error={
-                          item.required_secrets.includes(key) &&
+                          item.required_envs.includes(key) &&
                           !formData[key] &&
                           (touched[key] || submitAttempted)
                             ? '必須項目です'
@@ -127,6 +130,7 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
                           value={formData[key]}
                           onChange={(e) => setFormData(prev => ({ ...prev, [key]: e.target.value }))}
                           onBlur={() => setTouched(prev => ({ ...prev, [key]: true }))}
+                          disabled={isLoading}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>

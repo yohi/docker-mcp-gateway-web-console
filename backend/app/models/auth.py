@@ -39,6 +39,8 @@ class LoginResponse(BaseModel):
     """Login response model."""
     session_id: str
     expires_at: datetime
+    user_email: str
+    created_at: datetime
 
 
 class LogoutResponse(BaseModel):
@@ -51,6 +53,9 @@ class SessionValidationResponse(BaseModel):
     """Session validation response model."""
     valid: bool
     expires_at: Optional[datetime] = None
+    session_id: Optional[str] = None
+    user_email: Optional[str] = None
+    created_at: Optional[datetime] = None
 
 
 class Session(BaseModel):

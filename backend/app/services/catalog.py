@@ -1,17 +1,28 @@
 """Catalog Service for MCP server catalog management."""
 
+import asyncio
+import base64
 import json
 import logging
+import re
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
+import yaml
 
 from ..config import settings
 from ..models.catalog import Catalog, CatalogItem
 from ..schemas.catalog import RegistryItem
 
 logger = logging.getLogger(__name__)
+
+LEGACY_RAW_URL = "https://raw.githubusercontent.com/docker/mcp-registry/main/registry.json"
+# servers 配列探索時の再帰最大深度。設定値が存在すればそれを利用する。
+DEFAULT_SERVER_SEARCH_MAX_DEPTH = 64
+SERVER_SEARCH_MAX_DEPTH = max(
+    1, getattr(settings, "catalog_server_search_max_depth", DEFAULT_SERVER_SEARCH_MAX_DEPTH)
+)
 
 
 class CatalogError(Exception):
@@ -36,6 +47,17 @@ class CatalogService:
         # Cache structure: {source_url: (catalog_data, expiry_time)}
         self._cache: Dict[str, tuple[List[CatalogItem], datetime]] = {}
         self._cache_ttl = timedelta(seconds=settings.catalog_cache_ttl_seconds)
+
+    @staticmethod
+    def _is_secret_env(key: str) -> bool:
+        """環境変数名からシークレットかどうかを推測する。"""
+        upper = key.upper()
+        return (
+            "KEY" in upper
+            or "SECRET" in upper
+            or "TOKEN" in upper
+            or "PASSWORD" in upper
+        )
 
     async def fetch_catalog(self, source_url: str) -> Tuple[List[CatalogItem], bool]:
         """
@@ -66,6 +88,23 @@ class CatalogService:
             return catalog_items, False
 
         except Exception as e:
+            if source_url in {LEGACY_RAW_URL, settings.catalog_default_url}:
+                # primary失敗時はもう片方へフェイルオーバー
+                fallback = (
+                    settings.catalog_default_url
+                    if source_url == LEGACY_RAW_URL
+                    else LEGACY_RAW_URL
+                )
+                try:
+                    logger.info(
+                        f"Primary catalog URL {source_url} failed; falling back to {fallback}"
+                    )
+                    catalog_items = await self._fetch_from_url(fallback)
+                    await self.update_cache(fallback, catalog_items)
+                    return catalog_items, False
+                except Exception as fe:
+                    logger.warning(f"Fallback fetch failed: {fe}")
+
             logger.warning(f"Failed to fetch catalog from {source_url}: {e}")
 
             # Try to use cached data as fallback
@@ -94,7 +133,10 @@ class CatalogService:
         """
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(source_url)
+                response = await client.get(
+                    source_url,
+                    headers=self._github_headers(source_url),
+                )
                 response.raise_for_status()
 
                 # Parse JSON response
@@ -102,6 +144,27 @@ class CatalogService:
 
                 # Validate and parse catalog structure
                 if isinstance(data, list):
+                    # GitHub contents API 形式 (https://api.github.com/repos/docker/mcp-registry/contents/servers)
+                    if self._is_github_contents_payload(data):
+                        dir_items = [
+                            item
+                            for item in data
+                            if isinstance(item, dict) and item.get("type") == "dir"
+                        ]
+
+                        tasks = [
+                            self._fetch_github_server_yaml(client, item) for item in dir_items
+                        ]
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                        converted: List[CatalogItem] = []
+                        for item, result in zip(dir_items, results):
+                            if isinstance(result, Exception) or result is None:
+                                converted.append(self._convert_github_content_item(item))
+                            else:
+                                converted.append(result)
+                        return converted
+
                     # New Registry format (list of RegistryItem)
                     items: List[CatalogItem] = []
                     for item_data in data:
@@ -109,19 +172,30 @@ class CatalogService:
                             # Parse as RegistryItem first to validate
                             reg_item = RegistryItem(**item_data)
                             # Convert to internal CatalogItem
+                            required_envs = reg_item.required_envs
+                            required_secrets = [
+                                env for env in required_envs if self._is_secret_env(env)
+                            ]
                             items.append(CatalogItem(
                                 id=reg_item.name,
                                 name=reg_item.name,
                                 description=reg_item.description,
+                                vendor=reg_item.vendor or "",
                                 category="general",  # Default category
                                 docker_image=reg_item.image,
                                 default_env={},
-                                required_secrets=reg_item.required_envs
+                                required_envs=required_envs,
+                                required_secrets=required_secrets
                             ))
                         except Exception as e:
                             logger.warning(f"Skipping invalid registry item: {e}")
                     return items
                 else:
+                    # Attempt to parse Hub explore.data structure
+                    servers = self._extract_servers(data)
+                    if servers is not None:
+                        return [self._convert_explore_server(item) for item in servers if item]
+
                     # Legacy or Catalog format
                     catalog = Catalog(**data)
                     return catalog.servers
@@ -136,6 +210,247 @@ class CatalogService:
             raise CatalogError(f"Invalid JSON in catalog response: {e}") from e
         except Exception as e:
             raise CatalogError(f"Failed to parse catalog data: {e}") from e
+
+    def _is_github_contents_payload(self, data: List[Any]) -> bool:
+        """
+        GitHub Contents API の形式かどうかを判定する。
+        """
+        if not data:
+            return False
+
+        return all(
+            isinstance(item, dict)
+            and {"name", "path", "type", "html_url"}.issubset(item.keys())
+            for item in data
+        )
+
+    def _convert_github_content_item(self, item: dict) -> CatalogItem:
+        """
+        GitHub Contents API のエントリを CatalogItem に変換する。
+        """
+        name = item.get("name") or "unknown"
+        path = item.get("path") or name
+        html_url = item.get("html_url") or ""
+
+        description = f"docker/mcp-registry: {path}"
+        vendor = "docker"
+
+        return CatalogItem(
+            id=name,
+            name=name,
+            description=description,
+            vendor=vendor,
+            category="general",
+            docker_image="",
+            icon_url="",
+            default_env={},
+            required_envs=[],
+            required_secrets=[],
+        )
+
+    async def _fetch_github_server_yaml(
+        self, client: httpx.AsyncClient, item: dict
+    ) -> Optional[CatalogItem]:
+        """
+        GitHub Contents API のディレクトリエントリから server.yaml を取得し、CatalogItem に変換する。
+        """
+        path = item.get("path")
+        if not path:
+            return None
+
+        server_yaml_url = f"https://api.github.com/repos/docker/mcp-registry/contents/{path}/server.yaml"
+
+        try:
+            response = await client.get(
+                server_yaml_url,
+                headers=self._github_headers(server_yaml_url),
+            )
+            if response.status_code == 404:
+                return None
+
+            response.raise_for_status()
+            payload = response.json()
+            content = payload.get("content")
+            if not content:
+                return None
+
+            decoded = base64.b64decode(content)
+            data = yaml.safe_load(decoded) or {}
+
+            name = (
+                data.get("about", {}).get("title")
+                or data.get("name")
+                or item.get("name")
+                or "unknown"
+            )
+            description = (
+                data.get("about", {}).get("description")
+                or data.get("meta", {}).get("description")
+                or f"docker/mcp-registry: {path}"
+            )
+            vendor = (
+                data.get("source", {}).get("project")
+                or data.get("meta", {}).get("vendor")
+                or "docker"
+            )
+            category = data.get("meta", {}).get("category") or "general"
+            docker_image = data.get("image") or ""
+            icon_url = (
+                data.get("about", {}).get("icon")
+                or data.get("meta", {}).get("icon")
+                or ""
+            )
+
+            required_envs: List[str] = data.get("required_envs") or []
+            if not isinstance(required_envs, list):
+                required_envs = []
+            required_secrets = [
+                env for env in required_envs if self._is_secret_env(env)
+            ]
+
+            return CatalogItem(
+                id=item.get("name") or name,
+                name=name,
+                description=description,
+                vendor=vendor,
+                category=category,
+                docker_image=docker_image,
+                icon_url=icon_url,
+                default_env={},
+                required_envs=required_envs,
+                required_secrets=required_secrets,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to fetch server.yaml for {path}: {e}")
+            return None
+
+    def _github_headers(self, url: str) -> Dict[str, str]:
+        """
+        GitHub API へのアクセス時に Authorization ヘッダーを付与する。
+        """
+        if "api.github.com" not in url:
+            return {}
+        token = settings.github_token
+        if not token:
+            return {}
+        return {"Authorization": f"Bearer {token}"}
+
+    def _extract_servers(self, data: Any, depth: int = 0) -> Optional[List[dict]]:
+        """
+        外部レジストリレスポンスから servers 配列を抽出する。
+        深さが SERVER_SEARCH_MAX_DEPTH を超えた場合は探索を打ち切る。
+        """
+        if depth >= SERVER_SEARCH_MAX_DEPTH:
+            return None
+
+        if isinstance(data, dict):
+            if "servers" in data and isinstance(data["servers"], list):
+                return data["servers"]
+            for v in data.values():
+                res = self._extract_servers(v, depth + 1)
+                if res is not None:
+                    return res
+        elif isinstance(data, list):
+            for v in data:
+                res = self._extract_servers(v, depth + 1)
+                if res is not None:
+                    return res
+        return None
+
+    def _convert_explore_server(self, item: dict) -> CatalogItem:
+        """
+        外部レジストリのサーバー要素を CatalogItem に変換する。
+        registry.modelcontextprotocol.io 形式と旧 hub explore 形式の両方を扱う。
+        """
+        # MCP Registry (registry.modelcontextprotocol.io) 形式
+        if isinstance(item, dict) and isinstance(item.get("server"), dict):
+            server_data = item["server"]
+            name = server_data.get("name") or "unknown"
+            description = server_data.get("description") or ""
+
+            repository = server_data.get("repository") or {}
+            vendor = ""
+            if isinstance(repository, dict):
+                vendor = repository.get("source") or repository.get("url") or ""
+            if not vendor and "/" in name:
+                vendor = name.split("/")[0]
+
+            packages = server_data.get("packages") or []
+            docker_image = ""
+            if isinstance(packages, list):
+                for pkg in packages:
+                    if not isinstance(pkg, dict):
+                        continue
+                    identifier = pkg.get("identifier") or ""
+                    registry_type = (
+                        pkg.get("registryType") or pkg.get("type") or ""
+                    ).lower()
+                    if registry_type == "oci" and identifier:
+                        docker_image = identifier
+                        break
+                    if not docker_image and identifier:
+                        docker_image = identifier
+
+            default_env = server_data.get("default_env")
+            if not isinstance(default_env, dict):
+                default_env = {}
+
+            required_envs = server_data.get("required_envs") or []
+            if not isinstance(required_envs, list):
+                required_envs = []
+            required_secrets = [
+                env for env in required_envs if self._is_secret_env(env)
+            ]
+
+            return CatalogItem(
+                id=name,
+                name=name,
+                description=description,
+                vendor=vendor,
+                category=server_data.get("category", "general"),
+                docker_image=docker_image,
+                icon_url=server_data.get("icon", ""),
+                default_env=default_env,
+                required_envs=required_envs,
+                required_secrets=required_secrets,
+            )
+
+        def _slug(text: str) -> str:
+            s = re.sub(r"\s+", "-", text.strip().lower())
+            return re.sub(r"[^a-z0-9_-]", "", s)
+
+        title = item.get("title") or item.get("name") or "unknown"
+        slug = item.get("slug") or item.get("id") or _slug(title)
+        image = item.get("image") or item.get("container") or ""
+        vendor = item.get("owner") or item.get("publisher") or ""
+        description = item.get("description") or ""
+
+        secrets = item.get("secrets", [])
+        required_envs: List[str] = []
+        required_secrets: List[str] = []
+        if isinstance(secrets, list):
+            for s in secrets:
+                if isinstance(s, dict):
+                    env_name = s.get("env") or s.get("name")
+                    if env_name:
+                        required_envs.append(env_name)
+                        required_secrets.append(env_name)
+                elif isinstance(s, str):
+                    required_envs.append(s)
+                    required_secrets.append(s)
+
+        return CatalogItem(
+            id=slug,
+            name=title,
+            description=description,
+            vendor=vendor,
+            category=item.get("category", "general"),
+            docker_image=image,
+            icon_url=item.get("icon", ""),
+            default_env={},
+            required_envs=required_envs,
+            required_secrets=required_secrets,
+        )
 
     async def get_cached_catalog(self, source_url: str) -> Optional[List[CatalogItem]]:
         """

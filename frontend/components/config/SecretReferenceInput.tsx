@@ -10,6 +10,8 @@ interface SecretReferenceInputProps {
   inputId?: string;
   error?: string;
   onBlur?: () => void;
+  required?: boolean;
+  disabled?: boolean;
 }
 
 /**
@@ -24,6 +26,8 @@ export default function SecretReferenceInput({
   error,
   inputId,
   onBlur,
+  required = false,
+  disabled = false,
 }: SecretReferenceInputProps) {
   const [isReference, setIsReference] = useState(false);
 
@@ -52,13 +56,16 @@ export default function SecretReferenceInput({
           onChange={handleChange}
           onBlur={onBlur}
           placeholder={placeholder}
+          required={required}
+          aria-required={required}
+          disabled={disabled}
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
             error
               ? 'border-red-500 focus:ring-red-500'
               : isReference
               ? 'border-blue-500 focus:ring-blue-500 bg-blue-50'
               : 'border-gray-300 focus:ring-blue-500'
-          }`}
+          } ${disabled ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
         />
         {isReference && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">

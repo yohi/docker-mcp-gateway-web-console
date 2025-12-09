@@ -4,6 +4,11 @@ import { LoginCredentials, Session } from '../types/auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+function getSessionId(): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem('session_id') || '';
+}
+
 export class AuthAPIError extends Error {
   constructor(
     message: string,
@@ -49,9 +54,15 @@ export async function loginAPI(credentials: LoginCredentials): Promise<Session> 
 }
 
 export async function logoutAPI(): Promise<void> {
+  const sessionId = getSessionId();
   const response = await fetch(`${API_URL}/api/auth/logout`, {
     method: 'POST',
     credentials: 'include',
+    headers: sessionId
+      ? {
+          Authorization: `Bearer ${sessionId}`,
+        }
+      : {},
   });
 
   if (!response.ok) {
@@ -65,9 +76,18 @@ export async function logoutAPI(): Promise<void> {
 }
 
 export async function checkSessionAPI(): Promise<{ valid: boolean; session?: Session }> {
+  const sessionId = getSessionId();
+
+  if (!sessionId) {
+    return { valid: false };
+  }
+
   const response = await fetch(`${API_URL}/api/auth/session`, {
     method: 'GET',
     credentials: 'include',
+    headers: {
+      Authorization: `Bearer ${sessionId}`,
+    },
   });
 
   if (!response.ok) {
@@ -75,7 +95,19 @@ export async function checkSessionAPI(): Promise<{ valid: boolean; session?: Ses
   }
 
   try {
-    return await response.json();
+    const data = await response.json();
+    if (data.valid && data.session_id) {
+      return {
+        valid: true,
+        session: {
+          session_id: data.session_id,
+          user_email: data.user_email ?? '',
+          expires_at: data.expires_at,
+          created_at: data.created_at ?? new Date().toISOString(),
+        },
+      };
+    }
+    return { valid: false };
   } catch (error) {
     // Log parse error for debugging
     console.error('Failed to parse session response as JSON:', error);

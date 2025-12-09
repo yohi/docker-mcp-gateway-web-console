@@ -7,10 +7,12 @@ import CatalogList from '@/components/catalog/CatalogList';
 import InstallModal from '@/components/catalog/InstallModal';
 import { CatalogItem } from '@/lib/types/catalog';
 
+const DEFAULT_CATALOG_URL =
+  process.env.NEXT_PUBLIC_CATALOG_URL ||
+  'https://api.github.com/repos/docker/mcp-registry/contents/servers';
+
 export default function CatalogPage() {
-  const [catalogSource, setCatalogSource] = useState(
-    process.env.NEXT_PUBLIC_CATALOG_URL || 'https://example.com/catalog.json'
-  );
+  const [catalogSource, setCatalogSource] = useState(DEFAULT_CATALOG_URL);
   const [inputSource, setInputSource] = useState(catalogSource);
 
   const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
@@ -47,7 +49,7 @@ export default function CatalogPage() {
                 value={inputSource}
                 onChange={(e) => setInputSource(e.target.value)}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="https://example.com/catalog.json"
+                placeholder={DEFAULT_CATALOG_URL}
               />
               <button
                 onClick={handleSourceChange}

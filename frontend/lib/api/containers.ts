@@ -17,15 +17,21 @@ function getSessionId(): string {
   return localStorage.getItem('session_id') || '';
 }
 
-export async function fetchContainers(all: boolean = true): Promise<ContainerListResponse> {
+function buildAuthHeaders(): Record<string, string> {
   const sessionId = getSessionId();
+  if (!sessionId) {
+    throw new Error('セッションが見つかりません。再ログインしてください。');
+  }
+  return { Authorization: `Bearer ${sessionId}` };
+}
+
+export async function fetchContainers(all: boolean = true): Promise<ContainerListResponse> {
+  const headers = buildAuthHeaders();
   const url = new URL(`${API_BASE_URL}/api/containers`);
   url.searchParams.append('all', String(all));
 
   const response = await fetch(url.toString(), {
-    headers: {
-      'X-Session-ID': sessionId,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -37,14 +43,14 @@ export async function fetchContainers(all: boolean = true): Promise<ContainerLis
 }
 
 export async function createContainer(config: ContainerConfig): Promise<ContainerCreateResponse> {
-  const sessionId = getSessionId();
+  const headers = buildAuthHeaders();
   const url = `${API_BASE_URL}/api/containers`;
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Session-ID': sessionId,
+      ...headers,
     },
     body: JSON.stringify(config),
   });
@@ -60,7 +66,7 @@ export async function createContainer(config: ContainerConfig): Promise<Containe
 export async function installContainer(
   payload: ContainerInstallPayload
 ): Promise<ContainerInstallResponse> {
-  const sessionId = getSessionId();
+  const headers = buildAuthHeaders();
   const url = `${API_BASE_URL}/api/containers/install`;
 
   let response: Response;
@@ -69,7 +75,7 @@ export async function installContainer(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Session-ID': sessionId,
+        ...headers,
       },
       body: JSON.stringify(payload),
     });
@@ -99,14 +105,12 @@ export async function installContainer(
 }
 
 export async function startContainer(containerId: string): Promise<ContainerActionResponse> {
-  const sessionId = getSessionId();
+  const headers = buildAuthHeaders();
   const url = `${API_BASE_URL}/api/containers/${containerId}/start`;
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'X-Session-ID': sessionId,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -118,15 +122,13 @@ export async function startContainer(containerId: string): Promise<ContainerActi
 }
 
 export async function stopContainer(containerId: string, timeout: number = 10): Promise<ContainerActionResponse> {
-  const sessionId = getSessionId();
+  const headers = buildAuthHeaders();
   const url = new URL(`${API_BASE_URL}/api/containers/${containerId}/stop`);
   url.searchParams.append('timeout', String(timeout));
 
   const response = await fetch(url.toString(), {
     method: 'POST',
-    headers: {
-      'X-Session-ID': sessionId,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -138,15 +140,13 @@ export async function stopContainer(containerId: string, timeout: number = 10): 
 }
 
 export async function restartContainer(containerId: string, timeout: number = 10): Promise<ContainerActionResponse> {
-  const sessionId = getSessionId();
+  const headers = buildAuthHeaders();
   const url = new URL(`${API_BASE_URL}/api/containers/${containerId}/restart`);
   url.searchParams.append('timeout', String(timeout));
 
   const response = await fetch(url.toString(), {
     method: 'POST',
-    headers: {
-      'X-Session-ID': sessionId,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -158,15 +158,13 @@ export async function restartContainer(containerId: string, timeout: number = 10
 }
 
 export async function deleteContainer(containerId: string, force: boolean = false): Promise<ContainerActionResponse> {
-  const sessionId = getSessionId();
+  const headers = buildAuthHeaders();
   const url = new URL(`${API_BASE_URL}/api/containers/${containerId}`);
   url.searchParams.append('force', String(force));
 
   const response = await fetch(url.toString(), {
     method: 'DELETE',
-    headers: {
-      'X-Session-ID': sessionId,
-    },
+    headers,
   });
 
   if (!response.ok) {
