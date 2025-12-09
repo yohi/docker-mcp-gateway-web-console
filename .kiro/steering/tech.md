@@ -33,21 +33,21 @@
 
 ## 主な環境変数
 
-- フロント: `NEXT_PUBLIC_API_URL`（バックエンド API URL）
-- バックエンド: `BITWARDEN_CLI_PATH`, `DOCKER_HOST`, `SESSION_TIMEOUT_MINUTES`, `CATALOG_CACHE_TTL_SECONDS`, `CORS_ORIGINS`, `LOG_LEVEL`, `SECRET_CACHE_TTL_SECONDS`, `MAX_LOG_LINES`, `CATALOG_DEFAULT_URL`
+- フロント: `NEXT_PUBLIC_API_URL`（バックエンド API URL）、`NEXT_PUBLIC_CATALOG_URL`（カタログ URL 上書き）
+- バックエンド: `BITWARDEN_CLI_PATH`, `BITWARDEN_CLI_TIMEOUT_SECONDS`, `DOCKER_HOST`, `SESSION_TIMEOUT_MINUTES`, `CATALOG_CACHE_TTL_SECONDS`, `CATALOG_DEFAULT_URL`, `GITHUB_TOKEN`, `CORS_ORIGINS`, `LOG_LEVEL`, `LOG_REQUEST_BODY`
 - Compose 用: `FRONTEND_PORT`, `BACKEND_PORT`, `NEXT_PUBLIC_API_URL`
 
 ## よく使うコマンド
 
 ```bash
-# 開発起動 (フロント/バックエンド同時)
-docker-compose up
+# 開発起動 (フロント/バックエンド同時・リポジトリルートにある docker-compose.yml を使用)
+docker compose up
 
-# フロントエンド
+# フロントエンド (frontend/package.json に定義されたスクリプト)
 cd frontend
 npm install
 npm run dev        # 開発サーバー
-npm test           # ユニット
+npm test           # ユニット (Jest)
 npm run test:e2e   # E2E (Playwright)
 
 # バックエンド
