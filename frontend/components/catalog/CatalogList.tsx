@@ -10,9 +10,10 @@ import CatalogCard from './CatalogCard'; // Changed import
 interface CatalogListProps {
   catalogSource: string;
   onInstall: (item: CatalogItem) => void;
+  onSelect: (item: CatalogItem) => void;
 }
 
-export default function CatalogList({ catalogSource, onInstall }: CatalogListProps) {
+export default function CatalogList({ catalogSource, onInstall, onSelect }: CatalogListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategory] = useState('');
 
@@ -180,7 +181,7 @@ export default function CatalogList({ catalogSource, onInstall }: CatalogListPro
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {servers.map((item) => (
-            <CatalogCard key={item.id} item={item} onInstall={onInstall} />
+            <CatalogCard key={item.id} item={item} onInstall={onInstall} onSelect={onSelect} />
           ))}
         </div>
       )}

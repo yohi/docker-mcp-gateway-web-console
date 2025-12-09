@@ -1,15 +1,16 @@
 'use client';
 
-import { useMemo } from 'react';
+import { KeyboardEvent, useMemo } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
 import { useContainers } from '@/hooks/useContainers';
 
 interface CatalogCardProps {
     item: CatalogItem;
     onInstall: (item: CatalogItem) => void;
+    onSelect?: (item: CatalogItem) => void;
 }
 
-export default function CatalogCard({ item, onInstall }: CatalogCardProps) {
+export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardProps) {
     const { containers, isLoading } = useContainers();
 
     const status = useMemo(() => {
@@ -26,10 +27,29 @@ export default function CatalogCard({ item, onInstall }: CatalogCardProps) {
         return 'not_installed';
     }, [containers, isLoading, item.docker_image, item.name]);
 
+    const handleSelect = () => {
+        if (onSelect) {
+            onSelect(item);
+        }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+        if (!onSelect) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onSelect(item);
+        }
+    };
+
     return (
         <div
-            className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white flex flex-col h-full"
+            className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white flex flex-col h-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
             data-testid="catalog-card"
+            onClick={handleSelect}
+            onKeyDown={handleKeyDown}
+            role={onSelect ? 'button' : undefined}
+            tabIndex={onSelect ? 0 : -1}
+            aria-label={`${item.name}の詳細を表示`}
         >
             <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
@@ -100,7 +120,10 @@ export default function CatalogCard({ item, onInstall }: CatalogCardProps) {
                     </div>
                 ) : (
                     <button
-                        onClick={() => onInstall(item)}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onInstall(item);
+                        }}
                         className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
                     >
                         インストール
