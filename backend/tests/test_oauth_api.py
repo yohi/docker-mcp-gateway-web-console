@@ -1,6 +1,7 @@
-import pytest
 import httpx
 from httpx import AsyncClient
+import pytest
+from app.services.oauth import OAuthService
 from app.main import app
 
 
@@ -27,21 +28,29 @@ def reset_oauth_service(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_oauth_initiate_returns_state_and_pkce(reset_oauth_service):
+async def test_oauth_initiate_returns_state_and_auth_url(reset_oauth_service):
+    code_verifier = "test-verifier"
+    code_challenge = OAuthService._compute_code_challenge(code_verifier)
+
     async with AsyncClient(app=app, base_url="http://test") as ac:
         response = await ac.post(
             "/api/catalog/oauth/initiate",
-            json={"server_id": "srv-1", "scopes": ["repo:read"]},
+            json={
+                "server_id": "srv-1",
+                "scopes": ["repo:read"],
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            },
         )
 
     assert response.status_code == 200
     data = response.json()
     assert data["state"]
-    assert data["pkce_verifier"]
+    assert "pkce_verifier" not in data
     assert data["required_scopes"] == ["repo:read"]
     assert data["auth_url"].startswith("https://auth.example.com/authorize")
     assert f"state={data['state']}" in data["auth_url"]
-    assert "code_challenge=" in data["auth_url"]
+    assert f"code_challenge={code_challenge}" in data["auth_url"]
 
 
 @pytest.mark.asyncio
@@ -59,6 +68,9 @@ async def test_oauth_callback_state_mismatch_returns_401(reset_oauth_service):
 @pytest.mark.asyncio
 async def test_oauth_callback_provider_4xx_returns_400(monkeypatch, reset_oauth_service):
     from app.services import oauth as oauth_service_module
+
+    code_verifier = "test-verifier"
+    code_challenge = OAuthService._compute_code_challenge(code_verifier)
 
     class DummyClient:
         call_count = 0
@@ -81,13 +93,23 @@ async def test_oauth_callback_provider_4xx_returns_400(monkeypatch, reset_oauth_
     async with AsyncClient(app=app, base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
-            json={"server_id": "srv-1", "scopes": ["repo:read"]},
+            json={
+                "server_id": "srv-1",
+                "scopes": ["repo:read"],
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            },
         )
         state = init_resp.json()["state"]
 
         response = await ac.get(
             "/api/catalog/oauth/callback",
-            params={"code": "auth-code", "state": state, "server_id": "srv-1"},
+            params={
+                "code": "auth-code",
+                "state": state,
+                "server_id": "srv-1",
+                "code_verifier": code_verifier,
+            },
         )
 
     assert response.status_code == 400
@@ -98,6 +120,9 @@ async def test_oauth_callback_provider_4xx_returns_400(monkeypatch, reset_oauth_
 @pytest.mark.asyncio
 async def test_oauth_callback_provider_5xx_retries_then_502(monkeypatch, reset_oauth_service):
     from app.services import oauth as oauth_service_module
+
+    code_verifier = "test-verifier"
+    code_challenge = OAuthService._compute_code_challenge(code_verifier)
 
     class FailingClient:
         call_count = 0
@@ -125,13 +150,23 @@ async def test_oauth_callback_provider_5xx_retries_then_502(monkeypatch, reset_o
     async with AsyncClient(app=app, base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
-            json={"server_id": "srv-1", "scopes": ["repo:read"]},
+            json={
+                "server_id": "srv-1",
+                "scopes": ["repo:read"],
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            },
         )
         state = init_resp.json()["state"]
 
         response = await ac.get(
             "/api/catalog/oauth/callback",
-            params={"code": "auth-code", "state": state, "server_id": "srv-1"},
+            params={
+                "code": "auth-code",
+                "state": state,
+                "server_id": "srv-1",
+                "code_verifier": code_verifier,
+            },
         )
 
     assert response.status_code == 502
@@ -142,6 +177,9 @@ async def test_oauth_callback_provider_5xx_retries_then_502(monkeypatch, reset_o
 @pytest.mark.asyncio
 async def test_oauth_callback_success_returns_status(monkeypatch, reset_oauth_service):
     from app.services import oauth as oauth_service_module
+
+    code_verifier = "test-verifier"
+    code_challenge = OAuthService._compute_code_challenge(code_verifier)
 
     class SuccessClient:
         call_count = 0
@@ -169,13 +207,23 @@ async def test_oauth_callback_success_returns_status(monkeypatch, reset_oauth_se
     async with AsyncClient(app=app, base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
-            json={"server_id": "srv-1", "scopes": ["repo:read"]},
+            json={
+                "server_id": "srv-1",
+                "scopes": ["repo:read"],
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            },
         )
         state = init_resp.json()["state"]
 
         response = await ac.get(
             "/api/catalog/oauth/callback",
-            params={"code": "auth-code", "state": state, "server_id": "srv-1"},
+            params={
+                "code": "auth-code",
+                "state": state,
+                "server_id": "srv-1",
+                "code_verifier": code_verifier,
+            },
         )
 
     assert response.status_code == 200

@@ -27,10 +27,12 @@ async def initiate_oauth(request: OAuthInitiateRequest) -> OAuthInitiateResponse
         result = oauth_service.start_auth(
             server_id=request.server_id,
             scopes=request.scopes,
+            code_challenge=request.code_challenge,
+            code_challenge_method=request.code_challenge_method,
         )
         return OAuthInitiateResponse(**result)
     except OAuthError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/callback", response_model=OAuthCallbackResponse)
@@ -38,6 +40,9 @@ async def oauth_callback(
     code: str = Query(..., description="認可コード"),
     state: str = Query(..., description="認可開始時の state"),
     server_id: str = Query(..., description="対象サーバーID"),
+    code_verifier: str | None = Query(
+        default=None, description="クライアント保持の PKCE code_verifier"
+    ),
 ) -> JSONResponse | OAuthCallbackResponse:
     """認可コードをトークンに交換する。"""
     try:
@@ -45,6 +50,7 @@ async def oauth_callback(
             code=code,
             state=state,
             server_id=server_id,
+            code_verifier=code_verifier,
         )
         return OAuthCallbackResponse(**result)
     except OAuthStateMismatchError as exc:
@@ -63,4 +69,4 @@ async def oauth_callback(
             content={"message": str(exc)},
         )
     except OAuthError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -10,6 +10,14 @@ class OAuthInitiateRequest(BaseModel):
 
     server_id: str = Field(..., description="対象サーバーID")
     scopes: List[str] = Field(default_factory=list, description="要求スコープ")
+    code_challenge: Optional[str] = Field(
+        default=None,
+        description="クライアント生成の PKCE code_challenge",
+    )
+    code_challenge_method: str = Field(
+        default="S256",
+        description="PKCE code_challenge_method (例: S256/plain)",
+    )
 
 
 class OAuthInitiateResponse(BaseModel):
@@ -17,7 +25,6 @@ class OAuthInitiateResponse(BaseModel):
 
     auth_url: str = Field(..., description="リダイレクト先認可URL")
     state: str = Field(..., description="CSRF 防止用 state")
-    pkce_verifier: str = Field(..., description="PKCE 検証用コード (code_verifier)")
     required_scopes: List[str] = Field(default_factory=list, description="要求スコープ")
 
 

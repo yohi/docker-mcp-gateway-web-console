@@ -21,7 +21,8 @@ class OAuthState:
     """state に紐づく PKCE/スコープ情報。"""
 
     server_id: str
-    pkce_verifier: str
+    code_challenge: Optional[str]
+    code_challenge_method: Optional[str]
     scopes: List[str]
 
 
@@ -44,18 +45,29 @@ class OAuthProviderUnavailableError(OAuthError):
 class OAuthService:
     """OAuth 認可開始とトークン交換を管理する。"""
 
-    def __init__(self, backoff_schedule: Optional[List[float]] = None) -> None:
-        self._state_store: Dict[str, OAuthState] = {}
+    def __init__(
+        self,
+        state_store: Optional[Dict[str, OAuthState]] = None,
+        backoff_schedule: Optional[List[float]] = None,
+    ) -> None:
+        # TODO: 本番環境では Redis などの永続/共有ストアを注入すること
+        self._state_store: Dict[str, OAuthState] = state_store if state_store is not None else {}
         self._backoff_schedule = backoff_schedule or [1.0, 2.0, 4.0]
 
-    def start_auth(self, server_id: str, scopes: List[str]) -> dict:
-        """state/PKCE を生成し認可 URL を返す。"""
+    def start_auth(
+        self,
+        server_id: str,
+        scopes: List[str],
+        code_challenge: Optional[str] = None,
+        code_challenge_method: str = "S256",
+    ) -> dict:
+        """state を生成し、クライアント指定の code_challenge で認可 URL を返す。"""
         if not settings.oauth_authorize_url or not settings.oauth_client_id:
             raise OAuthError("OAuth 設定が不足しています")
 
         state = secrets.token_urlsafe(32)
-        pkce_verifier = secrets.token_urlsafe(64)
-        code_challenge = self._compute_code_challenge(pkce_verifier)
+        if code_challenge and code_challenge_method not in {"S256", "plain"}:
+            raise OAuthError("未対応の code_challenge_method です。S256 もしくは plain を指定してください。")
 
         scope_value = " ".join(scopes) if scopes else ""
         query = {
@@ -64,14 +76,17 @@ class OAuthService:
             "redirect_uri": settings.oauth_redirect_uri,
             "state": state,
             "scope": scope_value,
-            "code_challenge": code_challenge,
-            "code_challenge_method": "S256",
         }
+        if code_challenge:
+            query["code_challenge"] = code_challenge
+            query["code_challenge_method"] = code_challenge_method
+
         auth_url = f"{settings.oauth_authorize_url}?{urlencode(query)}"
 
         self._state_store[state] = OAuthState(
             server_id=server_id,
-            pkce_verifier=pkce_verifier,
+            code_challenge=code_challenge,
+            code_challenge_method=code_challenge_method if code_challenge else None,
             scopes=scopes,
         )
 
@@ -79,25 +94,47 @@ class OAuthService:
         return {
             "auth_url": auth_url,
             "state": state,
-            "pkce_verifier": pkce_verifier,
             "required_scopes": scopes,
         }
 
-    async def exchange_token(self, code: str, state: str, server_id: Optional[str] = None) -> dict:
+    async def exchange_token(
+        self,
+        code: str,
+        state: str,
+        server_id: Optional[str] = None,
+        code_verifier: Optional[str] = None,
+    ) -> dict:
         """認可コードをトークンに交換する。"""
+        if not settings.oauth_token_url:
+            raise OAuthError("OAuth トークンエンドポイントが設定されていません")
         if state not in self._state_store:
             raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
 
-        oauth_state = self._state_store.pop(state)
+        oauth_state = self._state_store.get(state)
+        if oauth_state is None:
+            raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
         if server_id and oauth_state.server_id != server_id:
             raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
+        oauth_state = self._state_store.pop(state)
+
+        if oauth_state.code_challenge:
+            if not code_verifier:
+                raise OAuthError("code_verifier が指定されていません")
+            if oauth_state.code_challenge_method == "S256":
+                computed_challenge = self._compute_code_challenge(code_verifier)
+            else:
+                computed_challenge = code_verifier
+            if oauth_state.code_challenge != computed_challenge:
+                raise OAuthError("code_verifier が一致しません")
+
         request_data = {
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": settings.oauth_redirect_uri,
             "client_id": settings.oauth_client_id,
-            "code_verifier": oauth_state.pkce_verifier,
         }
+        if code_verifier:
+            request_data["code_verifier"] = code_verifier
 
         last_error: Optional[Exception] = None
         for attempt, delay in enumerate(self._backoff_schedule, start=1):
