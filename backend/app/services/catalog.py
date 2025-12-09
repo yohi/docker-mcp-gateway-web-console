@@ -59,24 +59,28 @@ class CatalogService:
             or "PASSWORD" in upper
         )
 
-    async def fetch_catalog(self, source_url: str) -> Tuple[List[CatalogItem], bool]:
+    async def fetch_catalog(
+        self, source_url: str, force_refresh: bool = False
+    ) -> Tuple[List[CatalogItem], bool]:
         """
-        Fetch catalog data from a remote URL.
-
-        This method attempts to fetch fresh catalog data from the specified URL.
-        If the fetch fails, it falls back to cached data if available.
+        カタログデータを取得する。メモリキャッシュが有効な場合はAPI呼び出しをスキップする。
 
         Args:
-            source_url: URL of the catalog JSON file
+            source_url: 取得先のURL
+            force_refresh: True の場合はキャッシュを無視して強制的に取得する
 
         Returns:
-            Tuple containing:
-            - List of CatalogItem objects
-            - Boolean indicating if data is from cache (True) or fresh (False)
+            (CatalogItemのリスト, キャッシュ利用フラグ)
 
         Raises:
-            CatalogError: If fetch fails and no cached data is available
+            CatalogError: 取得およびフォールバックが失敗し、キャッシュも無い場合
         """
+        if not force_refresh:
+            cached = await self.get_cached_catalog(source_url)
+            if cached is not None:
+                logger.debug(f"Using cached catalog for {source_url}")
+                return cached, True
+
         try:
             # Try to fetch fresh data
             catalog_items = await self._fetch_from_url(source_url)
