@@ -449,6 +449,37 @@ class TestCatalogFetch:
         assert len(cached) == 2
 
     @pytest.mark.asyncio
+    async def test_fetch_catalog_returns_cache_without_http_call(
+        self, catalog_service, sample_catalog_items, monkeypatch
+    ):
+        """キャッシュが有効な場合はHTTPリクエストを行わないことを確認する。"""
+        # 事前にキャッシュをセット
+        source_url = "https://example.com/catalog.json"
+        await catalog_service.update_cache(source_url, sample_catalog_items)
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                raise AssertionError("HTTP call should be skipped when cache is valid")
+
+        import httpx
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        items, is_cached = await catalog_service.fetch_catalog(source_url)
+
+        assert is_cached is True
+        assert items == sample_catalog_items
+
+    @pytest.mark.asyncio
     async def test_fetch_registry_v0_shape(self, catalog_service, monkeypatch):
         """registry.modelcontextprotocol.io 形式のレスポンスをパースできることを確認する。"""
         from unittest.mock import AsyncMock, MagicMock
