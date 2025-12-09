@@ -14,13 +14,25 @@
 - 新規ストレージの永続化基盤導入（既存 Bitwarden/暗号化ストレージを利用）
 - 汎用的な OAuth プロバイダ管理ポータルの提供
 
+### 現状とギャップ（要件との乖離）
+- バックエンド: カタログ取得/検索と素朴な Docker 起動のみ。OAuth、トークン保存・ローテーション、スコープポリシー、セッション管理、署名検証、外部ゲートウェイ許可リスト/ヘルスチェックが未実装。
+- フロントエンド: カタログ閲覧/検索/インストールモーダルのみ。OAuth モーダル、セッション/実行パネル、署名検証トグル警告、外部ゲートウェイ設定 UI、ログ/ジョブステータス表示が未実装。
+- モデル/データ: `CatalogItem` に追加メタ（required scopes、verify_signatures、permit_unsigned など）が無く、Session/Job/SignaturePolicy/GatewayAllowlist 等のモデルが存在しない。
+- 運用: 相関 ID を含む監査ログ、メトリクス、mTLS 証明書管理、アイドル GC といった運用要件が欠落。
+
+### 推奨アプローチ（Approach C: 責務分離 + フラグ段階有効化）
+- 新規ドメインサービスを追加（OAuth Orchestrator、TokenStore、ScopePolicy、SessionManager、SignatureVerification、GatewayAllowlist/Healthcheck）し、既存 API は薄いラッパーに留める。
+- feature flag で段階的に有効化する: 初期は audit-only/外部ゲートウェイ無効 → OAuth/セッションを導入 → 署名検証 enforcement 切替 → 外部ゲートウェイ常用化。
+- 目的: 責務分離で保守性を確保しつつ、安全に段階リリースする。
+
 ## Architecture
 
 ### 既存アーキテクチャ分析
-- フロントエンド: Next.js App Router + SWR で FastAPI と REST 通信。
-- バックエンド: FastAPI ルーター `app/api/catalog.py`、サービス層 `CatalogService` がカタログ取得・キャッシュ・検索を担当。Pydantic モデル `CatalogItem` がデータ表現。
+- フロントエンド: Next.js App Router + SWR で FastAPI と REST 通信（カタログ閲覧のみ）。
+- バックエンド: FastAPI ルーター `app/api/catalog.py` は取得/検索のみ、`app/api/containers.py` は単純な Docker 起動/停止。Pydantic モデル `CatalogItem` は基本フィールドのみ。
 - 依存: httpx 非同期クライアント、Docker SDK/CLI、Bitwarden CLI（シークレット供給）。
 - 制約: サービス層集中（structure.md）、シークレットはディスクに残さず Bitwarden または暗号化ストレージで管理（tech.md）。
+- 不足点: OAuth/トークンストア/スコープポリシー、セッション管理、署名検証、外部ゲートウェイ許可・ヘルスチェック、ジョブ/ログ管理が未整備。
 
 ### ハイレベルアーキテクチャ
 ```mermaid
@@ -67,6 +79,12 @@ WS --> SessionMgr
   **Selected Approach**: グレース期間設定後は自動で enforcement に遷移し、UI/ログ/メトリクスで告知。例外は permit_unsigned または許可リストのみ。  
   **Rationale**: セキュリティと運用猶予のバランスを確保。  
   **Trade-offs**: モード遷移の状態管理が複雑になるため、メトリクスと監査ログで検証する。
+
+- **Decision**: feature flag で段階的に有効化し、リスクを抑えて展開する  
+  **Context**: OAuth/署名検証/外部ゲートウェイは運用リスクが高い。  
+  **Selected Approach**: `audit_only_signature`, `external_gateway_enabled`, `session_pool_cost_priority` などのフラグでフェーズごとに開放。  
+  **Rationale**: 既存ユーザー影響を限定しながら段階移行を可能にする。  
+  **Trade-offs**: フラグ分岐によるコード複雑度増。クリーンアップ計画を別途持つ。
 
 ## System Flows
 
@@ -151,7 +169,7 @@ interface TokenRefreshResult { credentialKey: CredentialKey; refreshed: boolean;
 
 ### カタログ/セッション管理ドメイン
 - **CatalogService (既存拡張)**  
-  - 役割: 既存取得/検索に加え、OAuth 対応サーバーのメタデータ（required scopes, jwks url, verify_signatures フラグ）を反映。  
+  - 役割: 既存取得/検索に加え、OAuth 対応サーバーのメタデータ（required scopes, jwks url, verify_signatures フラグ、permit_unsigned、allowlist hints）を反映。  
   - 依存: httpx、Pydantic。
 
 - **Session Manager**  
@@ -201,10 +219,11 @@ interface SessionStatus { sessionId: string; state: "creating"|"running"|"restar
 ## Data Models
 
 ### ドメインモデル
-- **Credential**: `{ credential_key: uuid, token_ref: string, scopes: string[], expires_at: datetime, server_id: string }`（token_ref は Bitwarden アイテム ID or 暗号化キー）  
-- **Session**: `{ session_id, server_id, config: SessionConfig, state, idle_deadline, gateway_endpoint, metrics_endpoint }`  
+- **CatalogItem 拡張**: `{ required_scopes?: string[], jwks_url?: string, verify_signatures?: boolean, permit_unsigned?: string[], allowlist_hint?: string }`  
+- **Credential**: `{ credential_key: uuid, token_ref: string, scopes: string[], expires_at: datetime, server_id: string, created_by: string }`（token_ref は Bitwarden アイテム ID or 暗号化キー）  
+- **Session**: `{ session_id, server_id, config: SessionConfig, state, idle_deadline, gateway_endpoint, metrics_endpoint, mtls_cert_ref, feature_flags }`  
 - **Job**: `{ job_id, session_id, status, queued_at, started_at, finished_at, exit_code?, timeout, truncated, output_ref }`  
-- **SignaturePolicy**: `{ mode: "enforcement"|"audit-only", grace_until?: datetime, permit_unsigned: string[], allowed_algorithms: ["RSA-PSS-SHA256","ECDSA-SHA256"], jwks_url?, local_trust_store_ref? }`  
+- **SignaturePolicy**: `{ mode: "enforcement"|"audit-only", grace_until?: datetime, permit_unsigned: string[], allowed_algorithms: ["RSA-PSS-SHA256","ECDSA-SHA256"], jwks_url?, local_trust_store_ref?, cache_ttl_hours?: number }`  
 - **GatewayAllowEntry**: `{ id, type, value, createdBy, createdAt, enabled, version }`
 
 ### データ契約・シリアライズ
@@ -236,15 +255,17 @@ interface SessionStatus { sessionId: string; state: "creating"|"running"|"restar
 ## Migration Strategy
 ```mermaid
 graph TB
-Phase0[Phase0: Design Signoff] --> Phase1[Phase1: Backend feature flags\nenforcement off, audit-only default]
-Phase1 --> Phase2[Phase2: Add OAuth endpoints\nand Token Store schema]
-Phase2 --> Phase3[Phase3: Session Manager\nsignature verification optional]
-Phase3 --> Phase4[Phase4: UI rollout with warnings]
-Phase4 --> Phase5[Phase5: Enable enforcement\nend grace period]
-Phase5 --> Phase6[Phase6: Cleanup legacy cache\nrotate keys, purge old tokens]
+Phase0[Phase0: Design Signoff] --> Phase1[Phase1: Flags ON in audit-only\n`audit_only_signature=true`\n`external_gateway_enabled=false`]
+Phase1 --> Phase2[Phase2: OAuth endpoints + TokenStore\n`oauth_enabled=true`]
+Phase2 --> Phase3[Phase3: Session Manager + mTLS\n`session_pool_cost_priority` gated]
+Phase3 --> Phase4[Phase4: UI rollout (OAuth/Session/Warning)] 
+Phase4 --> Phase5[Phase5: Signature enforcement ON\naudit grace end]
+Phase5 --> Phase6[Phase6: External gateways ON\nhealthcheck enforced]
+Phase6 --> Phase7[Phase7: Cleanup legacy cache\nrotate keys, purge old tokens]
 ```
-- ロールバック: Phase 切替を feature flag で制御し、署名検証/ゲートウェイ起動を旧動作にフォールバック可能。  
-- 検証チェックポイント: Phase ごとに pytest/Playwright で回帰を実施し、監査ログに記録。
+- フラグ制御: `audit_only_signature`, `external_gateway_enabled`, `session_pool_cost_priority`, `verify_signatures_enforced` を段階的に切替。  
+- ロールバック: フラグで即時無効化し、署名検証/ゲートウェイを旧動作にフォールバック。  
+- 検証チェックポイント: 各 Phase で pytest/Playwright/契約テストを実施し、監査ログへ記録。
 
 ## Testing Strategy
 - ユニット: OAuth state/PKCE 生成、トークン交換エラーハンドリング、署名検証モード分岐、allowlist 判定、SessionConfig バリデーション。  
