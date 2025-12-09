@@ -1,20 +1,23 @@
 # Product Overview
 
-A comprehensive web console for managing Docker-based MCP (Model Context Protocol) servers with Bitwarden integration for secure secret management.
+最終更新: 2025-12-09
+
+Docker ベースの MCP (Model Context Protocol) サーバーを安全かつ簡便に運用するための Web コンソール。Bitwarden 連携で秘密情報をディスクに残さず注入し、コンテナ操作・カタログからの導入・機能検査までをブラウザから完結させる。
 
 ## Core Capabilities
 
-- **Secure Secret Management**: Bitwarden integration for credential injection without disk storage.
-- **Container Lifecycle**: Start, stop, restart, and monitor MCP server containers.
-- **MCP Inspection**: Analyze server capabilities (Tools, Resources, Prompts) in real-time.
-- **Catalog System**: Browse and easy-install MCP servers from curated lists.
+- **セキュアなシークレット注入**: Bitwarden CLI と連携し、資格情報をローカル保存せずに安全に供給。
+- **コンテナライフサイクル管理**: MCP サーバーコンテナの起動・停止・再起動、状態確認、ログ取得を UI で実行。
+- **MCP インスペクション**: ツール/リソース/プロンプトのエクスポーズ内容をリアルタイムに確認し、挙動を把握。
+- **カタログ導入**: キュレーション済みカタログを閲覧し、ワンクリックで MCP サーバーを追加・更新。
+- **安全なセッション運用**: セッションタイムアウトと CORS 設定により開発/チーム利用を前提とした安全性を担保。
 
 ## Target Use Cases
 
-- Developers managing local MCP server fleets.
-- Teams needing secure way to share and run MCP configurations.
-- Debugging and inspecting MCP server behavior.
+- ローカルで複数の MCP サーバーを試験・運用したい開発者。
+- チームで安全に共有できる MCP 実行環境を整備したいプロジェクト。
+- MCP サーバーの機能検証・デバッグを GUI で迅速に行いたいユースケース。
 
 ## Value Proposition
 
-Safe, visual, and user-friendly management of MCP infrastructure, abstracting away complex Docker commands and secret handling.
+Docker と Bitwarden の煩雑な CLI 操作を抽象化し、視覚的な管理体験でセットアップから検証までを短時間で完了できる。秘密情報を残さず安全に扱えるため、個人開発からチーム運用まで安心して利用可能。
