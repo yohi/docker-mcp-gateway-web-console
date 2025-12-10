@@ -150,15 +150,17 @@ class GatewayService:
             merged[entry.id] = entry
 
         for override in overrides or []:
-            merged[override.id] = GatewayAllowEntry(
-                id=override.id,
-                type=override.type,
-                value=override.value,
-                created_by="override",
-                created_at=datetime.now(timezone.utc),
-                enabled=override.enabled,
-                version=override.version,
-            )
+            existing = merged.get(override.id)
+            if existing is None or override.version > existing.version:
+                merged[override.id] = GatewayAllowEntry(
+                    id=override.id,
+                    type=override.type,
+                    value=override.value,
+                    created_by="override",
+                    created_at=datetime.now(timezone.utc),
+                    enabled=override.enabled,
+                    version=override.version,
+                )
 
         return [entry for entry in merged.values() if entry.enabled]
 
