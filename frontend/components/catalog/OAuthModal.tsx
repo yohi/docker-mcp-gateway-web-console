@@ -33,9 +33,9 @@ const base64UrlEncode = (buffer: ArrayBuffer) => {
   if (typeof btoa === 'function') {
     base64 = btoa(String.fromCharCode(...bytes));
   } else {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const nodeBuffer = require('buffer').Buffer;
-    base64 = nodeBuffer.from(bytes).toString('base64');
+    const message =
+      'base64UrlEncode はブラウザ環境で btoa が必須です。サーバー側でエンコードする場合は Node.js コンテキストで実行してください。';
+    throw new Error(message);
   }
   return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
@@ -46,8 +46,8 @@ function createCodeVerifier(): string {
     crypto.getRandomValues(array);
     return base64UrlEncode(array.buffer);
   }
-  // テスト環境など crypto が無い場合のフォールバック
-  return base64UrlEncode(new TextEncoder().encode(`fallback-${Math.random()}`));
+  // crypto が利用できない場合は安全な verifier を生成できないためエラーをスローする
+  throw new Error('Crypto API is required for secure OAuth flow');
 }
 
 async function toCodeChallenge(verifier: string): Promise<CodeChallengeResult> {

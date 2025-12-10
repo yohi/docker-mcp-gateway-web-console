@@ -107,27 +107,56 @@ async def oauth_callback(
 
 
 @router.post("/refresh", response_model=OAuthRefreshResponse)
-async def oauth_refresh(request: OAuthRefreshRequest) -> JSONResponse | OAuthRefreshResponse:
+async def oauth_refresh(
+    request: Request, oauth_request: OAuthRefreshRequest
+) -> JSONResponse | OAuthRefreshResponse:
     """credential_key に紐づくトークンをリフレッシュする。"""
+    correlation_id = getattr(request.state, "correlation_id", None) or request.headers.get(
+        "X-Correlation-ID"
+    )
     try:
         result = await oauth_service.refresh_token(
-            server_id=request.server_id, credential_key=request.credential_key
+            server_id=oauth_request.server_id,
+            credential_key=oauth_request.credential_key,
         )
         return OAuthRefreshResponse(**result)
     except OAuthInvalidGrantError as exc:
         return JSONResponse(
             status_code=401,
-            content={"message": str(exc)},
+            content={
+                "error_code": "provider_error",
+                "message": str(exc),
+                "remediation": None,
+                "correlation_id": correlation_id,
+            },
         )
     except OAuthProviderUnavailableError as exc:
         return JSONResponse(
             status_code=503,
-            content={"message": str(exc)},
+            content={
+                "error_code": "provider_unavailable",
+                "message": str(exc),
+                "remediation": None,
+                "correlation_id": correlation_id,
+            },
         )
     except CredentialNotFoundError as exc:
         return JSONResponse(
             status_code=404,
-            content={"message": str(exc)},
+            content={
+                "error_code": "internal_error",
+                "message": str(exc),
+                "remediation": None,
+                "correlation_id": correlation_id,
+            },
         )
     except OAuthError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error_code": "internal_error",
+                "message": str(exc),
+                "remediation": None,
+                "correlation_id": correlation_id,
+            },
+        )
