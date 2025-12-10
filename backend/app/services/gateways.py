@@ -230,6 +230,15 @@ class GatewayService:
 
         return self._build_health_result(latencies, last_error)
 
+    async def shutdown(self) -> None:
+        """すべての定期タスクをキャンセルしてクリーンアップする。"""
+        tasks = list(self._periodic_tasks.values())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._periodic_tasks.clear()
+
     def _schedule_periodic_healthcheck(self, gateway_id: str) -> None:
         """5 分間隔の定期ヘルスチェックをスケジュールする。"""
         if gateway_id in self._periodic_tasks:
@@ -241,9 +250,11 @@ class GatewayService:
                     await self._sleep(self._periodic_interval)
                     record = self._gateways.get(gateway_id)
                     if record is None:
+                        self._periodic_tasks.pop(gateway_id, None)
                         break
                     record.last_health = await self._run_healthcheck(record)
                 except asyncio.CancelledError:
+                    self._periodic_tasks.pop(gateway_id, None)
                     break
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("定期ヘルスチェックでエラー: %s", exc)
