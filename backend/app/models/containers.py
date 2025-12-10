@@ -16,6 +16,15 @@ class ContainerConfig(BaseModel):
     labels: Dict[str, str] = Field(default_factory=dict, description="Container labels")
     command: Optional[List[str]] = Field(default=None, description="Command to run in container")
     network_mode: Optional[str] = Field(default=None, description="Network mode (e.g., 'bridge', 'host')")
+    cpus: Optional[float] = Field(
+        default=None, description="CPU quota (e.g., 0.5 means half a core)"
+    )
+    memory_limit: Optional[str] = Field(
+        default=None, description="Memory limit (Docker mem_limit, e.g., '512m')"
+    )
+    restart_policy: Optional[Dict[str, str]] = Field(
+        default=None, description="Docker restart policy dictionary"
+    )
 
 
 class ContainerInfo(BaseModel):
