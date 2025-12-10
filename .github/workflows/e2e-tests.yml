@@ -13,16 +13,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set dummy Fernet key for tests
+        run: |
+          key=$(python - <<'PY'
+import base64, os
+print(base64.urlsafe_b64encode(os.urandom(32)).decode())
+PY
+)
+          echo "OAUTH_TOKEN_ENCRYPTION_KEY=$key" >> "$GITHUB_ENV"
+
       - name: Install base packages (docker/compose & Playwright deps)
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ca-certificates curl git jq \
-            docker.io docker-compose-plugin \
+            docker.io \
             libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
-            libxdamage1 libxfixes3 libxrandr2 libxshmfence1 libgbm1 libasound2 \
+            libxdamage1 libxfixes3 libxrandr2 libxshmfence1 libgbm1 libasound2t64 \
             libpangocairo-1.0-0 libpango-1.0-0 libatspi2.0-0 libx11-6 libx11-xcb1 libxcb1 libxcursor1 \
             libxrender1 libxi6 libxtst6 fonts-noto-color-emoji
+          sudo mkdir -p /usr/lib/docker/cli-plugins /usr/local/lib/docker/cli-plugins
+          if [ -x /usr/libexec/docker/cli-plugins/docker-compose ]; then
+            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose
+            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+          fi
           sudo systemctl start docker || sudo service docker start || true
           sudo usermod -aG docker "$USER" || true
           docker --version || true
