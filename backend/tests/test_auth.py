@@ -1,17 +1,28 @@
 """Tests for authentication service."""
 
-import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.models.auth import AuthMethod, LoginRequest, Session
+import pytest
+
+from app.models.auth import AuthMethod, LoginRequest
 from app.services.auth import AuthError, AuthService
+from app.services.state_store import StateStore
 
 
 @pytest.fixture
-def auth_service():
+def state_store(tmp_path) -> StateStore:
+    """テスト用の一時 StateStore を返す。"""
+    db_path = tmp_path / "auth.db"
+    store = StateStore(str(db_path))
+    store.init_schema()
+    return store
+
+
+@pytest.fixture
+def auth_service(state_store: StateStore):
     """Create an AuthService instance for testing."""
-    return AuthService()
+    return AuthService(state_store=state_store)
 
 
 @pytest.fixture
@@ -41,7 +52,7 @@ class TestAuthService:
             assert session.user_email == "test@example.com"
             assert session.bw_session_key == "test_session_key"
             assert session.created_at is not None
-            assert session.expires_at > datetime.now()
+            assert session.expires_at > datetime.now(timezone.utc)
             
             # Verify session is stored
             assert session.session_id in auth_service._sessions
@@ -82,7 +93,7 @@ class TestAuthService:
             session = await auth_service.login(mock_login_request)
             
             # Manually expire the session
-            session.expires_at = datetime.now() - timedelta(minutes=1)
+            session.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
             
             # Validate should return False and clean up the session
             is_valid = await auth_service.validate_session(session.session_id)
@@ -137,7 +148,7 @@ class TestAuthService:
             session = await auth_service.login(mock_login_request)
             
             # Simulate inactivity by setting last_activity to past
-            session.last_activity = datetime.now() - timedelta(minutes=31)
+            session.last_activity = datetime.now(timezone.utc) - timedelta(minutes=31)
             
             # Validate should return False due to inactivity
             is_valid = await auth_service.validate_session(session.session_id)
@@ -155,7 +166,7 @@ class TestAuthService:
             session2 = await auth_service.login(mock_login_request)
             
             # Expire one session
-            session1.expires_at = datetime.now() - timedelta(minutes=1)
+            session1.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
             
             # Mock the lock operation
             with patch.object(auth_service, '_lock_bitwarden', new_callable=AsyncMock):
@@ -164,6 +175,20 @@ class TestAuthService:
                 assert cleaned == 1
                 assert session1.session_id not in auth_service._sessions
                 assert session2.session_id in auth_service._sessions
+
+    @pytest.mark.asyncio
+    async def test_session_persisted_and_restored(self, state_store, mock_login_request):
+        """永続化ストアからセッションが復元されることを検証する。"""
+        service1 = AuthService(state_store=state_store)
+        with patch.object(service1, '_authenticate_bitwarden', new_callable=AsyncMock) as mock_auth:
+            mock_auth.return_value = "persisted_key"
+            session = await service1.login(mock_login_request)
+
+        service2 = AuthService(state_store=state_store)
+
+        assert session.session_id in service2._sessions
+        assert await service2.validate_session(session.session_id) is True
+        assert await service2.get_vault_access(session.session_id) == "persisted_key"
 
     @pytest.mark.asyncio
     async def test_login_validates_credentials(self, auth_service):

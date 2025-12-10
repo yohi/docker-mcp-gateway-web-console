@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from app.models.state import (
+    AuthSessionRecord,
     CredentialRecord,
     GatewayAllowEntry,
     JobRecord,
@@ -34,6 +35,8 @@ def test_schema_created(store: StateStore) -> None:
         "signature_policies",
         "gateway_allowlist",
         "audit_logs",
+        "github_tokens",
+        "auth_sessions",
     }
     assert expected.issubset(tables)
 
@@ -106,6 +109,32 @@ def test_session_gc_by_idle_deadline(store: StateStore) -> None:
     assert removed["sessions"] == 1
     assert store.get_session("s-expired") is None
     assert store.get_session("s-active") is not None
+
+
+def test_auth_session_roundtrip(store: StateStore) -> None:
+    """ログインセッションが保存・取得・削除できることを検証する。"""
+    now = datetime.now(timezone.utc)
+    record = AuthSessionRecord(
+        session_id="auth-1",
+        user_email="user@example.com",
+        bw_session_key="bw-session",
+        created_at=now,
+        expires_at=now + timedelta(minutes=30),
+        last_activity=now,
+    )
+
+    store.save_auth_session(record)
+
+    fetched = store.get_auth_session("auth-1")
+    assert fetched is not None
+    assert fetched.user_email == "user@example.com"
+    assert fetched.bw_session_key == "bw-session"
+
+    all_sessions = store.list_auth_sessions()
+    assert len(all_sessions) == 1
+
+    store.delete_auth_session("auth-1")
+    assert store.get_auth_session("auth-1") is None
 
 
 def test_job_gc_after_24_hours(store: StateStore) -> None:
