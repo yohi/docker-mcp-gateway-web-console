@@ -1,5 +1,6 @@
 """OAuth 関連モデル。"""
 
+from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -34,3 +35,25 @@ class OAuthCallbackResponse(BaseModel):
     status: str = Field(..., description="認可状態")
     scope: List[str] = Field(default_factory=list, description="認可されたスコープ")
     expires_in: Optional[int] = Field(default=None, description="アクセストークン有効秒数")
+    credential_key: Optional[str] = Field(
+        default=None, description="保存された資格情報の参照キー"
+    )
+    expires_at: Optional[datetime] = Field(
+        default=None, description="アクセストークンの有効期限（UTC）"
+    )
+
+
+class OAuthRefreshRequest(BaseModel):
+    """トークンリフレッシュリクエスト。"""
+
+    server_id: str = Field(..., description="対象サーバーID")
+    credential_key: str = Field(..., description="リフレッシュ対象の credential_key")
+
+
+class OAuthRefreshResponse(BaseModel):
+    """トークンリフレッシュレスポンス。"""
+
+    credential_key: str = Field(..., description="新しい credential_key")
+    refreshed: bool = Field(..., description="リフレッシュが実行されたか")
+    scope: List[str] = Field(default_factory=list, description="付与されたスコープ")
+    expires_at: datetime = Field(..., description="アクセストークンの有効期限（UTC）")

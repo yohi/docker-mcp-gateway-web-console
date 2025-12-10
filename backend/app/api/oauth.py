@@ -7,13 +7,18 @@ from ..models.oauth import (
     OAuthCallbackResponse,
     OAuthInitiateRequest,
     OAuthInitiateResponse,
+    OAuthRefreshRequest,
+    OAuthRefreshResponse,
 )
 from ..services.oauth import (
+    CredentialNotFoundError,
     OAuthError,
+    OAuthInvalidGrantError,
     OAuthProviderError,
     OAuthProviderUnavailableError,
     OAuthService,
     OAuthStateMismatchError,
+    ScopeNotAllowedError,
 )
 
 router = APIRouter(prefix="/api/catalog/oauth", tags=["oauth"])
@@ -31,6 +36,11 @@ async def initiate_oauth(request: OAuthInitiateRequest) -> OAuthInitiateResponse
             code_challenge_method=request.code_challenge_method,
         )
         return OAuthInitiateResponse(**result)
+    except ScopeNotAllowedError as exc:
+        return JSONResponse(
+            status_code=400,
+            content={"message": str(exc), "missing_scopes": exc.missing},
+        )
     except OAuthError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -70,3 +80,30 @@ async def oauth_callback(
         )
     except OAuthError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/refresh", response_model=OAuthRefreshResponse)
+async def oauth_refresh(request: OAuthRefreshRequest) -> JSONResponse | OAuthRefreshResponse:
+    """credential_key に紐づくトークンをリフレッシュする。"""
+    try:
+        result = await oauth_service.refresh_token(
+            server_id=request.server_id, credential_key=request.credential_key
+        )
+        return OAuthRefreshResponse(**result)
+    except OAuthInvalidGrantError as exc:
+        return JSONResponse(
+            status_code=401,
+            content={"message": str(exc)},
+        )
+    except OAuthProviderUnavailableError as exc:
+        return JSONResponse(
+            status_code=503,
+            content={"message": str(exc)},
+        )
+    except CredentialNotFoundError as exc:
+        return JSONResponse(
+            status_code=404,
+            content={"message": str(exc)},
+        )
+    except OAuthError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
