@@ -13,6 +13,7 @@ interface CatalogCardProps {
 export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardProps) {
     const { containers, isLoading } = useContainers();
     const scopes = item.required_scopes || [];
+    const allowStatus = item.allowlist_status;
 
     const status = useMemo(() => {
         if (isLoading) return 'loading';
@@ -99,6 +100,19 @@ export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardPr
                     {item.verify_signatures === false && (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
                             署名検証無効
+                        </span>
+                    )}
+                    {allowStatus && (
+                        <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                allowStatus === 'allowed'
+                                    ? 'bg-green-100 text-green-800'
+                                    : allowStatus === 'pending'
+                                        ? 'bg-yellow-100 text-yellow-800'
+                                        : 'bg-red-100 text-red-800'
+                            }`}
+                        >
+                            allowlist: {allowStatus}
                         </span>
                     )}
                 </div>

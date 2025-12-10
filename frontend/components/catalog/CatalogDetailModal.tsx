@@ -63,6 +63,19 @@ export default function CatalogDetailModal({
                       署名検証有効
                     </span>
                   )}
+                  {item.allowlist_status && (
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        item.allowlist_status === 'allowed'
+                          ? 'bg-green-100 text-green-800'
+                          : item.allowlist_status === 'pending'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      allowlist: {item.allowlist_status}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

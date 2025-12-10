@@ -12,6 +12,7 @@ import {
   SessionExecSyncResponse,
   SessionJobStatusResponse,
 } from '@/lib/types/sessions';
+import LogViewer from '@/components/containers/LogViewer';
 
 interface SessionExecutionPanelProps {
   serverId: string;
@@ -35,6 +36,7 @@ export default function SessionExecutionPanel({
   const [jobStatus, setJobStatus] = useState<SessionJobStatusResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showLogs, setShowLogs] = useState(false);
 
   const handleCreateSession = async () => {
     try {
@@ -227,6 +229,16 @@ export default function SessionExecutionPanel({
             状態を更新
           </button>
         )}
+        {session && (
+          <button
+            type="button"
+            onClick={() => setShowLogs(true)}
+            className="rounded bg-gray-700 px-4 py-2 text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-500"
+            disabled={loading}
+          >
+            ログを開く
+          </button>
+        )}
       </div>
 
       {execResult && (
@@ -238,6 +250,9 @@ export default function SessionExecutionPanel({
           {execResult.truncated && (
             <div className="text-yellow-700">出力は切り詰められました</div>
           )}
+          <div className="text-xs text-gray-600">
+            started_at: {execResult.started_at.toString()} / finished_at: {execResult.finished_at.toString()}
+          </div>
         </div>
       )}
 
@@ -264,7 +279,18 @@ export default function SessionExecutionPanel({
           {jobStatus.truncated && (
             <div className="text-yellow-700">出力は切り詰められました</div>
           )}
+          <div className="text-xs text-gray-600">
+            {jobStatus.started_at && <>started_at: {jobStatus.started_at.toString()} </>}
+            {jobStatus.finished_at && <>/ finished_at: {jobStatus.finished_at.toString()}</>}
+          </div>
         </div>
+      )}
+
+      {showLogs && session && (
+        <LogViewer
+          containerId={session.container_id}
+          onClose={() => setShowLogs(false)}
+        />
       )}
     </div>
   );

@@ -10,6 +10,12 @@ jest.mock('../../../lib/api/sessions', () => ({
   getJobStatus: jest.fn(),
 }));
 
+jest.mock('../../../components/containers/LogViewer', () => {
+  return function MockLogViewer() {
+    return <div data-testid="log-viewer">logs</div>;
+  };
+});
+
 const sessionResponse = {
   session_id: 'sess-1',
   container_id: 'cont-1',
@@ -142,5 +148,22 @@ describe('SessionExecutionPanel', () => {
     });
 
     expect(await screen.findByText('done')).toBeInTheDocument();
+  });
+
+  it('opens log viewer after session creation', async () => {
+    render(
+      <SessionExecutionPanel
+        serverId="server-1"
+        image="image:latest"
+        defaultEnv={{}}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'ゲートウェイを起動' }));
+    await screen.findByText('unix:///tmp/gw.sock');
+
+    fireEvent.click(screen.getByRole('button', { name: 'ログを開く' }));
+
+    expect(screen.getByTestId('log-viewer')).toBeInTheDocument();
   });
 });
