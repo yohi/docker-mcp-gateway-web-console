@@ -54,7 +54,12 @@ const mockItems: CatalogItem[] = [
     category: 'utility',
     docker_image: 'image-1',
     default_env: {},
+    required_envs: [],
     required_secrets: [],
+    vendor: 'v1',
+    icon_url: '',
+    required_scopes: ['repo:read'],
+    verify_signatures: true,
   },
   {
     id: 'server-2',
@@ -63,13 +68,19 @@ const mockItems: CatalogItem[] = [
     category: 'ai',
     docker_image: 'image-2',
     default_env: {},
+    required_envs: [],
     required_secrets: ['API_KEY'],
+    vendor: 'v2',
+    icon_url: '',
+    required_scopes: [],
+    verify_signatures: false,
   },
 ];
 
 describe('CatalogList', () => {
   const mockOnInstall = jest.fn();
   const catalogSource = 'http://test.com/catalog.json';
+  const mockOnSelect = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -83,7 +94,7 @@ describe('CatalogList', () => {
       mutate: jest.fn(),
     });
 
-    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} />);
+    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
 
     expect(screen.getByText('Loading catalog...')).toBeInTheDocument();
   });
@@ -96,7 +107,7 @@ describe('CatalogList', () => {
       mutate: jest.fn(),
     });
 
-    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} />);
+    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
 
     expect(screen.getByText('Failed to load catalog')).toBeInTheDocument();
     expect(screen.getByText('Failed to fetch')).toBeInTheDocument();
@@ -110,7 +121,7 @@ describe('CatalogList', () => {
       mutate: jest.fn(),
     });
 
-    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} />);
+    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
 
     expect(screen.getByText('Server One')).toBeInTheDocument();
     expect(screen.getByText('Server Two')).toBeInTheDocument();
@@ -128,7 +139,7 @@ describe('CatalogList', () => {
       mutate: jest.fn(),
     });
 
-    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} />);
+    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
 
     // There are multiple elements with this text (count and empty state message)
     expect(screen.getAllByText('No servers found')).toHaveLength(2);
@@ -142,7 +153,7 @@ describe('CatalogList', () => {
       mutate: jest.fn(),
     });
 
-    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} />);
+    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
 
     const installButtons = screen.getAllByText('インストール');
     fireEvent.click(installButtons[0]);
@@ -158,7 +169,7 @@ describe('CatalogList', () => {
       mutate: jest.fn(),
     });
 
-    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} />);
+    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
 
     // Initial call check
     expect(mockUseSWR).toHaveBeenCalledWith(
