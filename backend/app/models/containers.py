@@ -22,7 +22,7 @@ class ContainerConfig(BaseModel):
     memory_limit: Optional[str] = Field(
         default=None, description="Memory limit (Docker mem_limit, e.g., '512m')"
     )
-    restart_policy: Optional[Dict[str, str]] = Field(
+    restart_policy: Optional[Dict[str, Any]] = Field(
         default=None, description="Docker restart policy dictionary"
     )
 

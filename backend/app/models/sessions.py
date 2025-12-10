@@ -11,6 +11,12 @@ class SessionCreateRequest(BaseModel):
 
     server_id: str = Field(..., description="対象となるカタログサーバー ID")
     image: str = Field(..., description="起動する Docker イメージ")
+    image_digest: Optional[str] = Field(
+        default=None, description="イメージの sha256 ダイジェスト（任意）"
+    )
+    image_thumbprint: Optional[str] = Field(
+        default=None, description="イメージ署名証明書のサムプリント（任意）"
+    )
     env: Dict[str, str] = Field(
         default_factory=dict, description="環境変数（Bitwarden 参照を含むことがある）"
     )
