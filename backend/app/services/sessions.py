@@ -429,8 +429,8 @@ class SessionService:
                 "ca_path": str(ca_path),
             }
 
-        not_before = datetime.utcnow() - timedelta(minutes=1)
-        not_after = datetime.utcnow() + timedelta(days=365)
+        not_before = datetime.now(timezone.utc) - timedelta(minutes=1)
+        not_after = datetime.now(timezone.utc) + timedelta(days=365)
 
         try:
             ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
