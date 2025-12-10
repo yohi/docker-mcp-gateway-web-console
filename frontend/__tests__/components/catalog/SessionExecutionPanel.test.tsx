@@ -4,7 +4,7 @@ import '@testing-library/jest-dom';
 import SessionExecutionPanel from '../../../components/catalog/SessionExecutionPanel';
 import { createSession, executeSession, getJobStatus } from '../../../lib/api/sessions';
 
-jest.mock('../../../lib/api/sessions', () => ({
+jest.mock('@/lib/api/sessions', () => ({
   createSession: jest.fn(),
   executeSession: jest.fn(),
   getJobStatus: jest.fn(),
