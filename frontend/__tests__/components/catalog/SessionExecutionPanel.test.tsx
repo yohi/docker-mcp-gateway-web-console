@@ -10,7 +10,7 @@ jest.mock('../../../lib/api/sessions', () => ({
   getJobStatus: jest.fn(),
 }));
 
-jest.mock('../../../components/containers/LogViewer', () => {
+jest.mock('@/components/containers/LogViewer', () => {
   return function MockLogViewer() {
     return <div data-testid="log-viewer">logs</div>;
   };
