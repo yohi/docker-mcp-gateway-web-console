@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     state_db_path: str = "data/state.db"
     credential_retention_days: int = 30
     job_retention_hours: int = 24
+    # Local/dev only: True で mTLS 証明書をプレースホルダーとして生成する
+    mtls_placeholder_mode: bool = Field(
+        default=False, validation_alias="MTLS_PLACEHOLDER_MODE"
+    )
 
     # Catalog Configuration
     catalog_cache_ttl_seconds: int = 3600
