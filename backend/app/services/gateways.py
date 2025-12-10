@@ -20,6 +20,7 @@ from ..models.gateways import (
     GatewayRegistrationRequest,
 )
 from ..models.state import GatewayAllowEntry
+from ..services.metrics import MetricsRecorder
 from .state_store import StateStore
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ class GatewayService:
         backoff_seconds: Optional[List[float]] = None,
         enable_periodic: bool = True,
         periodic_interval_seconds: float = 300.0,
+        metrics: Optional[MetricsRecorder] = None,
     ) -> None:
         self.state_store = state_store or StateStore()
         # スキーマを初期化しておく（テストや初回起動でも安全に動作させる）
@@ -82,6 +84,7 @@ class GatewayService:
         self._backoff_seconds = backoff_seconds or [1.0, 2.0, 4.0]
         self._enable_periodic = enable_periodic
         self._periodic_interval = periodic_interval_seconds
+        self.metrics = metrics or MetricsRecorder()
 
     def set_healthcheck_runner(
         self, runner: Callable[[GatewayRecord], Awaitable[GatewayHealthResult]]
@@ -100,7 +103,30 @@ class GatewayService:
             GatewayError: ヘルスチェックや保存に失敗した場合
         """
         entries = self._merge_allowlist(request.allowlist_overrides)
-        self._validate_url_against_allowlist(str(request.url), request.type, entries)
+        try:
+            self._validate_url_against_allowlist(str(request.url), request.type, entries)
+            self.metrics.increment(
+                "gateway_allowlist_total",
+                {"result": "pass"},
+            )
+            self._record_allowlist_audit(
+                event_type="gateway_allowlist_pass",
+                correlation_id=correlation_id,
+                url=str(request.url),
+                gateway_type=request.type,
+            )
+        except AllowlistError:
+            self.metrics.increment(
+                "gateway_allowlist_total",
+                {"result": "reject"},
+            )
+            self._record_allowlist_audit(
+                event_type="gateway_allowlist_reject",
+                correlation_id=correlation_id,
+                url=str(request.url),
+                gateway_type=request.type,
+            )
+            raise
 
         record = GatewayRecord(
             gateway_id=str(uuid.uuid4()),
@@ -185,6 +211,24 @@ class GatewayService:
 
         raise AllowlistError("許可リスト未登録のゲートウェイ URL です。")
 
+    def _record_allowlist_audit(
+        self,
+        *,
+        event_type: str,
+        correlation_id: Optional[str],
+        url: str,
+        gateway_type: str,
+    ) -> None:
+        """allowlist 判定結果を監査ログに記録する。"""
+        try:
+            self.state_store.record_audit_log(
+                event_type=event_type,
+                correlation_id=correlation_id or "gateway-allowlist",
+                metadata={"url": url, "type": gateway_type},
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("許可リスト監査ログの記録に失敗しました", exc_info=True)
+
     @staticmethod
     def _domain_matches(domain: str, allow_value: str) -> bool:
         """ドメイン末尾一致で検証する。"""
@@ -201,7 +245,9 @@ class GatewayService:
     async def _run_healthcheck(self, record: GatewayRecord) -> GatewayHealthResult:
         """ヘルスチェックランナーを実行する。"""
         runner = self._healthcheck_runner or self._default_healthcheck_runner
-        return await runner(record)
+        result = await runner(record)
+        self._record_health_metrics(result)
+        return result
 
     async def _default_healthcheck_runner(self, record: GatewayRecord) -> GatewayHealthResult:
         """/healthcheck に対して 1→2→4s バックオフで最大 3 回リトライする。"""
@@ -291,6 +337,24 @@ class GatewayService:
         return GatewayHealthResult(
             status=status, p50_ms=p50, p95_ms=p95, p99_ms=p99, last_error=last_error
         )
+
+    def _record_health_metrics(self, result: GatewayHealthResult) -> None:
+        """ヘルスチェックのメトリクスを記録する。"""
+        try:
+            self.metrics.increment(
+                "gateway_healthcheck_total",
+                {"result": result.status},
+            )
+            labels = {"status": result.status}
+            for value in (result.p50_ms, result.p95_ms, result.p99_ms):
+                self.metrics.observe("gateway_healthcheck_latency_ms", value, labels)
+            if result.last_error:
+                self.metrics.increment(
+                    "gateway_healthcheck_errors",
+                    {"status": result.status, "category": "last_error"},
+                )
+        except Exception:  # noqa: BLE001
+            logger.warning("ヘルスチェックメトリクスの記録に失敗しました", exc_info=True)
 
     @staticmethod
     def _percentile(values: List[float], percentile: int) -> float:

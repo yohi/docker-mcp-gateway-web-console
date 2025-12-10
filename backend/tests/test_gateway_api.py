@@ -80,11 +80,19 @@ class TestGatewayAPI:
             "type": "external",
         }
 
-        response = client.post("/api/gateways", json=payload)
+        response = client.post("/api/gateways?correlation_id=corr-allow-deny", json=payload)
 
         assert response.status_code == 400
         data = response.json()
         assert "許可リスト未登録" in data["detail"]
+        logs = gateway_service.state_store.get_recent_audit_logs(limit=5)
+        assert any(
+            log.event_type == "gateway_allowlist_reject" and log.correlation_id == "corr-allow-deny"
+            for log in logs
+        )
+        assert gateway_service.metrics.get_counter(
+            "gateway_allowlist_total", {"result": "reject"}
+        ) == 1
 
     def test_register_runs_healthcheck_and_enables_external_mode(self, gateway_service):
         """登録成功時にヘルスチェック結果が返り外部モードが有効化される。"""
@@ -94,7 +102,7 @@ class TestGatewayAPI:
             "type": "external",
         }
 
-        response = client.post("/api/gateways", json=payload)
+        response = client.post("/api/gateways?correlation_id=corr-allow-pass", json=payload)
 
         assert response.status_code == 200
         body = response.json()
@@ -106,6 +114,21 @@ class TestGatewayAPI:
         assert body["external_mode_enabled"] is True
         # トークンがレスポンスに含まれないことを確認
         assert "token" not in body
+        logs = gateway_service.state_store.get_recent_audit_logs(limit=5)
+        assert any(
+            log.event_type == "gateway_allowlist_pass" and log.correlation_id == "corr-allow-pass"
+            for log in logs
+        )
+        assert gateway_service.metrics.get_counter(
+            "gateway_allowlist_total", {"result": "pass"}
+        ) == 1
+        assert gateway_service.metrics.get_counter(
+            "gateway_healthcheck_total", {"result": "healthy"}
+        ) == 1
+        observations = gateway_service.metrics.get_observations(
+            "gateway_healthcheck_latency_ms", {"status": "healthy"}
+        )
+        assert observations  # いずれかのレイテンシが記録されていること
 
     def test_manual_health_endpoint_reuses_saved_gateway(self, gateway_service):
         """登録済みゲートウェイに対する手動ヘルスチェックを実行する。"""

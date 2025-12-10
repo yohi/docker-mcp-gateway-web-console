@@ -15,6 +15,7 @@ from app.models.signature import (
     SignatureVerificationError,
 )
 from app.services.containers import ContainerError
+from app.services.metrics import MetricsRecorder
 from app.services.sessions import SessionService
 
 
@@ -31,6 +32,9 @@ class _DummyStateStore:
 
     def get_session(self, session_id: str) -> Optional[SessionRecord]:
         return self.sessions.get(session_id)
+
+    def delete_session(self, session_id: str) -> None:
+        self.sessions.pop(session_id, None)
 
     def save_job(self, record: JobRecord) -> None:
         self.jobs[record.job_id] = record
@@ -383,6 +387,78 @@ async def test_create_session_allows_audit_only_on_failure(tmp_path: Path) -> No
     last_log = state_store.audit_logs[-1]
     assert last_log["metadata"]["error_code"] == "invalid_signature"
     assert last_log["metadata"]["mode"] == "audit-only"
+
+
+@pytest.mark.asyncio
+async def test_signature_verification_records_metrics_and_audit(tmp_path: Path) -> None:
+    """署名検証成功時にメトリクスと監査ログが記録される。"""
+    container_service = AsyncMock()
+    container_service.create_container.return_value = "container-metrics"
+    signature_verifier = AsyncMock()
+    metrics = MetricsRecorder()
+    state_store = _DummyStateStore()
+    service = SessionService(
+        container_service=container_service,
+        state_store=state_store,
+        cert_base_dir=tmp_path,
+        signature_verifier=signature_verifier,
+        metrics=metrics,
+    )
+    policy = SignaturePolicy(
+        verify_signatures=True,
+        mode="enforcement",
+        permit_unsigned=[],
+        allowed_algorithms=["RSA-PSS-SHA256"],
+    )
+
+    record = await service.create_session(
+        server_id="server-metrics",
+        image="ghcr.io/example/server:5.6.7",
+        env={},
+        bw_session_key="bw-session",
+        correlation_id="corr-sig-success",
+        signature_policy=policy,
+    )
+
+    assert metrics.get_counter(
+        "signature_verification_total",
+        {"mode": "enforcement", "result": "success"},
+    ) == 1
+    assert any(
+        log["event_type"] == "signature_verification_success"
+        and log["correlation_id"] == "corr-sig-success"
+        for log in state_store.audit_logs
+    )
+    assert record.mtls_cert_ref is not None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_session_removes_mtls_bundle(tmp_path: Path) -> None:
+    """セッション終了時に mTLS バンドルが削除される。"""
+    container_service = AsyncMock()
+    container_service.create_container.return_value = "container-cleanup"
+    state_store = _DummyStateStore()
+    service = SessionService(
+        container_service=container_service,
+        state_store=state_store,
+        cert_base_dir=tmp_path,
+    )
+
+    record = await service.create_session(
+        server_id="server-cleanup",
+        image="ghcr.io/example/server:8.8.8",
+        env={},
+        bw_session_key="bw-session",
+        correlation_id="corr-cleanup",
+    )
+
+    bundle_dir = Path(record.mtls_cert_ref["cert_path"]).parent
+    assert bundle_dir.exists()
+
+    service.cleanup_session(record.session_id)
+
+    assert state_store.get_session(record.session_id) is None
+    assert not bundle_dir.exists()
 
 
 @pytest.mark.asyncio
