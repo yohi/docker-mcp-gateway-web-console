@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.api import gateways as gateways_api
 from app.main import app
+from app.models.gateways import GatewayRegistrationRequest
 from app.models.state import GatewayAllowEntry
 from app.services.gateways import GatewayHealthResult, GatewayService
 from app.services.state_store import StateStore
@@ -162,3 +163,53 @@ class TestGatewayAPI:
         assert body["health"]["p50_ms"] == 5.0
         assert body["health"]["p99_ms"] == 7.0
         assert calls["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_default_healthcheck_retries_with_backoff(
+    monkeypatch, state_store, allowlist_entry
+):
+    """デフォルトのヘルスチェックが 1→2s バックオフで再試行することを検証する。"""
+    state_store.save_gateway_allow_entry(GatewayAllowEntry(**allowlist_entry))
+
+    delays = []
+
+    async def fake_sleep(seconds: float):
+        delays.append(seconds)
+
+    attempts = {"count": 0}
+
+    async def flaky_check(_url: str, _token: str) -> float:
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise RuntimeError("temporary failure")
+        return 12.5
+
+    service = GatewayService(
+        state_store=state_store,
+        healthcheck_runner=None,  # デフォルトランナーを使う
+        sleep_func=fake_sleep,
+        backoff_seconds=[1.0, 2.0],
+        enable_periodic=False,
+    )
+    monkeypatch.setattr(service, "_check_once", flaky_check)
+
+    request = GatewayRegistrationRequest(
+        url="https://example.com/service",
+        token="secret-token",
+        type="external",
+        allowlist_overrides=[],
+    )
+
+    record = await service.register_gateway(request, correlation_id="corr-health-retry")
+
+    assert attempts["count"] == 3
+    assert delays == [1.0, 2.0]
+    assert record.last_health is not None
+    assert record.last_health.status == "healthy"
+    assert (
+        service.metrics.get_counter(
+            "gateway_healthcheck_total", {"result": "healthy"}
+        )
+        == 1
+    )

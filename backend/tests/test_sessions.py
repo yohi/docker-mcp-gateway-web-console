@@ -161,6 +161,31 @@ async def test_create_session_raises_after_two_failures(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_session_cleans_mtls_bundle_on_failure(tmp_path: Path) -> None:
+    """コンテナ起動に失敗した場合でも一時証明書ディレクトリを掃除する。"""
+    container_service = AsyncMock()
+    container_service.create_container.side_effect = ContainerError("boom")
+    state_store = _DummyStateStore()
+    service = SessionService(
+        container_service=container_service,
+        state_store=state_store,
+        cert_base_dir=tmp_path,
+    )
+
+    with pytest.raises(ContainerError):
+        await service.create_session(
+            server_id="server-fail",
+            image="ghcr.io/example/server:fail",
+            env={},
+            bw_session_key="bw-session",
+            correlation_id="corr-fail",
+        )
+
+    assert state_store.sessions == {}
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.asyncio
 async def test_create_session_blocks_when_signature_verification_fails(
     tmp_path: Path,
 ) -> None:
@@ -492,6 +517,36 @@ async def test_update_session_config_persists_runtime_limits(tmp_path: Path) -> 
     saved = state_store.get_session(record.session_id)
     assert saved is not None
     assert saved.config.get("runtime", {}).get("max_run_seconds") == 120
+
+
+@pytest.mark.asyncio
+async def test_update_session_config_clamps_out_of_range(tmp_path: Path) -> None:
+    """設定値が範囲外の場合に上限・下限へ丸められる。"""
+    container_service = AsyncMock()
+    container_service.create_container.return_value = "container-clamp"
+    state_store = _DummyStateStore()
+    service = SessionService(
+        container_service=container_service,
+        state_store=state_store,
+        cert_base_dir=tmp_path,
+    )
+    record = await service.create_session(
+        server_id="server-clamp",
+        image="ghcr.io/example/server:4.0.0",
+        env={},
+        bw_session_key="bw-session",
+        correlation_id="corr-clamp",
+    )
+
+    updated = await service.update_session_config(
+        session_id=record.session_id,
+        max_run_seconds=999,
+        output_bytes_limit=5_000_000,
+    )
+
+    runtime = updated.config.get("runtime", {})
+    assert runtime["max_run_seconds"] == 300
+    assert runtime["output_bytes_limit"] == 1_000_000
 
 
 @pytest.mark.asyncio
