@@ -16,8 +16,14 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from app.config import settings
 from app.models.containers import ContainerConfig
+from app.models.signature import (
+    PermitUnsignedEntry,
+    SignaturePolicy,
+    SignatureVerificationError,
+)
 from app.models.state import JobRecord, SessionRecord
 from app.services.containers import ContainerError, ContainerService
+from app.services.signature_verifier import NoopSignatureVerifier, SignatureVerifier
 from app.services.state_store import StateStore
 
 logger = logging.getLogger(__name__)
@@ -69,12 +75,14 @@ class SessionService:
         container_service: ContainerService,
         state_store: Optional[StateStore] = None,
         cert_base_dir: Optional[Path] = None,
+        signature_verifier: Optional[SignatureVerifier] = None,
     ) -> None:
         self.container_service = container_service
         self.state_store = state_store or StateStore()
         self.cert_base_dir = cert_base_dir or Path(settings.state_db_path).parent / "certs"
         self.cert_base_dir.mkdir(parents=True, exist_ok=True)
         self._job_tasks: Dict[str, asyncio.Task[None]] = {}
+        self.signature_verifier = signature_verifier or NoopSignatureVerifier()
 
     async def create_session(
         self,
@@ -85,6 +93,7 @@ class SessionService:
         correlation_id: str,
         *,
         idle_minutes: int = DEFAULT_IDLE_MINUTES,
+        signature_policy: Optional[SignaturePolicy] = None,
     ) -> SessionRecord:
         """
         セッション専用のゲートウェイコンテナを起動し、セッションレコードを保存する。
@@ -100,6 +109,29 @@ class SessionService:
             "mcp.session_id": session_id,
             "mcp.server_id": server_id,
         }
+
+        if signature_policy and signature_policy.verify_signatures:
+            if not self._is_permitted_unsigned(image, signature_policy.permit_unsigned):
+                try:
+                    await self.signature_verifier.verify_image(
+                        image=image,
+                        policy=signature_policy,
+                        correlation_id=correlation_id,
+                    )
+                except SignatureVerificationError as exc:
+                    if signature_policy.mode == "audit-only":
+                        self.state_store.record_audit_log(
+                            event_type="signature_verification_failed",
+                            correlation_id=correlation_id,
+                            metadata={
+                                "error_code": exc.error_code,
+                                "message": exc.message,
+                                "mode": signature_policy.mode,
+                                "image": image,
+                            },
+                        )
+                    else:
+                        raise
 
         mtls_bundle = self._ensure_mtls_bundle(session_id)
         config = ContainerConfig(
@@ -247,6 +279,13 @@ class SessionService:
         if record is None:
             return None
 
+        if record.status == "running" and job_id in self._job_tasks:
+            task = self._job_tasks[job_id]
+            if not task.done():
+                await asyncio.wait({task}, timeout=0.05)
+            if task.done():
+                record = self.state_store.get_job(job_id) or record
+
         output: Optional[str] = None
         if record.output_ref and record.output_ref.get("storage") == "memory":
             output = record.output_ref.get("data")  # type: ignore[arg-type]
@@ -289,7 +328,7 @@ class SessionService:
         for attempt in range(2):
             try:
                 return await self.container_service.create_container(
-                    config=config,
+                    config,
                     session_id=session_id,
                     bw_session_key=bw_session_key,
                 )
@@ -518,6 +557,21 @@ class SessionService:
             "key_path": str(key_path),
             "ca_path": str(ca_path),
         }
+
+    def _is_permitted_unsigned(
+        self, image: str, entries: List[PermitUnsignedEntry]
+    ) -> bool:
+        """未署名を許容する条件に合致するかを判定する。"""
+        for entry in entries:
+            if entry.type == "any":
+                return True
+            if entry.type == "image" and entry.name and entry.name == image:
+                return True
+            if entry.type == "sha256" and entry.digest and entry.digest == image:
+                return True
+            if entry.type == "thumbprint" and entry.cert and entry.cert == image:
+                return True
+        return False
 
     def _extract_container_id(self, gateway_endpoint: str) -> str:
         """gateway_endpoint からコンテナ ID を抽出する。"""
