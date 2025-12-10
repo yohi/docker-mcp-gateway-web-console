@@ -2,11 +2,17 @@
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 from uuid import uuid4
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from app.config import settings
 from app.models.containers import ContainerConfig
@@ -361,36 +367,150 @@ class SessionService:
         job.started_at = datetime.now(timezone.utc)
         self.state_store.save_job(job)
 
-        result = await self._run_command(
-            container_id=container_id,
-            command=command,
-            max_run_seconds=max_run_seconds,
-            output_bytes_limit=output_bytes_limit,
-        )
+        try:
+            result = await self._run_command(
+                container_id=container_id,
+                command=command,
+                max_run_seconds=max_run_seconds,
+                output_bytes_limit=output_bytes_limit,
+            )
+            job.status = "completed"
+            job.output_ref = {
+                "storage": "memory",
+                "data": result.output,
+            }
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Job %s failed: %s", job_id, exc)
+            job.status = "failed"
+            job.output_ref = {"storage": "memory", "data": str(exc)}
+            result = ExecResult(
+                output="",
+                exit_code=-1,
+                timeout=False,
+                truncated=False,
+                started_at=job.started_at or datetime.now(timezone.utc),
+                finished_at=datetime.now(timezone.utc),
+            )
+        finally:
+            self._job_tasks.pop(job_id, None)
 
-        job.status = "completed"
         job.finished_at = result.finished_at
         job.exit_code = result.exit_code
         job.timeout = result.timeout
         job.truncated = result.truncated
-        job.output_ref = {
-            "storage": "memory",
-            "data": result.output,
-        }
         self.state_store.save_job(job)
-        self._job_tasks.pop(job_id, None)
 
     def _ensure_mtls_bundle(self, session_id: str) -> Dict[str, str]:
-        """自己署名証明書のプレースホルダーを生成し、パス情報を返す。"""
+        """
+        mTLS 用の証明書バンドルを生成する。
+
+        - 既定（本番想定）では cryptography で CA/サーバー証明書と秘密鍵を生成し、
+          600 パーミッションで保存する。
+        - settings.mtls_placeholder_mode=True の場合のみ、ローカル開発・テスト向けに
+          プレースホルダーファイルを出力する。
+        """
         bundle_dir = self.cert_base_dir / session_id
         bundle_dir.mkdir(parents=True, exist_ok=True)
         cert_path = bundle_dir / "server.crt"
         key_path = bundle_dir / "server.key"
         ca_path = bundle_dir / "ca.crt"
 
-        for path in (cert_path, key_path, ca_path):
-            if not path.exists():
-                path.write_text(f"generated-for-{session_id}-{path.name}\n", encoding="utf-8")
+        if settings.mtls_placeholder_mode:
+            for path in (cert_path, key_path, ca_path):
+                if not path.exists():
+                    path.write_text(
+                        f"generated-for-{session_id}-{path.name}\n", encoding="utf-8"
+                    )
+                os.chmod(path, 0o600)
+            return {
+                "bundle_dir": str(bundle_dir),
+                "cert_path": str(cert_path),
+                "key_path": str(key_path),
+                "ca_path": str(ca_path),
+            }
+
+        not_before = datetime.utcnow() - timedelta(minutes=1)
+        not_after = datetime.utcnow() + timedelta(days=365)
+
+        try:
+            ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            ca_subject = x509.Name(
+                [
+                    x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+                    x509.NameAttribute(NameOID.ORGANIZATION_NAME, "mcp-gateway"),
+                    x509.NameAttribute(NameOID.COMMON_NAME, "mcp-gateway-ca"),
+                ]
+            )
+            ca_cert = (
+                x509.CertificateBuilder()
+                .subject_name(ca_subject)
+                .issuer_name(ca_subject)
+                .public_key(ca_key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(not_before)
+                .not_valid_after(not_after)
+                .add_extension(
+                    x509.BasicConstraints(ca=True, path_length=None), critical=True
+                )
+                .sign(ca_key, hashes.SHA256())
+            )
+
+            server_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            server_subject = x509.Name(
+                [
+                    x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+                    x509.NameAttribute(NameOID.ORGANIZATION_NAME, "mcp-gateway"),
+                    x509.NameAttribute(
+                        NameOID.COMMON_NAME, f"mcp-session-{session_id}"
+                    ),
+                ]
+            )
+            san = x509.SubjectAlternativeName(
+                [
+                    x509.DNSName("localhost"),
+                    x509.DNSName(f"mcp-session-{session_id}"),
+                    x509.DNSName(session_id),
+                ]
+            )
+            server_cert = (
+                x509.CertificateBuilder()
+                .subject_name(server_subject)
+                .issuer_name(ca_subject)
+                .public_key(server_key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(not_before)
+                .not_valid_after(not_after)
+                .add_extension(x509.BasicConstraints(ca=False, path_length=None), False)
+                .add_extension(
+                    x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), False
+                )
+                .add_extension(san, False)
+                .sign(ca_key, hashes.SHA256())
+            )
+
+            key_bytes = server_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+            cert_bytes = server_cert.public_bytes(serialization.Encoding.PEM)
+            ca_bytes = ca_cert.public_bytes(serialization.Encoding.PEM)
+
+            for path, data in (
+                (key_path, key_bytes),
+                (cert_path, cert_bytes),
+                (ca_path, ca_bytes),
+            ):
+                path.write_bytes(data)
+                os.chmod(path, 0o600)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("mTLS バンドル生成に失敗しました: %s", exc)
+            for path in (cert_path, key_path, ca_path):
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    logger.warning("mTLS バンドル生成失敗時の一時ファイル削除に失敗: %s", path)
+            raise
 
         return {
             "bundle_dir": str(bundle_dir),
