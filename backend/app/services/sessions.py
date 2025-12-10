@@ -183,12 +183,16 @@ class SessionService:
             volumes={mtls_bundle["bundle_dir"]: MTLS_MOUNT_PATH},
         )
 
-        container_id = await self._create_with_retry(
-            config=config,
-            session_id=session_id,
-            bw_session_key=bw_session_key,
-            correlation_id=correlation_id,
-        )
+        try:
+            container_id = await self._create_with_retry(
+                config=config,
+                session_id=session_id,
+                bw_session_key=bw_session_key,
+                correlation_id=correlation_id,
+            )
+        except Exception:
+            self._cleanup_mtls_bundle_dir(mtls_bundle["bundle_dir"])
+            raise
 
         idle_deadline = datetime.now(timezone.utc) + timedelta(minutes=idle_minutes)
         runtime_cfg = {
@@ -607,6 +611,15 @@ class SessionService:
             "key_path": str(key_path),
             "ca_path": str(ca_path),
         }
+
+    def _cleanup_mtls_bundle_dir(self, bundle_dir: str) -> None:
+        """mTLS 用バンドルのディレクトリを削除する。失敗しても例外は伝搬しない。"""
+        if not bundle_dir:
+            return
+        try:
+            shutil.rmtree(bundle_dir, ignore_errors=True)
+        except Exception:  # noqa: BLE001
+            logger.warning("mTLS バンドル削除に失敗しました: %s", bundle_dir, exc_info=True)
 
     def _extract_image_digest(self, image: str) -> Optional[str]:
         """イメージ参照から sha256 ダイジェストを抽出する。"""
