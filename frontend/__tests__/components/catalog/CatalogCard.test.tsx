@@ -17,7 +17,12 @@ describe('CatalogCard', () => {
         category: 'utilities',
         docker_image: 'test/image:latest',
         default_env: {},
+        required_envs: [],
         required_secrets: [],
+        vendor: 'test-vendor',
+        icon_url: '',
+        required_scopes: ['repo:read'],
+        verify_signatures: true,
     };
 
     const mockMutate = jest.fn();
@@ -107,5 +112,27 @@ describe('CatalogCard', () => {
         // Exact text depends on implementation "Checking..." or similar
         // I'll assume we put a disabled button or text
         expect(screen.getByRole('button')).toBeDisabled();
+    });
+
+    it('shows required scopes and signature badge', () => {
+        mockUseContainers.mockReturnValue({
+            containers: [],
+            isLoading: false,
+        });
+
+        render(<CatalogCard item={mockItem} onInstall={jest.fn()} />);
+
+        expect(screen.getByText('要求スコープ')).toBeInTheDocument();
+        expect(screen.getByText('repo:read')).toBeInTheDocument();
+        expect(screen.getByText('署名検証: 有効')).toBeInTheDocument();
+    });
+
+    it('calls onSelect when card clicked', () => {
+        const onSelect = jest.fn();
+        render(<CatalogCard item={mockItem} onInstall={jest.fn()} onSelect={onSelect} />);
+
+        const card = screen.getByTestId('catalog-card');
+        card.click();
+        expect(onSelect).toHaveBeenCalledWith(mockItem);
     });
 });

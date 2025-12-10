@@ -12,6 +12,7 @@ interface CatalogCardProps {
 
 export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardProps) {
     const { containers, isLoading } = useContainers();
+    const scopes = item.required_scopes || [];
 
     const status = useMemo(() => {
         if (isLoading) return 'loading';
@@ -95,6 +96,21 @@ export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardPr
                             Requires Secrets
                         </span>
                     )}
+                    {item.verify_signatures === false && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                            署名検証無効
+                        </span>
+                    )}
+                </div>
+
+                <div className="space-y-1 mb-3">
+                    <div className="text-xs text-gray-700">
+                        <span className="font-semibold">要求スコープ: </span>
+                        {scopes.length > 0 ? scopes.join(', ') : 'なし'}
+                    </div>
+                    <div className="text-xs text-gray-700">
+                        署名検証: {item.verify_signatures === false ? '無効' : '有効'}
+                    </div>
                 </div>
 
                 <div className="text-xs text-gray-500 mb-2">

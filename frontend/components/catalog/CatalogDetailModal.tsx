@@ -1,12 +1,14 @@
 'use client';
 
 import { CatalogItem } from '@/lib/types/catalog';
+import SessionExecutionPanel from './SessionExecutionPanel';
 
 interface CatalogDetailModalProps {
   isOpen: boolean;
   item: CatalogItem | null;
   onClose: () => void;
   onInstall: (item: CatalogItem) => void;
+  onOAuth?: (item: CatalogItem) => void;
 }
 
 export default function CatalogDetailModal({
@@ -14,6 +16,7 @@ export default function CatalogDetailModal({
   item,
   onClose,
   onInstall,
+  onOAuth,
 }: CatalogDetailModalProps) {
   if (!isOpen || !item) {
     return null;
@@ -51,6 +54,15 @@ export default function CatalogDetailModal({
                       シークレットが必要
                     </span>
                   )}
+                  {item.verify_signatures === false ? (
+                    <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
+                      署名検証無効
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                      署名検証有効
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -77,6 +89,15 @@ export default function CatalogDetailModal({
             <h3 className="text-sm font-medium text-gray-900">説明</h3>
             <p className="mt-2 whitespace-pre-line text-sm text-gray-700">{item.description}</p>
           </div>
+
+          {item.verify_signatures === false && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              <p className="font-semibold">リスク警告</p>
+              <p className="mt-1">
+                署名検証が無効化されています。署名未検証のイメージが許可される可能性があります。
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="rounded-lg border border-gray-200 p-4">
@@ -134,9 +155,62 @@ export default function CatalogDetailModal({
               )}
             </div>
           </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="rounded-lg border border-gray-200 p-4 space-y-2">
+              <p className="text-sm font-semibold text-gray-900">要求スコープ</p>
+              <p className="text-sm text-gray-700">
+                {item.required_scopes?.length ? item.required_scopes.join(', ') : 'なし'}
+              </p>
+              {item.allowlist_hint && (
+                <div className="rounded bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                  <p className="font-semibold">Allowlist ヒント</p>
+                  <p className="mt-1">{item.allowlist_hint}</p>
+                </div>
+              )}
+            </div>
+            <div className="rounded-lg border border-gray-200 p-4 space-y-2">
+              <p className="text-sm font-semibold text-gray-900">署名検証</p>
+              <p className="text-sm text-gray-700">
+                {item.verify_signatures === false ? '無効' : '有効'}
+              </p>
+              {item.jwks_url && (
+                <p className="text-xs text-gray-600 break-all">
+                  JWKS: <span className="font-mono">{item.jwks_url}</span>
+                </p>
+              )}
+              {item.permit_unsigned && item.permit_unsigned.length > 0 && (
+                <div className="rounded bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
+                  <p className="font-semibold">未署名許可条件</p>
+                  <p className="mt-1 break-words">{item.permit_unsigned.join(', ')}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-gray-200 p-4">
+            <p className="text-sm font-semibold text-gray-900">Session/Execution パネル</p>
+            <p className="text-xs text-gray-600 mb-3">
+              ゲートウェイ状態を確認し、mcp-exec を同期/非同期で実行できます。
+            </p>
+            <SessionExecutionPanel
+              serverId={item.id}
+              image={item.docker_image}
+              defaultEnv={item.default_env}
+            />
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+          {onOAuth && (
+            <button
+              type="button"
+              onClick={() => onOAuth(item)}
+              className="rounded bg-indigo-600 px-4 py-2 text-white transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-400"
+            >
+              OAuth接続
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}
