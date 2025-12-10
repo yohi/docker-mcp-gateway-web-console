@@ -33,6 +33,10 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 def get_session_service() -> SessionService:
     """SessionService のシングルトンを返す。"""
     state_store = StateStore()
+    try:
+        state_store.init_schema()
+    except Exception:
+        logger.debug("state store init skipped", exc_info=True)
     container_service = get_container_service(secret_manager=get_secret_manager())
     return SessionService(
         container_service=container_service,

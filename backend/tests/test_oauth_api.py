@@ -744,11 +744,39 @@ async def test_oauth_refresh_provider_5xx_keeps_credential(
 
 
 @pytest.mark.asyncio
-async def test_oauth_refresh_server_id_mismatch_returns_422(reset_oauth_service):
+async def test_oauth_refresh_server_id_mismatch_returns_422(monkeypatch, reset_oauth_service):
+    from app.services import oauth as oauth_service_module
+
     code_verifier = "test-verifier"
     code_challenge = OAuthService._compute_code_challenge(code_verifier)
 
+    class SuccessClient:
+        call_count = 0
+
+        def __init__(self, *args, **kwargs):
+            return
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, data=None, headers=None, timeout=None):
+            SuccessClient.call_count += 1
+            return httpx.Response(
+                status_code=200,
+                request=httpx.Request("POST", url),
+                json={
+                    "access_token": "token",
+                    "refresh_token": "refresh",
+                    "expires_in": 3600,
+                    "scope": "repo:read",
+                },
+            )
+
     store = reset_oauth_service.state_store
+    monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", SuccessClient)
 
     async with AsyncClient(app=app, base_url="http://test") as ac:
         init_resp = await ac.post(

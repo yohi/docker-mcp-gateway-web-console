@@ -22,6 +22,11 @@ type AuthState = {
   scopes: string[];
 };
 
+type CodeChallengeResult = {
+  challenge: string;
+  method: 'S256' | 'plain';
+};
+
 const base64UrlEncode = (buffer: ArrayBuffer) => {
   const bytes = new Uint8Array(buffer);
   let base64: string;
@@ -45,18 +50,18 @@ function createCodeVerifier(): string {
   return base64UrlEncode(new TextEncoder().encode(`fallback-${Math.random()}`));
 }
 
-async function toCodeChallenge(verifier: string): Promise<string> {
+async function toCodeChallenge(verifier: string): Promise<CodeChallengeResult> {
   try {
     if (typeof crypto !== 'undefined' && crypto.subtle) {
       const data = new TextEncoder().encode(verifier);
       const digest = await crypto.subtle.digest('SHA-256', data);
-      return base64UrlEncode(digest);
+      return { challenge: base64UrlEncode(digest), method: 'S256' };
     }
   } catch (err) {
     console.warn('PKCE challenge generation failed, falling back', err);
   }
   // フォールバック: verifier をそのまま返す（テスト環境向け）
-  return verifier;
+  return { challenge: verifier, method: 'plain' };
 }
 
 export default function OAuthModal({ isOpen, item, onClose }: OAuthModalProps) {
@@ -88,13 +93,13 @@ export default function OAuthModal({ isOpen, item, onClose }: OAuthModalProps) {
       setLoading(true);
       setError(null);
       const codeVerifier = createCodeVerifier();
-      const challenge = await toCodeChallenge(codeVerifier);
+      const { challenge, method } = await toCodeChallenge(codeVerifier);
 
       const response = await initiateOAuth({
         serverId: item.id,
         scopes,
         codeChallenge: challenge,
-        codeChallengeMethod: 'S256',
+        codeChallengeMethod: method,
       });
 
       const nextAuth: AuthState = {
