@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import auth, catalog, config, containers, inspector, oauth
+from app.api import auth, catalog, config, containers, inspector, oauth, sessions
 from app.config import settings
 from app.services.auth import AuthError
 from app.services.catalog import CatalogError
@@ -54,6 +54,7 @@ app.include_router(config.router)
 app.include_router(containers.router, prefix="/api")
 app.include_router(inspector.router, prefix="/api")
 app.include_router(oauth.router)
+app.include_router(sessions.router)
 
 
 @app.get("/")

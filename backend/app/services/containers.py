@@ -204,22 +204,31 @@ class ContainerService:
                         "bind": container_path,
                         "mode": "rw",
                     }
-            
+
+            docker_kwargs = {
+                "image": config.image,
+                "name": config.name,
+                "environment": resolved_env,
+                "ports": port_bindings,
+                "volumes": volumes,
+                "labels": config.labels,
+                "command": config.command,
+                "network_mode": config.network_mode,
+                "detach": True,
+            }
+
+            if config.cpus is not None:
+                docker_kwargs["cpus"] = config.cpus
+            if config.memory_limit is not None:
+                docker_kwargs["mem_limit"] = config.memory_limit
+            if config.restart_policy:
+                docker_kwargs["restart_policy"] = config.restart_policy
+
             # Create container
             loop = asyncio.get_event_loop()
             container = await loop.run_in_executor(
                 None,
-                lambda: client.containers.create(
-                    image=config.image,
-                    name=config.name,
-                    environment=resolved_env,
-                    ports=port_bindings,
-                    volumes=volumes,
-                    labels=config.labels,
-                    command=config.command,
-                    network_mode=config.network_mode,
-                    detach=True,
-                ),
+                lambda: client.containers.create(**docker_kwargs),
             )
             
             # Start the container
