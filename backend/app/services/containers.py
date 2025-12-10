@@ -204,22 +204,31 @@ class ContainerService:
                         "bind": container_path,
                         "mode": "rw",
                     }
-            
+
+            docker_kwargs = {
+                "image": config.image,
+                "name": config.name,
+                "environment": resolved_env,
+                "ports": port_bindings,
+                "volumes": volumes,
+                "labels": config.labels,
+                "command": config.command,
+                "network_mode": config.network_mode,
+                "detach": True,
+            }
+
+            if config.cpus is not None:
+                docker_kwargs["cpus"] = config.cpus
+            if config.memory_limit is not None:
+                docker_kwargs["mem_limit"] = config.memory_limit
+            if config.restart_policy:
+                docker_kwargs["restart_policy"] = config.restart_policy
+
             # Create container
             loop = asyncio.get_event_loop()
             container = await loop.run_in_executor(
                 None,
-                lambda: client.containers.create(
-                    image=config.image,
-                    name=config.name,
-                    environment=resolved_env,
-                    ports=port_bindings,
-                    volumes=volumes,
-                    labels=config.labels,
-                    command=config.command,
-                    network_mode=config.network_mode,
-                    detach=True,
-                ),
+                lambda: client.containers.create(**docker_kwargs),
             )
             
             # Start the container
@@ -236,6 +245,58 @@ class ContainerService:
         except Exception as e:
             # Catch secret resolution errors
             raise ContainerError(f"Failed to create container: {e}") from e
+
+    async def exec_command(
+        self,
+        container_id: str,
+        command: List[str],
+    ) -> tuple[int, bytes]:
+        """
+        コンテナ内でコマンドを実行し、終了コードと出力を返す。
+
+        Args:
+            container_id: 対象コンテナ ID
+            command: 実行するコマンド配列
+
+        Returns:
+            (exit_code, combined_output) のタプル
+
+        Raises:
+            ContainerError: コンテナが存在しない場合、または Docker 実行に失敗した場合
+        """
+        try:
+            client = self._get_client()
+            loop = asyncio.get_event_loop()
+            container = await loop.run_in_executor(
+                None,
+                lambda: client.containers.get(container_id)
+            )
+
+            exit_code, output = await loop.run_in_executor(
+                None,
+                lambda: container.exec_run(
+                    cmd=command,
+                    stdout=True,
+                    stderr=True,
+                    demux=False,
+                ),
+            )
+
+            if output is None:
+                combined_output = b""
+            elif isinstance(output, (bytes, bytearray)):
+                combined_output = bytes(output)
+            else:
+                combined_output = str(output).encode("utf-8", errors="replace")
+
+            return (exit_code or 0, combined_output)
+
+        except NotFound as e:
+            raise ContainerError(f"Container not found: {container_id}") from e
+        except APIError as e:
+            raise ContainerError(f"Docker API error: {e}") from e
+        except DockerException as e:
+            raise ContainerError(f"Failed to exec command: {e}") from e
 
     async def start_container(self, container_id: str) -> bool:
         """

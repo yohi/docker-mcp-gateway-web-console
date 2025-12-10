@@ -6,7 +6,16 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import auth, catalog, config, containers, inspector
+from app.api import (
+    auth,
+    catalog,
+    config,
+    containers,
+    gateways,
+    inspector,
+    oauth,
+    sessions,
+)
 from app.config import settings
 from app.services.auth import AuthError
 from app.services.catalog import CatalogError
@@ -53,6 +62,9 @@ app.include_router(catalog.router)
 app.include_router(config.router)
 app.include_router(containers.router, prefix="/api")
 app.include_router(inspector.router, prefix="/api")
+app.include_router(oauth.router)
+app.include_router(sessions.router)
+app.include_router(gateways.router)
 
 
 @app.get("/")
@@ -78,7 +90,7 @@ async def health():
 async def auth_error_handler(request: Request, exc: AuthError):
     """
     Handle authentication errors.
-    
+
     **Validates: Requirements 10.1, 10.2**
     """
     logger.warning(
@@ -101,7 +113,7 @@ async def auth_error_handler(request: Request, exc: AuthError):
 async def catalog_error_handler(request: Request, exc: CatalogError):
     """
     Handle catalog-related errors.
-    
+
     **Validates: Requirements 10.1, 10.2**
     """
     logger.error(
@@ -124,7 +136,7 @@ async def catalog_error_handler(request: Request, exc: CatalogError):
 async def config_error_handler(request: Request, exc: ConfigError):
     """
     Handle configuration errors.
-    
+
     **Validates: Requirements 10.1, 10.2**
     """
     logger.error(
@@ -147,7 +159,7 @@ async def config_error_handler(request: Request, exc: ConfigError):
 async def container_error_handler(request: Request, exc: ContainerError):
     """
     Handle container operation errors.
-    
+
     **Validates: Requirements 10.1, 10.2**
     """
     logger.error(
@@ -170,7 +182,7 @@ async def container_error_handler(request: Request, exc: ContainerError):
 async def inspector_error_handler(request: Request, exc: InspectorError):
     """
     Handle MCP inspector errors.
-    
+
     **Validates: Requirements 10.1, 10.2**
     """
     logger.error(
@@ -193,7 +205,7 @@ async def inspector_error_handler(request: Request, exc: InspectorError):
 async def secret_error_handler(request: Request, exc: SecretError):
     """
     Handle secret management errors.
-    
+
     **Validates: Requirements 10.1, 10.2**
     """
     logger.error(
@@ -216,7 +228,7 @@ async def secret_error_handler(request: Request, exc: SecretError):
 async def validation_error_handler(request: Request, exc: RequestValidationError):
     """
     Handle request validation errors.
-    
+
     **Validates: Requirements 10.1, 10.2**
     """
     logger.warning(
@@ -227,12 +239,12 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     )
     errors = exc.errors()
     error_messages = []
-    
+
     for error in errors:
         field = " -> ".join(str(loc) for loc in error["loc"])
         message = error["msg"]
         error_messages.append(f"{field}: {message}")
-    
+
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
@@ -248,9 +260,9 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 async def general_exception_handler(request: Request, exc: Exception):
     """
     Handle all other unexpected exceptions.
-    
+
     **Validates: Requirements 10.1, 10.5**
-    
+
     Logs detailed error information while returning a user-friendly message.
     """
     # Sanitize headers (omit sensitive headers)
@@ -258,12 +270,12 @@ async def general_exception_handler(request: Request, exc: Exception):
         k: v for k, v in request.headers.items()
         if k.lower() not in ("authorization", "cookie")
     }
-    
+
     # Safely read request body with size limit
     body_preview = None
     try:
         body_bytes = await request.body()
-        
+
         # Gate body logging behind configuration flag to prevent logging sensitive data
         if settings.log_request_body:
             # Only log actual body content in debug/non-production environments
@@ -277,7 +289,7 @@ async def general_exception_handler(request: Request, exc: Exception):
             body_preview = f"<body logging disabled, length: {len(body_bytes)} bytes>"
     except Exception as body_error:
         body_preview = f"<failed to read body: {body_error}>"
-    
+
     logger.error(
         "Unexpected error on %s %s: %s | Headers: %s | Body: %s",
         request.method,
@@ -287,7 +299,7 @@ async def general_exception_handler(request: Request, exc: Exception):
         body_preview,
         exc_info=True,
     )
-    
+
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={

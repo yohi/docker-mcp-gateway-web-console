@@ -1,4 +1,8 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER = "PLEASE_SET_OAUTH_TOKEN_ENCRYPTION_KEY"
 
 
 class Settings(BaseSettings):
@@ -17,6 +21,13 @@ class Settings(BaseSettings):
 
     # Session Configuration
     session_timeout_minutes: int = 30
+    state_db_path: str = "data/state.db"
+    credential_retention_days: int = 30
+    job_retention_hours: int = 24
+    # Local/dev only: True で mTLS 証明書をプレースホルダーとして生成する
+    mtls_placeholder_mode: bool = Field(
+        default=False, validation_alias="MTLS_PLACEHOLDER_MODE"
+    )
 
     # Catalog Configuration
     catalog_cache_ttl_seconds: int = 3600
@@ -27,6 +38,21 @@ class Settings(BaseSettings):
 
     # CORS Configuration
     cors_origins: str = "http://localhost:3000"
+
+    # OAuth Configuration
+    oauth_authorize_url: str = "https://auth.example.com/authorize"
+    oauth_token_url: str = "https://auth.example.com/token"
+    oauth_client_id: str = "mcp-console"
+    oauth_redirect_uri: str = "http://localhost:8000/api/catalog/oauth/callback"
+    oauth_request_timeout_seconds: int = 10
+    # アクセス/リフレッシュトークンの暗号化キー（Fernet）。必ず環境変数 OAUTH_TOKEN_ENCRYPTION_KEY で本番用のキーを指定すること。
+    oauth_token_encryption_key: str = Field(
+        default=OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER,
+        validation_alias="OAUTH_TOKEN_ENCRYPTION_KEY",
+    )
+    oauth_token_encryption_key_id: str = Field(
+        default="default", validation_alias="OAUTH_TOKEN_ENCRYPTION_KEY_ID"
+    )
 
     # Application Configuration
     log_level: str = "INFO"

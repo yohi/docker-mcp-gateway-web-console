@@ -20,9 +20,12 @@ describe('Property 10: Catalog Prefill', () => {
           id: fc.string({ minLength: 1 }).map(s => 'id-' + s.replace(/[^a-zA-Z0-9_.-]/g, '')),
           name: fc.string(),
           description: fc.string(),
+          vendor: fc.string(),
           category: fc.string(),
           docker_image: fc.string({ minLength: 1 }),
+          icon_url: fc.string(),
           default_env: fc.dictionary(fc.string(), fc.string()),
+          required_envs: fc.array(fc.string()),
           required_secrets: fc.array(fc.string())
         }),
         (item) => {

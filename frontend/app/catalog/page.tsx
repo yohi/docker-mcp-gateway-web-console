@@ -6,6 +6,7 @@ import { MainLayout } from '@/components/layout';
 import CatalogList from '@/components/catalog/CatalogList';
 import InstallModal from '@/components/catalog/InstallModal';
 import CatalogDetailModal from '@/components/catalog/CatalogDetailModal';
+import OAuthModal from '@/components/catalog/OAuthModal';
 import { CatalogItem } from '@/lib/types/catalog';
 
 const DEFAULT_CATALOG_URL =
@@ -18,6 +19,7 @@ export default function CatalogPage() {
 
   const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
   const [detailItem, setDetailItem] = useState<CatalogItem | null>(null);
+  const [oauthItem, setOauthItem] = useState<CatalogItem | null>(null);
 
   const handleInstall = (item: CatalogItem) => {
     setDetailItem(null);
@@ -26,6 +28,10 @@ export default function CatalogPage() {
 
   const handleSelect = (item: CatalogItem) => {
     setDetailItem(item);
+  };
+
+  const handleOAuth = (item: CatalogItem) => {
+    setOauthItem(item);
   };
 
   const handleSourceChange = () => {
@@ -84,6 +90,13 @@ export default function CatalogPage() {
             item={detailItem}
             onClose={() => setDetailItem(null)}
             onInstall={handleInstall}
+            onOAuth={handleOAuth}
+          />
+
+          <OAuthModal
+            isOpen={!!oauthItem}
+            item={oauthItem}
+            onClose={() => setOauthItem(null)}
           />
         </div>
       </MainLayout>
