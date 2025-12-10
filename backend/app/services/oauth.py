@@ -102,6 +102,14 @@ class CredentialNotFoundError(OAuthError):
     """credential_key が見つからない場合の例外。"""
 
 
+class ConfigurationError(OAuthError):
+    """設定値が無効な場合の例外。"""
+
+
+class ServerMismatchError(OAuthError):
+    """server_id が一致しない場合の例外。"""
+
+
 class OAuthInvalidGrantError(OAuthError):
     """invalid_grant/invalid_token 時の例外。"""
 
@@ -161,8 +169,13 @@ class OAuthService:
         self._refresh_threshold = timedelta(minutes=15)
         self._scope_policy = ScopePolicyService(permitted_scopes or [])
         self._credential_creator = credential_creator
+        encryption_key = settings.oauth_token_encryption_key
+        if not encryption_key or encryption_key.strip() == "":
+            raise ConfigurationError(
+                "oauth_token_encryption_key が未設定です。環境変数 OAUTH_TOKEN_ENCRYPTION_KEY に有効な Fernet キーを設定してください。"
+            )
         self._token_cipher = TokenCipher(
-            settings.oauth_token_encryption_key, settings.oauth_token_encryption_key_id
+            encryption_key, settings.oauth_token_encryption_key_id
         )
         self._secret_store: Dict[str, Dict[str, object]] = {}
         self._load_persisted_credentials()
@@ -401,6 +414,8 @@ class OAuthService:
         secret = self._secret_store.get(credential_key)
         if record is None or secret is None:
             raise CredentialNotFoundError("credential_key が見つかりません")
+        if server_id and record.server_id != server_id:
+            raise ServerMismatchError("server_id が一致しません")
 
         now = datetime.now(timezone.utc)
         if record.expires_at - now > self._refresh_threshold:
@@ -435,7 +450,7 @@ class OAuthService:
                 scope_value = payload.get("scope") or " ".join(record.scopes)
                 scopes = scope_value.split() if isinstance(scope_value, str) else record.scopes
                 credential = self._save_tokens(
-                    server_id=server_id, scopes=scopes, payload=payload
+                    server_id=record.server_id, scopes=scopes, payload=payload
                 )
                 self._delete_credential(credential_key)
                 self._record_audit(
@@ -444,7 +459,7 @@ class OAuthService:
                     metadata={
                         "old_credential_key": credential_key,
                         "credential_key": credential["credential_key"],
-                        "server_id": server_id,
+                        "server_id": record.server_id,
                     },
                 )
                 return {
