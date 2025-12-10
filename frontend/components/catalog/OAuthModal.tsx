@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
 import {
   collectScopes,
@@ -74,17 +74,36 @@ export default function OAuthModal({ isOpen, item, onClose }: OAuthModalProps) {
 
   const scopes = useMemo(() => (item ? collectScopes(item) : []), [item]);
 
+  const previousItemIdRef = useRef<string | null>(null);
+
   useEffect(() => {
+    const currentItemId = item?.id ?? null;
+    const previousItemId = previousItemIdRef.current;
+
+    // モーダルを閉じた場合はすべての状態をリセット
     if (!isOpen) {
       setAuthState(null);
       setResult(null);
       setCodeInput('');
       setStateInput('');
       setError(null);
-    } else if (item) {
-      setStateInput('');
+      previousItemIdRef.current = null;
+      return;
     }
-  }, [isOpen, item]);
+
+    // 開いたまま対象アイテムが変わった場合も状態をリセット
+    if (isOpen && currentItemId && previousItemId && currentItemId !== previousItemId) {
+      setAuthState(null);
+      setResult(null);
+      setCodeInput('');
+      setStateInput('');
+      setError(null);
+    }
+
+    if (currentItemId) {
+      previousItemIdRef.current = currentItemId;
+    }
+  }, [isOpen, item?.id]);
 
   if (!isOpen || !item) return null;
 
