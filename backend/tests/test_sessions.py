@@ -234,6 +234,116 @@ async def test_create_session_skips_when_permit_unsigned_matches(
 
 
 @pytest.mark.asyncio
+async def test_create_session_skips_when_permit_unsigned_none(tmp_path: Path) -> None:
+    """permit_unsigned に none が含まれる場合は署名検証をスキップする。"""
+    container_service = AsyncMock()
+    container_service.create_container.return_value = "container-permit-none"
+    signature_verifier = AsyncMock()
+    state_store = _DummyStateStore()
+    service = SessionService(
+        container_service=container_service,
+        state_store=state_store,
+        cert_base_dir=tmp_path,
+        signature_verifier=signature_verifier,
+    )
+    image = "ghcr.io/example/server:1.2.3"
+    policy = SignaturePolicy(
+        verify_signatures=True,
+        mode="enforcement",
+        permit_unsigned=[PermitUnsignedEntry(type="none")],
+        allowed_algorithms=["RSA-PSS-SHA256"],
+    )
+
+    record = await service.create_session(
+        server_id="server-permit-none",
+        image=image,
+        env={},
+        bw_session_key="bw-session",
+        correlation_id="corr-sig-permit-none",
+        signature_policy=policy,
+    )
+
+    signature_verifier.verify_image.assert_not_awaited()
+    container_service.create_container.assert_awaited_once()
+    assert state_store.get_session(record.session_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_create_session_skips_when_permit_unsigned_digest(tmp_path: Path) -> None:
+    """ダイジェスト指定の permit_unsigned にマッチする場合は検証をスキップする。"""
+    container_service = AsyncMock()
+    container_service.create_container.return_value = "container-permit-digest"
+    signature_verifier = AsyncMock()
+    state_store = _DummyStateStore()
+    service = SessionService(
+        container_service=container_service,
+        state_store=state_store,
+        cert_base_dir=tmp_path,
+        signature_verifier=signature_verifier,
+    )
+    digest = "sha256:" + "a" * 64
+    image = f"ghcr.io/example/server@{digest}"
+    policy = SignaturePolicy(
+        verify_signatures=True,
+        mode="enforcement",
+        permit_unsigned=[PermitUnsignedEntry(type="sha256", digest=digest)],
+        allowed_algorithms=["RSA-PSS-SHA256"],
+    )
+
+    record = await service.create_session(
+        server_id="server-permit-digest",
+        image=image,
+        env={},
+        bw_session_key="bw-session",
+        correlation_id="corr-sig-permit-digest",
+        signature_policy=policy,
+    )
+
+    signature_verifier.verify_image.assert_not_awaited()
+    container_service.create_container.assert_awaited_once()
+    assert state_store.get_session(record.session_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_create_session_skips_when_permit_unsigned_thumbprint(
+    tmp_path: Path,
+) -> None:
+    """サムプリント指定の permit_unsigned にマッチする場合は検証をスキップする。"""
+    container_service = AsyncMock()
+    container_service.create_container.return_value = "container-permit-thumb"
+    signature_verifier = AsyncMock()
+    state_store = _DummyStateStore()
+    service = SessionService(
+        container_service=container_service,
+        state_store=state_store,
+        cert_base_dir=tmp_path,
+        signature_verifier=signature_verifier,
+    )
+    thumbprint = "ABCDEF1234567890"
+    image = "ghcr.io/example/server:thumb"
+    policy = SignaturePolicy(
+        verify_signatures=True,
+        mode="enforcement",
+        permit_unsigned=[PermitUnsignedEntry(type="thumbprint", cert=thumbprint)],
+        allowed_algorithms=["RSA-PSS-SHA256"],
+    )
+
+    record = await service.create_session(
+        server_id="server-permit-thumb",
+        image=image,
+        env={},
+        bw_session_key="bw-session",
+        correlation_id="corr-sig-permit-thumb",
+        signature_policy=policy,
+        image_thumbprint=thumbprint,
+    )
+
+    signature_verifier.verify_image.assert_not_awaited()
+    container_service.create_container.assert_awaited_once()
+    assert state_store.get_session(record.session_id) is not None
+
+
+@pytest.mark.asyncio
 async def test_create_session_allows_audit_only_on_failure(tmp_path: Path) -> None:
     """audit-only モードでは署名検証失敗時でも起動を継続する。"""
     container_service = AsyncMock()

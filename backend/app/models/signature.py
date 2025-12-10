@@ -18,7 +18,10 @@ class SignatureVerificationError(Exception):
 
 
 class PermitUnsignedEntry(BaseModel):
-    """署名検証をスキップする例外条件。"""
+    """署名検証をスキップする例外条件。
+
+    type=none の場合は無条件で未署名のイメージを許可する。
+    """
 
     type: Literal["none", "any", "sha256", "thumbprint", "image"]
     digest: Optional[str] = Field(default=None, description="sha256 ダイジェスト")

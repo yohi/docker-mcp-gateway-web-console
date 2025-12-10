@@ -71,6 +71,8 @@ async def create_session(
     record = await session_service.create_session(
         server_id=payload.server_id,
         image=payload.image,
+        image_digest=payload.image_digest,
+        image_thumbprint=payload.image_thumbprint,
         env=payload.env,
         bw_session_key=session.bw_session_key,
         correlation_id=session_id,

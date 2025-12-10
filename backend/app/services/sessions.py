@@ -94,6 +94,8 @@ class SessionService:
         *,
         idle_minutes: int = DEFAULT_IDLE_MINUTES,
         signature_policy: Optional[SignaturePolicy] = None,
+        image_digest: Optional[str] = None,
+        image_thumbprint: Optional[str] = None,
     ) -> SessionRecord:
         """
         セッション専用のゲートウェイコンテナを起動し、セッションレコードを保存する。
@@ -111,7 +113,12 @@ class SessionService:
         }
 
         if signature_policy and signature_policy.verify_signatures:
-            if not self._is_permitted_unsigned(image, signature_policy.permit_unsigned):
+            if not self._is_permitted_unsigned(
+                image,
+                signature_policy.permit_unsigned,
+                image_digest=image_digest,
+                image_thumbprint=image_thumbprint,
+            ):
                 try:
                     await self.signature_verifier.verify_image(
                         image=image,
@@ -558,18 +565,54 @@ class SessionService:
             "ca_path": str(ca_path),
         }
 
+    def _extract_image_digest(self, image: str) -> Optional[str]:
+        """イメージ参照から sha256 ダイジェストを抽出する。"""
+        if "@" not in image:
+            return None
+        _, digest_part = image.rsplit("@", 1)
+        digest_part = digest_part.strip()
+        if not digest_part.startswith("sha256:"):
+            return None
+        hex_part = digest_part[len("sha256:") :]
+        if len(hex_part) != 64:
+            return None
+        if not all(ch in "0123456789abcdefABCDEF" for ch in hex_part):
+            return None
+        return f"sha256:{hex_part.lower()}"
+
     def _is_permitted_unsigned(
-        self, image: str, entries: List[PermitUnsignedEntry]
+        self,
+        image: str,
+        entries: List[PermitUnsignedEntry],
+        *,
+        image_digest: Optional[str] = None,
+        image_thumbprint: Optional[str] = None,
     ) -> bool:
         """未署名を許容する条件に合致するかを判定する。"""
+        normalized_digest = image_digest or self._extract_image_digest(image)
+        if normalized_digest:
+            normalized_digest = normalized_digest.lower()
         for entry in entries:
+            if entry.type == "none":
+                # 無条件で未署名を許可する例外
+                return True
             if entry.type == "any":
                 return True
             if entry.type == "image" and entry.name and entry.name == image:
                 return True
-            if entry.type == "sha256" and entry.digest and entry.digest == image:
+            if (
+                entry.type == "sha256"
+                and entry.digest
+                and normalized_digest
+                and entry.digest.lower() == normalized_digest
+            ):
                 return True
-            if entry.type == "thumbprint" and entry.cert and entry.cert == image:
+            if (
+                entry.type == "thumbprint"
+                and entry.cert
+                and image_thumbprint
+                and entry.cert == image_thumbprint
+            ):
                 return True
         return False
 
