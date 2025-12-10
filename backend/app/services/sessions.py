@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -23,6 +24,7 @@ from app.models.signature import (
 )
 from app.models.state import JobRecord, SessionRecord
 from app.services.containers import ContainerError, ContainerService
+from app.services.metrics import MetricsRecorder
 from app.services.signature_verifier import NoopSignatureVerifier, SignatureVerifier
 from app.services.state_store import StateStore
 
@@ -76,6 +78,7 @@ class SessionService:
         state_store: Optional[StateStore] = None,
         cert_base_dir: Optional[Path] = None,
         signature_verifier: Optional[SignatureVerifier] = None,
+        metrics: Optional[MetricsRecorder] = None,
     ) -> None:
         self.container_service = container_service
         self.state_store = state_store or StateStore()
@@ -83,6 +86,7 @@ class SessionService:
         self.cert_base_dir.mkdir(parents=True, exist_ok=True)
         self._job_tasks: Dict[str, asyncio.Task[None]] = {}
         self.signature_verifier = signature_verifier or NoopSignatureVerifier()
+        self.metrics = metrics or MetricsRecorder()
 
     async def create_session(
         self,
@@ -113,31 +117,57 @@ class SessionService:
         }
 
         if signature_policy and signature_policy.verify_signatures:
-            if not self._is_permitted_unsigned(
+            mode = signature_policy.mode
+            if self._is_permitted_unsigned(
                 image,
                 signature_policy.permit_unsigned,
                 image_digest=image_digest,
                 image_thumbprint=image_thumbprint,
             ):
+                self.metrics.increment(
+                    "signature_verification_total",
+                    {"mode": mode, "result": "skipped"},
+                )
+            else:
+                self.metrics.increment(
+                    "signature_verification_total",
+                    {"mode": mode, "result": "attempt"},
+                )
                 try:
                     await self.signature_verifier.verify_image(
                         image=image,
                         policy=signature_policy,
                         correlation_id=correlation_id,
                     )
+                    self.metrics.increment(
+                        "signature_verification_total",
+                        {"mode": mode, "result": "success"},
+                    )
+                    self._record_signature_audit(
+                        event_type="signature_verification_success",
+                        correlation_id=correlation_id,
+                        metadata={"image": image, "mode": mode},
+                    )
                 except SignatureVerificationError as exc:
-                    if signature_policy.mode == "audit-only":
-                        self.state_store.record_audit_log(
-                            event_type="signature_verification_failed",
-                            correlation_id=correlation_id,
-                            metadata={
-                                "error_code": exc.error_code,
-                                "message": exc.message,
-                                "mode": signature_policy.mode,
-                                "image": image,
-                            },
-                        )
-                    else:
+                    self.metrics.increment(
+                        "signature_verification_total",
+                        {
+                            "mode": mode,
+                            "result": "failure",
+                            "error_code": exc.error_code,
+                        },
+                    )
+                    self._record_signature_audit(
+                        event_type="signature_verification_failed",
+                        correlation_id=correlation_id,
+                        metadata={
+                            "error_code": exc.error_code,
+                            "message": exc.message,
+                            "mode": mode,
+                            "image": image,
+                        },
+                    )
+                    if signature_policy.mode != "audit-only":
                         raise
 
         mtls_bundle = self._ensure_mtls_bundle(session_id)
@@ -446,6 +476,19 @@ class SessionService:
         job.truncated = result.truncated
         self.state_store.save_job(job)
 
+    def _record_signature_audit(
+        self, *, event_type: str, correlation_id: str, metadata: Dict[str, object]
+    ) -> None:
+        """署名検証関連の監査ログを書き出す。"""
+        try:
+            self.state_store.record_audit_log(
+                event_type=event_type,
+                correlation_id=correlation_id,
+                metadata=metadata,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("署名検証監査ログの記録に失敗しました", exc_info=True)
+
     def _ensure_mtls_bundle(self, session_id: str) -> Dict[str, str]:
         """
         mTLS 用の証明書バンドルを生成する。
@@ -621,6 +664,25 @@ class SessionService:
         if gateway_endpoint.startswith("container://"):
             return gateway_endpoint.split("container://", 1)[1]
         return gateway_endpoint
+
+    def cleanup_session(self, session_id: str) -> None:
+        """セッション終了時に証明書バンドルを削除し、ストアから除外する。"""
+        record = self.state_store.get_session(session_id)
+        if record is None:
+            return
+
+        cert_ref = record.mtls_cert_ref or {}
+        bundle_dir: Optional[Path] = None
+        for key_name in ("cert_path", "key_path", "ca_path"):
+            path_value = cert_ref.get(key_name)
+            if path_value:
+                bundle_dir = Path(path_value).parent
+                break
+
+        if bundle_dir and bundle_dir.exists():
+            shutil.rmtree(bundle_dir, ignore_errors=True)
+
+        self.state_store.delete_session(session_id)
 
     def _build_command(self, tool: str, args: List[str]) -> List[str]:
         """mcp-exec を意識したコマンド配列を生成する。"""

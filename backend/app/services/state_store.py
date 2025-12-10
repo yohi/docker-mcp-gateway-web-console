@@ -235,6 +235,12 @@ class StateStore:
             created_at=_from_iso(row["created_at"]),
         )
 
+    def delete_session(self, session_id: str) -> None:
+        """セッションレコードを削除する。存在しない場合は何もしない。"""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM sessions WHERE session_id=?", (session_id,))
+            conn.commit()
+
     # Job operations
     def save_job(self, record: JobRecord) -> None:
         """ジョブレコードを保存する。"""
