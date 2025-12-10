@@ -169,7 +169,7 @@ class TestGatewayAPI:
 async def test_default_healthcheck_retries_with_backoff(
     monkeypatch, state_store, allowlist_entry
 ):
-    """デフォルトのヘルスチェックが 1→2→4s バックオフで再試行することを検証する。"""
+    """デフォルトのヘルスチェックが 1→2s バックオフで再試行することを検証する。"""
     state_store.save_gateway_allow_entry(GatewayAllowEntry(**allowlist_entry))
 
     delays = []
@@ -179,7 +179,7 @@ async def test_default_healthcheck_retries_with_backoff(
 
     attempts = {"count": 0}
 
-    async def flaky_check(url: str, token: str) -> float:
+    async def flaky_check(_url: str, _token: str) -> float:
         attempts["count"] += 1
         if attempts["count"] < 3:
             raise RuntimeError("temporary failure")
