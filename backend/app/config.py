@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     oauth_client_id: str = "mcp-console"
     oauth_redirect_uri: str = "http://localhost:8000/api/catalog/oauth/callback"
     oauth_request_timeout_seconds: int = 10
+    # アクセス/リフレッシュトークンの暗号化キー（Fernet）。本番では必ず上書きすること。
+    oauth_token_encryption_key: str = "0h6IQzHOXySeOkpji4grLomqKgJo0vvVwvHnzdJzCDI="
+    oauth_token_encryption_key_id: str = "default"
 
     # Application Configuration
     log_level: str = "INFO"

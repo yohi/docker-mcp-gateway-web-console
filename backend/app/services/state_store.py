@@ -159,6 +159,23 @@ class StateStore:
             created_at=_from_iso(row["created_at"]),
         )
 
+    def list_credentials(self) -> List[CredentialRecord]:
+        """資格情報レコードを全件取得する。"""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM credentials").fetchall()
+        return [
+            CredentialRecord(
+                credential_key=row["credential_key"],
+                token_ref=json.loads(row["token_ref"]),
+                scopes=json.loads(row["scopes"]),
+                expires_at=_from_iso(row["expires_at"]),
+                server_id=row["server_id"],
+                created_by=row["created_by"],
+                created_at=_from_iso(row["created_at"]),
+            )
+            for row in rows
+        ]
+
     def delete_credential(self, credential_key: str) -> None:
         """資格情報レコードを削除する。存在しない場合は何もしない。"""
         with self._connect() as conn:

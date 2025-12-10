@@ -3,15 +3,17 @@
 import asyncio
 import base64
 import hashlib
+import json
 import logging
 import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
 import httpx
+from cryptography.fernet import Fernet, InvalidToken
 
 from ..config import settings
 from ..models.state import CredentialRecord
@@ -28,6 +30,48 @@ class OAuthState:
     code_challenge: Optional[str]
     code_challenge_method: Optional[str]
     scopes: List[str]
+
+
+class TokenCipher:
+    """トークンを暗号化・復号するユーティリティ。"""
+
+    def __init__(self, key: str, key_id: str = "default", algorithm: str = "fernet") -> None:
+        self._algo = algorithm
+        self._key_id = key_id
+        self._fernet = Fernet(key.encode("utf-8") if isinstance(key, str) else key)
+
+    @property
+    def metadata(self) -> Dict[str, str]:
+        """暗号メタデータを返す。"""
+        return {"algo": self._algo, "key_id": self._key_id}
+
+    def encrypt(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """ペイロードを暗号化し token_ref 用の辞書を返す。"""
+        blob = self._fernet.encrypt(json.dumps(payload).encode("utf-8")).decode("utf-8")
+        return {"type": "encrypted", "algo": self._algo, "key_id": self._key_id, "blob": blob}
+
+    def decrypt(self, token_ref: Dict[str, Any]) -> Dict[str, Any]:
+        """token_ref から平文ペイロードを復号する。"""
+        if token_ref.get("type") != "encrypted":
+            raise ValueError("token_ref type is not encrypted")
+
+        algo = token_ref.get("algo") or token_ref.get("algorithm")
+        key_id = token_ref.get("key_id") or token_ref.get("kid")
+        if algo and algo != self._algo:
+            raise ValueError(f"unsupported algorithm: {algo}")
+        if key_id and key_id != self._key_id:
+            raise ValueError(f"unsupported key id: {key_id}")
+
+        blob = token_ref.get("blob")
+        if not blob:
+            raise ValueError("token_ref missing blob")
+
+        try:
+            decrypted = self._fernet.decrypt(blob.encode("utf-8"))
+        except InvalidToken as exc:
+            raise ValueError("token_ref decrypt failed") from exc
+
+        return json.loads(decrypted.decode("utf-8"))
 
 
 class OAuthError(Exception):
@@ -117,7 +161,80 @@ class OAuthService:
         self._refresh_threshold = timedelta(minutes=15)
         self._scope_policy = ScopePolicyService(permitted_scopes or [])
         self._credential_creator = credential_creator
+        self._token_cipher = TokenCipher(
+            settings.oauth_token_encryption_key, settings.oauth_token_encryption_key_id
+        )
         self._secret_store: Dict[str, Dict[str, object]] = {}
+        self._load_persisted_credentials()
+
+    def _load_persisted_credentials(self) -> None:
+        """永続ストアから暗号化済みトークンを復元する。失敗時は再認可させるため削除する。"""
+        try:
+            records = self._state_store.list_credentials()
+        except Exception:
+            logger.warning("資格情報のロードに失敗しました。再認可が必要です。", exc_info=True)
+            return
+
+        for record in records:
+            try:
+                secret = self._decrypt_token_ref(record.token_ref)
+                self._secret_store[record.credential_key] = secret
+            except Exception:
+                logger.warning("資格情報の復号に失敗したため削除します: %s", record.credential_key, exc_info=True)
+                try:
+                    self._state_store.delete_credential(record.credential_key)
+                except Exception:
+                    logger.debug("復号失敗した credential の削除に失敗しました", exc_info=True)
+
+    def _encrypt_tokens(
+        self, *, access_token: Optional[str], refresh_token: Optional[str], scopes: List[str], expires_at: datetime
+    ) -> Dict[str, Any]:
+        """アクセストークン等を暗号化し token_ref を生成する。"""
+        payload = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "scopes": scopes,
+            "expires_at": expires_at.isoformat(),
+            **self._token_cipher.metadata,
+        }
+        return self._token_cipher.encrypt(payload)
+
+    def _decrypt_token_ref(self, token_ref: Dict[str, Any]) -> Dict[str, Any]:
+        """token_ref を復号してメモリキャッシュ用の辞書を返す。"""
+        payload = self._token_cipher.decrypt(token_ref)
+
+        expires_raw = payload.get("expires_at")
+        if isinstance(expires_raw, str):
+            expires_at = datetime.fromisoformat(expires_raw)
+        elif isinstance(expires_raw, datetime):
+            expires_at = expires_raw
+        else:
+            raise ValueError("expires_at is missing")
+
+        scopes = payload.get("scopes") or payload.get("scope") or []
+        if isinstance(scopes, str):
+            scopes = scopes.split()
+
+        return {
+            "access_token": payload.get("access_token"),
+            "refresh_token": payload.get("refresh_token"),
+            "expires_at": expires_at,
+            "scope": scopes,
+        }
+
+    @staticmethod
+    def _parse_expires_in(raw_value: object) -> int:
+        """expires_in を安全に整数秒へ変換する。"""
+        default = 3600
+        if raw_value is None:
+            return default
+        try:
+            seconds = int(float(raw_value))
+        except (TypeError, ValueError):
+            return default
+        if seconds < 0:
+            return 0
+        return seconds
 
     def start_auth(
         self,
@@ -317,10 +434,10 @@ class OAuthService:
                 payload = response.json()
                 scope_value = payload.get("scope") or " ".join(record.scopes)
                 scopes = scope_value.split() if isinstance(scope_value, str) else record.scopes
-                self._delete_credential(credential_key)
                 credential = self._save_tokens(
                     server_id=server_id, scopes=scopes, payload=payload
                 )
+                self._delete_credential(credential_key)
                 self._record_audit(
                     event_type="token_refreshed",
                     correlation_id=credential["credential_key"],
@@ -365,10 +482,15 @@ class OAuthService:
         correlation_id: Optional[str] = None,
     ) -> Dict[str, object]:
         """トークンを保存し credential_key を返す。"""
-        expires_in = payload.get("expires_in") or 3600
-        expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+        expires_in = self._parse_expires_in(payload.get("expires_in"))
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
         credential_key = str(uuid.uuid4())
-        token_ref = {"type": "encrypted", "key": credential_key}
+        token_ref = self._encrypt_tokens(
+            access_token=payload.get("access_token"),
+            refresh_token=payload.get("refresh_token"),
+            scopes=scopes,
+            expires_at=expires_at,
+        )
 
         record = CredentialRecord(
             credential_key=credential_key,
