@@ -1,4 +1,8 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER = "PLEASE_SET_OAUTH_TOKEN_ENCRYPTION_KEY"
 
 
 class Settings(BaseSettings):
@@ -37,9 +41,14 @@ class Settings(BaseSettings):
     oauth_client_id: str = "mcp-console"
     oauth_redirect_uri: str = "http://localhost:8000/api/catalog/oauth/callback"
     oauth_request_timeout_seconds: int = 10
-    # アクセス/リフレッシュトークンの暗号化キー（Fernet）。環境変数 OAUTH_TOKEN_ENCRYPTION_KEY で必ず上書きすること。
-    oauth_token_encryption_key: str = ""
-    oauth_token_encryption_key_id: str = "default"
+    # アクセス/リフレッシュトークンの暗号化キー（Fernet）。必ず環境変数 OAUTH_TOKEN_ENCRYPTION_KEY で本番用のキーを指定すること。
+    oauth_token_encryption_key: str = Field(
+        default=OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER,
+        validation_alias="OAUTH_TOKEN_ENCRYPTION_KEY",
+    )
+    oauth_token_encryption_key_id: str = Field(
+        default="default", validation_alias="OAUTH_TOKEN_ENCRYPTION_KEY_ID"
+    )
 
     # Application Configuration
     log_level: str = "INFO"

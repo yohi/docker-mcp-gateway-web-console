@@ -744,6 +744,46 @@ async def test_oauth_refresh_provider_5xx_keeps_credential(
 
 
 @pytest.mark.asyncio
+async def test_oauth_refresh_server_id_mismatch_returns_422(reset_oauth_service):
+    code_verifier = "test-verifier"
+    code_challenge = OAuthService._compute_code_challenge(code_verifier)
+
+    store = reset_oauth_service.state_store
+
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        init_resp = await ac.post(
+            "/api/catalog/oauth/initiate",
+            json={
+                "server_id": "srv-1",
+                "scopes": ["repo:read"],
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            },
+        )
+        state = init_resp.json()["state"]
+
+        callback_resp = await ac.get(
+            "/api/catalog/oauth/callback",
+            params={
+                "code": "auth-code",
+                "state": state,
+                "server_id": "srv-1",
+                "code_verifier": code_verifier,
+            },
+        )
+        cred_key = callback_resp.json()["credential_key"]
+
+        refresh_resp = await ac.post(
+            "/api/catalog/oauth/refresh",
+            json={"server_id": "srv-2", "credential_key": cred_key},
+        )
+
+    assert refresh_resp.status_code == 422
+    assert "server_id" in refresh_resp.json().get("detail", "")
+    assert store.get_credential(cred_key) is not None
+
+
+@pytest.mark.asyncio
 async def test_oauth_initiate_rejects_unpermitted_scope(monkeypatch, reset_oauth_service):
     from app.services import oauth as oauth_service_module
 

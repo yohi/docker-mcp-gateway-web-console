@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
 
-from ..config import settings
+from ..config import OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER, settings
 from ..models.state import CredentialRecord
 from .state_store import StateStore
 
@@ -170,9 +170,13 @@ class OAuthService:
         self._scope_policy = ScopePolicyService(permitted_scopes or [])
         self._credential_creator = credential_creator
         encryption_key = settings.oauth_token_encryption_key
-        if not encryption_key or encryption_key.strip() == "":
+        if (
+            not encryption_key
+            or encryption_key.strip() == ""
+            or encryption_key == OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER
+        ):
             raise ConfigurationError(
-                "oauth_token_encryption_key が未設定です。環境変数 OAUTH_TOKEN_ENCRYPTION_KEY に有効な Fernet キーを設定してください。"
+                "oauth_token_encryption_key が未設定またはプレースホルダーのままです。環境変数 OAUTH_TOKEN_ENCRYPTION_KEY に有効な Fernet キーを設定してください。"
             )
         self._token_cipher = TokenCipher(
             encryption_key, settings.oauth_token_encryption_key_id
