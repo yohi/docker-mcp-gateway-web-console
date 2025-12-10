@@ -159,6 +159,15 @@ class StateStore:
             created_at=_from_iso(row["created_at"]),
         )
 
+    def delete_credential(self, credential_key: str) -> None:
+        """資格情報レコードを削除する。存在しない場合は何もしない。"""
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM credentials WHERE credential_key=?",
+                (credential_key,),
+            )
+            conn.commit()
+
     # Session operations
     def save_session(self, record: SessionRecord) -> None:
         """セッションレコードを保存する。"""
