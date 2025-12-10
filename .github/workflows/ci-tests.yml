@@ -1,10 +1,15 @@
 name: CI Tests
 
 on:
-  push:
-    branches: [ main, develop ]
   pull_request:
-    branches: [ main, develop ]
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
 
 env:
   CI: true
@@ -12,7 +17,7 @@ env:
 jobs:
   backend-unit:
     name: Backend Unit (Pytest)
-    runs-on: ubuntu-24.04-slim
+    runs-on: ubuntu-slim
     timeout-minutes: 25
 
     steps:
@@ -56,7 +61,7 @@ jobs:
 
   frontend-unit:
     name: Frontend Unit (Jest)
-    runs-on: ubuntu-24.04-slim
+    runs-on: ubuntu-slim
     timeout-minutes: 20
 
     steps:
@@ -82,7 +87,7 @@ jobs:
 
   e2e-playwright:
     name: E2E (Playwright)
-    runs-on: ubuntu-24.04-slim
+    runs-on: ubuntu-slim
     timeout-minutes: 35
 
     steps:
