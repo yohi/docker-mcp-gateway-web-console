@@ -19,6 +19,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set dummy Fernet key for tests
+        run: |
+          key=$(python - <<'PY'
+import base64, os
+print(base64.urlsafe_b64encode(os.urandom(32)).decode())
+PY
+)
+          echo "OAUTH_TOKEN_ENCRYPTION_KEY=$key" >> "$GITHUB_ENV"
+
       - name: Install base packages (docker/compose & Playwright deps)
         run: |
           sudo apt-get update
@@ -68,6 +77,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set dummy Fernet key for tests
+        run: |
+          key=$(python - <<'PY'
+import base64, os
+print(base64.urlsafe_b64encode(os.urandom(32)).decode())
+PY
+)
+          echo "OAUTH_TOKEN_ENCRYPTION_KEY=$key" >> "$GITHUB_ENV"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -93,6 +111,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set dummy Fernet key for tests
+        run: |
+          key=$(python - <<'PY'
+import base64, os
+print(base64.urlsafe_b64encode(os.urandom(32)).decode())
+PY
+)
+          echo "OAUTH_TOKEN_ENCRYPTION_KEY=$key" >> "$GITHUB_ENV"
 
       - name: Install base packages (docker/compose & Playwright deps)
         run: |
