@@ -123,6 +123,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./backend/data:/app/data
+      - "bw-cli-config:/root/.config/Bitwarden CLI"
+      - "bw-cli-cache:/root/.cache/Bitwarden CLI"
     networks:
       - app-network
     healthcheck:
@@ -167,6 +169,10 @@ services:
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  bw-cli-config:
+  bw-cli-cache:
 ```
 
 > 補足: 実際の `docker-compose.prod.yml`（および開発/テスト用 Compose）では、Bitwarden CLI のログインキャッシュを `/root/.config/Bitwarden CLI` と `/root/.cache/Bitwarden CLI` に保存するために `bw-cli-config` と `bw-cli-cache` の2つのボリュームをマウントしています。再起動後も `bw login` 状態を保持したい場合はこれらのボリュームを削除せずに運用し、キャッシュをリセットする場合は次を実行してください:

@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -118,7 +118,7 @@ class GitHubTokenService:
         if settings.github_token:
             self._cached_token = settings.github_token
             self._cached_source = "env:github_token"
-            self._cached_updated_at = datetime.now()
+            self._cached_updated_at = datetime.now(timezone.utc)
             return settings.github_token
 
         return None
@@ -205,7 +205,7 @@ class GitHubTokenService:
             token_ref=token_ref,
             source=source,
             updated_by=updated_by,
-            updated_at=datetime.now(),
+            updated_at=datetime.now(timezone.utc),
         )
         self._state_store.save_github_token(record)
         self._cached_token = token_value
@@ -235,4 +235,3 @@ class GitHubTokenService:
         is_valid = await self._auth_service.validate_session(session_id)
         if not is_valid:
             raise AuthError("セッションが無効または期限切れです")
-

@@ -112,17 +112,18 @@ async def delete_github_token(
     try:
         is_valid = await auth_service.validate_session(session_id)
         if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="セッションが無効または期限切れです"
-            )
+            raise AuthError("セッションが無効または期限切れです")
         github_token_service.delete_token()
         return GitHubTokenDeleteResponse(success=True)
+    except AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
+    except GitHubTokenError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Unexpected error while deleting GitHub token: %s", exc)
+        logger.exception("Unexpected error while deleting GitHub token: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="GitHub トークン削除中に予期しないエラーが発生しました",
         ) from exc
-

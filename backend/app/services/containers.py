@@ -361,12 +361,15 @@ class ContainerService:
                     existing = await loop.run_in_executor(
                         None,
                         lambda: client.containers.list(
-                            all=True, filters={"name": sanitized_name}
+                            all=True, filters={"name": f"^{sanitized_name}$"}
                         ),
                     )
                     if existing:
-                        existing_id = existing[0].id
-                        existing_status = self._parse_container_status(existing[0])
+                        for container in existing:
+                            if container.name == sanitized_name:
+                                existing_id = container.id
+                                existing_status = self._parse_container_status(container)
+                                break
                 except DockerException as lookup_error:
                     logging.getLogger(__name__).debug(
                         "コンテナ重複確認中にエラーが発生しました: %s", lookup_error

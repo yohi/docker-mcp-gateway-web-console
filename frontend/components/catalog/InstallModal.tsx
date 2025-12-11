@@ -67,7 +67,11 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
 
   const handleInstall = async () => {
     setSubmitAttempted(true);
-    if (installStatus !== 'not_installed') {
+    if (installStatus === 'loading') {
+      // 状態取得中はインストール処理を実行しない
+      return;
+    }
+    if (installStatus === 'running' || installStatus === 'installed') {
       const message =
         installStatus === 'running'
           ? 'このサーバーは既に実行中です。コンテナ一覧から操作してください。'
