@@ -1,6 +1,9 @@
 'use client';
 
+import { useMemo } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
+import { useContainers } from '@/hooks/useContainers';
+import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import SessionExecutionPanel from './SessionExecutionPanel';
 
 interface CatalogDetailModalProps {
@@ -18,6 +21,19 @@ export default function CatalogDetailModal({
   onInstall,
   onOAuth,
 }: CatalogDetailModalProps) {
+  const { containers, isLoading } = useContainers();
+
+  const status = useMemo<'loading' | 'running' | 'installed' | 'not_installed'>(() => {
+    if (isLoading) return 'loading';
+    if (!item) return 'not_installed';
+    const container = containers.find((c) => matchCatalogItemContainer(item, c));
+    if (container) {
+      if (container.status === 'running') return 'running';
+      return 'installed';
+    }
+    return 'not_installed';
+  }, [containers, isLoading, item]);
+
   if (!isOpen || !item) {
     return null;
   }
@@ -45,6 +61,25 @@ export default function CatalogDetailModal({
               <div>
                 <p className="text-sm text-gray-500">{item.vendor || '提供元未指定'}</p>
                 <h2 className="text-xl font-semibold text-gray-900">{item.name}</h2>
+                <div className="mt-2">
+                  {status === 'loading' ? (
+                    <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
+                      インストール状態を取得中...
+                    </span>
+                  ) : status === 'running' ? (
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                      実行中 (インストール済み)
+                    </span>
+                  ) : status === 'installed' ? (
+                    <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-800">
+                      インストール済み (停止中)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                      未インストール
+                    </span>
+                  )}
+                </div>
                 <div className="mt-1 flex flex-wrap gap-2">
                   <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
                     {item.category}
@@ -234,9 +269,16 @@ export default function CatalogDetailModal({
           <button
             type="button"
             onClick={() => onInstall(item)}
+            disabled={status !== 'not_installed'}
             className="rounded bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
           >
-            インストール
+            {status === 'running'
+              ? '実行中 (インストール済み)'
+              : status === 'installed'
+                ? 'インストール済み'
+                : status === 'loading'
+                  ? '判定中...'
+                  : 'インストール'}
           </button>
         </div>
       </div>

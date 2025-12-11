@@ -1,8 +1,12 @@
 """Container Service for Docker integration."""
 
 import asyncio
+import logging
+import os
+import re
 from datetime import datetime
 from typing import AsyncIterator, Dict, List, Optional
+from urllib.parse import urlparse
 
 import docker
 from docker.errors import APIError, DockerException, ImageNotFound, NotFound
@@ -20,6 +24,28 @@ from .secrets import SecretManager
 class ContainerError(Exception):
     """Exception raised for container operation errors."""
     pass
+
+
+class ContainerAlreadyExistsError(ContainerError):
+    """同名コンテナが既に存在する場合の例外。"""
+
+    def __init__(
+        self,
+        name: str,
+        container_id: str | None = None,
+        status: str | None = None,
+    ) -> None:
+        self.name = name
+        self.container_id = container_id
+        self.status = status
+
+        detail = f"コンテナ名 {name} は既に使用されています。"
+        if container_id:
+            detail += f" 既存コンテナID: {container_id}。"
+        if status:
+            detail += f" 状態: {status}。"
+
+        super().__init__(detail)
 
 
 class ContainerService:
@@ -43,6 +69,22 @@ class ContainerService:
         self.secret_manager = secret_manager
         self._client: Optional[docker.DockerClient] = None
 
+    def _normalize_container_name(self, name: str) -> str:
+        """
+        Docker が受け付ける形式へコンテナ名を正規化する。
+        空白や禁則文字はハイフンに置換し、先頭が英数字でなければ接頭辞を付与する。
+        """
+        # 空白や許可されない文字をハイフンに置換
+        normalized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", name.strip())
+        # 先頭末尾のドット/ハイフン/アンダースコアは除去
+        normalized = normalized.strip("._-")
+        if not normalized:
+            normalized = "mcp-server"
+        if not re.match(r"[a-zA-Z0-9]", normalized[0]):
+            normalized = f"mcp-{normalized}"
+        # Docker 名は 255 文字上限、念のため短縮
+        return normalized[:128]
+
     def _get_client(self) -> docker.DockerClient:
         """
         Get or create Docker client.
@@ -53,15 +95,58 @@ class ContainerService:
         Raises:
             ContainerError: If Docker client cannot be created
         """
-        if self._client is None:
+        if self._client is not None:
+            return self._client
+
+        attempted_hosts: list[str] = [settings.docker_host]
+        if settings.docker_host.startswith("unix://"):
+            runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+            if runtime_dir:
+                fallback = f"unix://{runtime_dir}/docker.sock"
+                if fallback not in attempted_hosts:
+                    attempted_hosts.append(fallback)
+            uid = os.getuid()
+            fallback_user = f"unix:///run/user/{uid}/docker.sock"
+            if fallback_user not in attempted_hosts:
+                attempted_hosts.append(fallback_user)
+
+        errors: list[str] = []
+        for host in attempted_hosts:
+            parsed = urlparse(host)
+            socket_path = parsed.path if parsed.scheme == "unix" else None
+            if socket_path:
+                if not os.path.exists(socket_path):
+                    errors.append(f"{host}: ソケット {socket_path} が見つかりません")
+                    continue
+                if not os.access(socket_path, os.R_OK | os.W_OK):
+                    errors.append(
+                        f"{host}: ソケット {socket_path} へのアクセス権限が不足しています"
+                    )
+                    continue
+
             try:
-                self._client = docker.DockerClient(base_url=settings.docker_host)
-                # Test connection
-                self._client.ping()
+                client = docker.DockerClient(base_url=host)
+                client.ping()
+                self._client = client
+
+                if host != settings.docker_host:
+                    logging.getLogger(__name__).warning(
+                        "DOCKER_HOST %s で接続できなかったため %s にフォールバックしました。"
+                        " 環境変数 DOCKER_HOST または DOCKER_SOCKET_PATH を確認してください。",
+                        settings.docker_host,
+                        host,
+                    )
+
+                return self._client
+
             except DockerException as e:
-                raise ContainerError(f"Failed to connect to Docker daemon: {e}") from e
-        
-        return self._client
+                errors.append(f"{host}: {e}")
+
+        raise ContainerError(
+            "Docker デーモンに接続できません。"
+            f" 試行した DOCKER_HOST: {', '.join(attempted_hosts)}。"
+            f" 詳細: {' | '.join(errors)}"
+        )
 
     def _parse_container_status(self, container: Container) -> str:
         """
@@ -187,8 +272,38 @@ class ContainerService:
                 session_id,
                 bw_session_key,
             )
+
+            # Docker 名禁則の対策（カタログ名に空白が含まれるケースなど）
+            sanitized_name = self._normalize_container_name(config.name)
+
+            # ラベルに元の名称を残しつつ、元の labels を上書きしないようにコピー
+            labels: dict[str, str] = dict(config.labels or {})
+            if sanitized_name != config.name:
+                labels.setdefault("mcp.original_name", config.name)
             
             client = self._get_client()
+            loop = asyncio.get_event_loop()
+
+            # イメージが未取得の場合は事前に pull して不足エラーを避ける
+            try:
+                await loop.run_in_executor(
+                    None, lambda: client.images.get(config.image)
+                )
+            except ImageNotFound:
+                try:
+                    await loop.run_in_executor(
+                        None, lambda: client.images.pull(config.image)
+                    )
+                except ImageNotFound as e:
+                    raise ContainerError(f"Docker image not found: {config.image}") from e
+                except APIError as e:
+                    raise ContainerError(
+                        f"Docker image pull failed: {config.image} ({e.explanation or e})"
+                    ) from e
+                except DockerException as e:
+                    raise ContainerError(
+                        f"Failed to pull Docker image: {config.image} ({e})"
+                    ) from e
             
             # Prepare port bindings
             port_bindings = {}
@@ -207,11 +322,11 @@ class ContainerService:
 
             docker_kwargs = {
                 "image": config.image,
-                "name": config.name,
+                "name": sanitized_name,
                 "environment": resolved_env,
                 "ports": port_bindings,
                 "volumes": volumes,
-                "labels": config.labels,
+                "labels": labels,
                 "command": config.command,
                 "network_mode": config.network_mode,
                 "detach": True,
@@ -225,7 +340,6 @@ class ContainerService:
                 docker_kwargs["restart_policy"] = config.restart_policy
 
             # Create container
-            loop = asyncio.get_event_loop()
             container = await loop.run_in_executor(
                 None,
                 lambda: client.containers.create(**docker_kwargs),
@@ -239,6 +353,31 @@ class ContainerService:
         except ImageNotFound as e:
             raise ContainerError(f"Docker image not found: {config.image}") from e
         except APIError as e:
+            if e.status_code == 409:
+                existing_id: str | None = None
+                existing_status: str | None = None
+
+                try:
+                    existing = await loop.run_in_executor(
+                        None,
+                        lambda: client.containers.list(
+                            all=True, filters={"name": sanitized_name}
+                        ),
+                    )
+                    if existing:
+                        existing_id = existing[0].id
+                        existing_status = self._parse_container_status(existing[0])
+                except DockerException as lookup_error:
+                    logging.getLogger(__name__).debug(
+                        "コンテナ重複確認中にエラーが発生しました: %s", lookup_error
+                    )
+
+                raise ContainerAlreadyExistsError(
+                    name=sanitized_name,
+                    container_id=existing_id,
+                    status=existing_status,
+                ) from e
+
             raise ContainerError(f"Docker API error: {e}") from e
         except DockerException as e:
             raise ContainerError(f"Failed to create container: {e}") from e

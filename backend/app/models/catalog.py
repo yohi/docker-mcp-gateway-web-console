@@ -41,7 +41,13 @@ class CatalogSearchRequest(BaseModel):
 
 
 class CatalogResponse(BaseModel):
-    """Response model for catalog operations."""
+    """カタログ検索結果レスポンス。"""
+
     servers: List[CatalogItem]
-    total: int = Field(..., description="Total number of servers in result")
-    cached: bool = Field(default=False, description="Whether data is from cache")
+    total: int = Field(..., description="該当するサーバーの総数")
+    page: int = Field(default=1, description="1始まりのページ番号")
+    page_size: int = Field(default=0, description="1ページあたりの件数")
+    cached: bool = Field(default=False, description="キャッシュ由来かどうか")
+    categories: List[str] = Field(
+        default_factory=list, description="結果集合に含まれるカテゴリ一覧（重複なし）"
+    )

@@ -12,7 +12,11 @@ from ..models.containers import (
     ContainerListResponse,
 )
 from ..services.auth import AuthService
-from ..services.containers import ContainerService
+from ..services.containers import (
+    ContainerAlreadyExistsError,
+    ContainerError,
+    ContainerService,
+)
 from ..services.secrets import SecretManager
 from .auth import get_auth_service, get_session_id
 
@@ -113,11 +117,22 @@ async def _create_container_internal(
             detail="Invalid or expired session"
         )
 
-    container_id = await container_service.create_container(
-        config=config,
-        session_id=session_id,
-        bw_session_key=session.bw_session_key,
-    )
+    try:
+        container_id = await container_service.create_container(
+            config=config,
+            session_id=session_id,
+            bw_session_key=session.bw_session_key,
+        )
+    except ContainerAlreadyExistsError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        ) from e
+    except ContainerError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
 
     return ContainerCreateResponse(
         container_id=container_id,

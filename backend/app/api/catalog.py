@@ -2,11 +2,12 @@
 
 import asyncio
 import logging
+import math
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ..models.catalog import CatalogResponse, CatalogSearchRequest
+from ..models.catalog import CatalogResponse
 from ..services.catalog import CatalogError, CatalogService
 from ..config import settings
 
@@ -59,7 +60,10 @@ async def get_catalog(
             return CatalogResponse(
                 servers=cached_items,
                 total=len(cached_items),
-                cached=True
+                page=1,
+                page_size=max(len(cached_items), 1),
+                cached=True,
+                categories=sorted({item.category for item in cached_items}),
             )
         else:
             # No cache, must fetch fresh data
@@ -67,7 +71,10 @@ async def get_catalog(
             return CatalogResponse(
                 servers=items,
                 total=len(items),
-                cached=is_cached
+                page=1,
+                page_size=max(len(items), 1),
+                cached=is_cached,
+                categories=sorted({item.category for item in items}),
             )
             
     except CatalogError as e:
@@ -88,7 +95,14 @@ async def get_catalog(
 async def search_catalog(
     source: Optional[str] = Query(None, description="URL of the catalog JSON file"),
     q: str = Query(default="", description="Search keyword"),
-    category: Optional[str] = Query(default=None, description="Category filter")
+    category: Optional[str] = Query(default=None, description="Category filter"),
+    page: int = Query(default=1, ge=1, description="1始まりのページ番号"),
+    page_size: int = Query(
+        default=12,
+        ge=1,
+        le=200,
+        description="1ページあたりの件数。過大指定での負荷を防ぐため上限200件。",
+    ),
 ) -> CatalogResponse:
     """
     Search and filter catalog items.
@@ -121,10 +135,31 @@ async def search_catalog(
             category=category
         )
         
+        total = len(filtered_items)
+        if total == 0:
+            return CatalogResponse(
+                servers=[],
+                total=0,
+                page=1,
+                page_size=page_size,
+                cached=is_cached,
+                categories=[],
+            )
+
+        max_page = max(1, math.ceil(total / page_size))
+        current_page = min(page, max_page)
+        start = (current_page - 1) * page_size
+        end = start + page_size
+        paged_items = filtered_items[start:end]
+        categories = sorted({item.category for item in filtered_items})
+
         return CatalogResponse(
-            servers=filtered_items,
-            total=len(filtered_items),
-            cached=is_cached
+            servers=paged_items,
+            total=total,
+            page=current_page,
+            page_size=page_size,
+            cached=is_cached,
+            categories=categories,
         )
         
     except CatalogError as e:

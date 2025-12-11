@@ -12,6 +12,7 @@ from app.api import (
     config,
     containers,
     gateways,
+    github_token,
     inspector,
     oauth,
     sessions,
@@ -65,6 +66,7 @@ app.include_router(inspector.router, prefix="/api")
 app.include_router(oauth.router)
 app.include_router(sessions.router)
 app.include_router(gateways.router)
+app.include_router(github_token.router)
 
 
 @app.get("/")

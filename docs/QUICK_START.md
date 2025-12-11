@@ -93,6 +93,8 @@ Open your browser and navigate to:
    - Replace `YOUR-ITEM-ID` with your actual Bitwarden item ID
 5. Click "Start Container"
 
+> Tip: You can also open **Settings > GitHub Token** in the console, search Bitwarden, and save the PAT securely. The token is encrypted, never shown, and will be used automatically for catalog fetches.
+
 ### Verify It's Running
 
 1. Go to "Dashboard"

@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
 import { useToast } from '@/contexts/ToastContext';
 import { useInstallation } from '@/hooks/useInstallation';
+import { useContainers } from '@/hooks/useContainers';
+import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import SecretReferenceInput from '../config/SecretReferenceInput';
 
 interface InstallModalProps {
@@ -18,6 +20,18 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const { install, isLoading } = useInstallation();
+  const { containers, isLoading: isContainersLoading } = useContainers();
+
+  const installStatus = useMemo<'loading' | 'running' | 'installed' | 'not_installed'>(() => {
+    if (isContainersLoading) return 'loading';
+    if (!item) return 'not_installed';
+    const container = containers.find((c) => matchCatalogItemContainer(item, c));
+    if (container) {
+      if (container.status === 'running') return 'running';
+      return 'installed';
+    }
+    return 'not_installed';
+  }, [containers, isContainersLoading, item]);
 
   useEffect(() => {
     if (isOpen && item) {
@@ -53,6 +67,14 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
 
   const handleInstall = async () => {
     setSubmitAttempted(true);
+    if (installStatus !== 'not_installed') {
+      const message =
+        installStatus === 'running'
+          ? 'このサーバーは既に実行中です。コンテナ一覧から操作してください。'
+          : 'このサーバーは既にインストール済みです。コンテナ一覧から起動・停止してください。';
+      showError(message);
+      return;
+    }
     // Validation for required envs
     const missing = item.required_envs.filter(key => !formData[key]);
     if (missing.length > 0) {
@@ -91,6 +113,19 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
         </div>
 
         <div className="p-6 overflow-y-auto">
+          {(installStatus === 'installed' || installStatus === 'running') && (
+            <div
+              className={`mb-4 rounded-md border px-3 py-2 text-sm ${
+                installStatus === 'running'
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-gray-200 bg-gray-50 text-gray-800'
+              }`}
+            >
+              {installStatus === 'running'
+                ? 'このサーバーは既に実行中です。重複インストールは不要です。'
+                : 'このサーバーは既にインストール済みです。コンテナ一覧から起動/停止できます。'}
+            </div>
+          )}
           <div className="space-y-4">
             {fields.length === 0 ? (
               <p className="text-gray-500 italic">設定可能な環境変数はありません。</p>
@@ -154,13 +189,19 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
           <button
             type="button"
             onClick={handleInstall}
-            disabled={isLoading}
+            disabled={isLoading || installStatus !== 'not_installed'}
             className="flex items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
           >
             {isLoading && (
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-b-transparent"></span>
             )}
-            {isLoading ? 'インストール中...' : 'インストール'}
+            {installStatus === 'running'
+              ? '実行中 (インストール済み)'
+              : installStatus === 'installed'
+                ? 'インストール済み'
+                : isLoading
+                  ? 'インストール中...'
+                  : 'インストール'}
           </button>
         </div>
       </div>

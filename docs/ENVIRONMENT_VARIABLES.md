@@ -31,6 +31,7 @@ Create a `.env` file in the `backend/` directory:
 |----------|-------------|---------|---------|
 | `BITWARDEN_CLI_PATH` | Path to Bitwarden CLI executable | `/usr/local/bin/bw` | `/usr/bin/bw` |
 | `DOCKER_HOST` | Docker daemon socket | `unix:///var/run/docker.sock` | `tcp://localhost:2375` |
+| `DOCKER_SOCKET_PATH` | Actual Unix socket path when using `unix://` | `/var/run/docker.sock` | `/run/user/1000/docker.sock` |
 
 ### Optional Variables
 
@@ -52,6 +53,8 @@ BITWARDEN_CLI_PATH=/usr/local/bin/bw
 
 # Docker Configuration
 DOCKER_HOST=unix:///var/run/docker.sock
+# Override when the socket path differs (e.g., rootless Docker)
+# DOCKER_SOCKET_PATH=/run/user/1000/docker.sock
 
 # Session Management
 SESSION_TIMEOUT_MINUTES=30
@@ -83,10 +86,16 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 # Backend
 BACKEND_PORT=8000
 BITWARDEN_CLI_PATH=/usr/local/bin/bw
-DOCKER_HOST=unix:///var/run/docker.sock
+DOCKER_HOST=unix://${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
+DOCKER_SOCKET_PATH=/var/run/docker.sock
 SESSION_TIMEOUT_MINUTES=30
 LOG_LEVEL=INFO
 ```
+
+If you're running Docker in rootless mode or under another user, set
+`DOCKER_SOCKET_PATH` to the actual socket location (for example,
+`/run/user/1000/docker.sock`). The Compose volume mount will automatically
+use the same path.
 
 ## Production Considerations
 

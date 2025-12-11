@@ -34,6 +34,14 @@ export async function searchCatalog(params: CatalogSearchParams): Promise<Catalo
     url.searchParams.append('category', params.category);
   }
 
+  if (typeof params.page === 'number') {
+    url.searchParams.append('page', params.page.toString());
+  }
+
+  if (typeof params.page_size === 'number') {
+    url.searchParams.append('page_size', params.page_size.toString());
+  }
+
   const response = await fetch(url.toString());
 
   if (!response.ok) {
