@@ -111,6 +111,35 @@ def test_session_gc_by_idle_deadline(store: StateStore) -> None:
     assert store.get_session("s-active") is not None
 
 
+def test_auth_session_gc_by_expires_at(store: StateStore) -> None:
+    """期限切れの認証セッションが GC されることを検証する。"""
+    now = datetime.now(timezone.utc)
+    expired = AuthSessionRecord(
+        session_id="auth-expired",
+        user_email="user@example.com",
+        bw_session_key="k1",
+        created_at=now - timedelta(minutes=10),
+        expires_at=now - timedelta(minutes=1),
+        last_activity=now - timedelta(minutes=5),
+    )
+    active = AuthSessionRecord(
+        session_id="auth-active",
+        user_email="user@example.com",
+        bw_session_key="k2",
+        created_at=now,
+        expires_at=now + timedelta(minutes=30),
+        last_activity=now,
+    )
+    store.save_auth_session(expired)
+    store.save_auth_session(active)
+
+    removed = store.gc_expired(now=now)
+
+    assert removed["auth_sessions"] == 1
+    assert store.get_auth_session("auth-expired") is None
+    assert store.get_auth_session("auth-active") is not None
+
+
 def test_auth_session_roundtrip(store: StateStore) -> None:
     """ログインセッションが保存・取得・削除できることを検証する。"""
     now = datetime.now(timezone.utc)

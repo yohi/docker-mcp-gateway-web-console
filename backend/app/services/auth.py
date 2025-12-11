@@ -4,7 +4,9 @@ import asyncio
 import json
 import logging
 import os
+import stat
 import subprocess
+import tempfile
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, Optional
@@ -545,7 +547,8 @@ class AuthService:
         # passwordfile 用の一時ファイルを用意（使わない場合もあるが先に準備）
         tmp_path = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            with tempfile.NamedTemporaryFile(delete=False, mode="wb") as tmp:
+                os.chmod(tmp.name, stat.S_IRUSR | stat.S_IWUSR)
                 tmp.write(password.encode())
                 tmp.flush()
                 tmp_path = tmp.name
@@ -573,8 +576,14 @@ class AuthService:
                     if tmp_path
                     else []
                 ),
-                (["--nointeraction", "--password", password], False, False),
             ]
+
+            if settings.allow_cli_password:
+                logger.warning(
+                    "AUTH_ALLOW_CLI_PASSWORD が有効です。--password 引数は非推奨で、"
+                    "本番環境では使用しないでください。"
+                )
+                attempts.append((["--nointeraction", "--password", password], False, False))
 
             results: list[tuple[str, str, int]] = []
             for idx, (extra, use_env, use_stdin) in enumerate(attempts):

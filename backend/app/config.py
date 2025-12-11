@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # Security: Only log request bodies in debug/non-production environments
     # to prevent logging sensitive data (passwords, API keys, PII)
     log_request_body: bool = False
+    # CLI 経由のパスワード引数を許可するか（デフォルト: 無効）
+    allow_cli_password: bool = Field(
+        default=False, validation_alias="AUTH_ALLOW_CLI_PASSWORD"
+    )
 
     @property
     def cors_origins_list(self) -> list[str]:

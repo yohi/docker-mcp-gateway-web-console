@@ -569,12 +569,19 @@ class StateStore:
             )
             job_deleted = cur.rowcount
 
+            cur.execute(
+                "DELETE FROM auth_sessions WHERE expires_at < ?",
+                (_to_iso(now),),
+            )
+            auth_session_deleted = cur.rowcount
+
             conn.commit()
 
         return {
             "credentials": cred_deleted,
             "sessions": session_deleted,
             "jobs": job_deleted,
+            "auth_sessions": auth_session_deleted,
         }
 
     def _sanitize_metadata(self, metadata: Dict[str, object]) -> Dict[str, object]:
