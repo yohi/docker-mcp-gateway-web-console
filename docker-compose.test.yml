@@ -39,6 +39,7 @@ services:
     volumes:
       - ./backend:/app
       - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
+      - /run/user:/run/user:ro
       - "bw-cli-config:/root/.config/Bitwarden CLI"
       - "bw-cli-cache:/root/.cache/Bitwarden CLI"
     environment:

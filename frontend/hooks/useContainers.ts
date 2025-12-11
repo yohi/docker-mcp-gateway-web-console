@@ -3,15 +3,16 @@ import { useSession } from '../contexts/SessionContext';
 import { fetchContainers } from '../lib/api/containers';
 import { ContainerInfo } from '../lib/types/containers';
 
-export function useContainers() {
+export function useContainers(refreshIntervalMs: number | null = null) {
     const { session } = useSession();
+    const refreshInterval = refreshIntervalMs ?? 0; // デフォルトは自動ポーリングなし
 
     const { data, error, mutate } = useSWR(
         session ? 'containers' : null,
         () => fetchContainers(true),
         {
-            refreshInterval: 5000,
-            revalidateOnFocus: true,
+            refreshInterval,
+            revalidateOnFocus: false,
         }
     );
 

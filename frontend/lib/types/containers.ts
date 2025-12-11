@@ -25,6 +25,7 @@ export interface ContainerConfig {
 
 export interface ContainerListResponse {
   containers: ContainerInfo[];
+  warning?: string;
 }
 
 export interface ContainerCreateResponse {
@@ -37,6 +38,13 @@ export interface ContainerActionResponse {
   success: boolean;
   message: string;
   container_id?: string;
+}
+
+export interface ContainerSummary {
+  id: string;
+  name: string;
+  image: string;
+  status: ContainerStatus;
 }
 
 export interface LogEntry {

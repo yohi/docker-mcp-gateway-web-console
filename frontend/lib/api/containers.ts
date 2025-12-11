@@ -8,6 +8,7 @@ import {
   ContainerInstallPayload,
   ContainerInstallResponse,
   InstallationError,
+  ContainerSummary,
 } from '../types/containers';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -178,4 +179,26 @@ export async function deleteContainer(containerId: string, force: boolean = fals
 export function createLogWebSocket(containerId: string): WebSocket {
   const wsUrl = API_BASE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
   return new WebSocket(`${wsUrl}/api/containers/${containerId}/logs`);
+}
+
+export async function fetchContainerSummaries(): Promise<ContainerSummary[]> {
+  const headers = buildAuthHeaders();
+  const url = new URL(`${API_BASE_URL}/api/containers`);
+  url.searchParams.append('all', 'true');
+
+  const response = await fetch(url.toString(), {
+    headers,
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const body = (await response.json()) as ContainerListResponse;
+  return (body?.containers || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    image: c.image,
+    status: c.status,
+  }));
 }

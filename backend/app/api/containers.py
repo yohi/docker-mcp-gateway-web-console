@@ -1,6 +1,7 @@
 """Container API endpoints."""
 
 import logging
+import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
@@ -15,6 +16,7 @@ from ..services.auth import AuthService
 from ..services.containers import (
     ContainerAlreadyExistsError,
     ContainerError,
+    ContainerUnavailableError,
     ContainerService,
 )
 from ..services.secrets import SecretManager
@@ -27,6 +29,18 @@ router = APIRouter(prefix="/containers", tags=["containers"])
 # Singleton instances
 _container_service: ContainerService = None
 _secret_manager: SecretManager = None
+
+
+def _docker_unavailable(e: ContainerUnavailableError) -> HTTPException:
+    """Docker 接続不可時の共通レスポンスを生成する。"""
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "message": str(e),
+            "remediation": "Docker デーモンを起動し、DOCKER_HOST またはソケットパスが正しいことを確認してください。",
+            "attempted_hosts": e.attempted_hosts,
+        },
+    )
 
 
 def get_secret_manager() -> SecretManager:
@@ -45,6 +59,27 @@ def get_container_service(
     if _container_service is None:
         _container_service = ContainerService(secret_manager)
     return _container_service
+
+
+_last_docker_warn_message: str | None = None
+_last_docker_warn_at: float | None = None
+
+
+def _log_docker_unavailable(e: ContainerUnavailableError) -> None:
+    """
+    同一メッセージの連続 WARN スパムを抑制する（最終ログから60秒未満なら skip）。
+    """
+    global _last_docker_warn_message, _last_docker_warn_at
+    now = time.monotonic()
+    if (
+        _last_docker_warn_message == str(e)
+        and _last_docker_warn_at is not None
+        and now - _last_docker_warn_at < 60
+    ):
+        return
+    logger.warning("Docker unavailable while listing containers: %s", e)
+    _last_docker_warn_message = str(e)
+    _last_docker_warn_at = now
 
 
 @router.get("", response_model=ContainerListResponse)
@@ -78,6 +113,13 @@ async def list_containers(
         
     except HTTPException:
         raise
+    except ContainerUnavailableError as e:
+        _log_docker_unavailable(e)
+        return ContainerListResponse(
+            containers=[],
+            warning="Docker デーモンに接続できないため空の一覧を返しました。"
+            " ホスト上で Docker が起動していることと、DOCKER_HOST/ソケットの権限を確認してください。",
+        )
     except RuntimeError as e:
         logger.error(f"Failed to list containers: {e}")
         raise HTTPException(
@@ -128,6 +170,8 @@ async def _create_container_internal(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(e),
         ) from e
+    except ContainerUnavailableError as e:
+        raise _docker_unavailable(e) from e
     except ContainerError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -166,6 +210,8 @@ async def create_container(
         )
     except HTTPException:
         raise
+    except ContainerUnavailableError as e:
+        raise _docker_unavailable(e) from e
     except RuntimeError as e:
         logger.exception("Failed to create container")
         raise HTTPException(
@@ -199,6 +245,8 @@ async def install_container(
         )
     except HTTPException:
         raise
+    except ContainerUnavailableError as e:
+        raise _docker_unavailable(e) from e
     except RuntimeError as e:
         logger.exception("Failed to install container")
         raise HTTPException(
@@ -245,6 +293,8 @@ async def start_container(
         
     except HTTPException:
         raise
+    except ContainerUnavailableError as e:
+        raise _docker_unavailable(e) from e
     except RuntimeError as e:
         logger.error(f"Failed to start container: {e}")
         raise HTTPException(
@@ -295,6 +345,8 @@ async def stop_container(
         
     except HTTPException:
         raise
+    except ContainerUnavailableError as e:
+        raise _docker_unavailable(e) from e
     except RuntimeError as e:
         logger.error(f"Failed to stop container: {e}")
         raise HTTPException(
@@ -345,6 +397,8 @@ async def restart_container(
         
     except HTTPException:
         raise
+    except ContainerUnavailableError as e:
+        raise _docker_unavailable(e) from e
     except RuntimeError as e:
         logger.error(f"Failed to restart container: {e}")
         raise HTTPException(
@@ -395,6 +449,8 @@ async def delete_container(
         
     except HTTPException:
         raise
+    except ContainerUnavailableError as e:
+        raise _docker_unavailable(e) from e
     except RuntimeError as e:
         logger.error(f"Failed to delete container: {e}")
         raise HTTPException(

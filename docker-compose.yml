@@ -34,6 +34,8 @@ services:
     volumes:
       - ./backend:/app
       - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
+      # rootless Docker 対応のため /run/user を併せてマウントし、DOCKER_HOST=unix:///run/user/$UID/docker.sock でも利用できるようにする
+      - /run/user:/run/user:ro
       - "bw-cli-config:/root/.config/Bitwarden CLI"
       - "bw-cli-cache:/root/.cache/Bitwarden CLI"
     environment:

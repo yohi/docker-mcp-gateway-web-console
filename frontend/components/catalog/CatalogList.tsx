@@ -1,35 +1,46 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import useSWR from 'swr';
 import { CatalogItem } from '@/lib/types/catalog';
 import { searchCatalog } from '@/lib/api/catalog';
 import SearchBar from './SearchBar';
 import CatalogCard from './CatalogCard'; // Changed import
+import CatalogRow from './CatalogRow';
+import { useContainers } from '@/hooks/useContainers';
 
-const DEFAULT_PAGE_SIZE = 12;
+const DEFAULT_PAGE_SIZE = 8;
+const BACKEND_PAGE_SIZE = 8;
 
 interface CatalogListProps {
   catalogSource: string;
   onInstall: (item: CatalogItem) => void;
   onSelect: (item: CatalogItem) => void;
+  warning?: string;
 }
 
-export default function CatalogList({ catalogSource, onInstall, onSelect }: CatalogListProps) {
+export default function CatalogList({ catalogSource, warning, onInstall, onSelect }: CatalogListProps) {
+  const { containers } = useContainers(0); // no polling
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategory] = useState('');
   const [page, setPage] = useState(1);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [cachedData, setCachedData] = useState<any>(null);
+  const [combinedServers, setCombinedServers] = useState<CatalogItem[]>([]);
+  const [combinedTotal, setCombinedTotal] = useState(0);
 
   useEffect(() => {
     setPage(1);
-  }, [catalogSource]);
+    setCombinedServers([]);
+    setCombinedTotal(0);
+  }, [catalogSource, searchQuery, categoryFilter]);
 
   // SWR fetcher function
   const fetcher = useCallback(
     async (key: string) => {
       const [, source, query, category, pageValue, pageSizeValue] = key.split('|');
       const pageNumber = Number(pageValue) || 1;
-      const pageSize = Number(pageSizeValue) || DEFAULT_PAGE_SIZE;
+      const pageSize = Number(pageSizeValue) || BACKEND_PAGE_SIZE;
       return searchCatalog({
         source,
         q: query || undefined,
@@ -42,24 +53,48 @@ export default function CatalogList({ catalogSource, onInstall, onSelect }: Cata
   );
 
   // Create cache key that includes search params
-  const cacheKey = `catalog|${catalogSource}|${searchQuery}|${categoryFilter}|${page}|${DEFAULT_PAGE_SIZE}`;
+  const cacheKey = `catalog|${catalogSource}|${searchQuery}|${categoryFilter}|${page}|${BACKEND_PAGE_SIZE}`;
 
   // Fetch catalog data with SWR
-  const { data, error, isLoading, mutate } = useSWR(
+  const { data, error, isLoading, isValidating, mutate } = useSWR(
     cacheKey,
     fetcher,
     {
       revalidateOnFocus: false,
-      revalidateOnReconnect: true,
+      revalidateOnReconnect: false,
       dedupingInterval: 60000, // 1 minute
+      keepPreviousData: true, // 入力中の再フェッチでコンポーネントがリセットされるのを防ぐ
     }
   );
 
   useEffect(() => {
-    if (data?.page && data.page !== page) {
-      setPage(data.page);
+    if (data) {
+      setCachedData(data);
     }
-  }, [data?.page, page]);
+  }, [data]);
+
+  useEffect(() => {
+    const active = data || cachedData;
+    if (!active) return;
+    if (page === 1) {
+      setCombinedServers(active.servers || []);
+    } else if (Array.isArray(active.servers)) {
+      setCombinedServers((prev) => {
+        const existingIds = new Set(prev.map((s) => s.id));
+        const merged = [...prev];
+        active.servers.forEach((s) => {
+          if (!existingIds.has(s.id)) merged.push(s);
+        });
+        return merged;
+      });
+    }
+    setCombinedTotal(active.total ?? 0);
+  }, [data, cachedData, page]);
+
+  const canLoadMore = combinedServers.length < (combinedTotal || 0);
+  const isLoadingMore = isValidating && page > 1;
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const loadingTriggerRef = useRef(false);
 
   // Handle search
   const handleSearch = useCallback((query: string, category: string) => {
@@ -67,6 +102,39 @@ export default function CatalogList({ catalogSource, onInstall, onSelect }: Cata
     setCategory(category);
     setPage(1);
   }, []);
+
+  // Intersection-based incremental loading
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (
+            entry.isIntersecting &&
+            canLoadMore &&
+            !isLoading &&
+            !isValidating &&
+            !loadingTriggerRef.current
+          ) {
+            loadingTriggerRef.current = true;
+            setPage((prev) => prev + 1);
+          }
+        });
+      },
+      { rootMargin: '200px' }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [canLoadMore, isLoading, isValidating]);
+
+  useEffect(() => {
+    if (!isValidating) {
+      loadingTriggerRef.current = false;
+    }
+  }, [isValidating]);
 
   // Extract unique categories from data
   const categories = useMemo(() => {
@@ -78,8 +146,10 @@ export default function CatalogList({ catalogSource, onInstall, onSelect }: Cata
     return Array.from(cats).sort();
   }, [data]);
 
-  // Loading state
-  if (isLoading) {
+  const activeData = data || cachedData;
+
+  // Loading state (initial only)
+  if (!activeData && isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
@@ -128,20 +198,30 @@ export default function CatalogList({ catalogSource, onInstall, onSelect }: Cata
     );
   }
 
-  const servers = data?.servers || [];
-  const isCached = data?.cached || false;
-  const total = data?.total ?? 0;
-  const pageSize = data?.page_size || DEFAULT_PAGE_SIZE;
-  const currentPage = data?.page || page;
+  const servers = combinedServers;
+  const isCached = activeData?.cached || false;
+  const warningMessage = warning || activeData?.warning;
+  const total = combinedTotal || activeData?.total || 0;
+  const pageSize = activeData?.page_size || DEFAULT_PAGE_SIZE;
+  const currentPage = page;
   const totalPages = Math.max(1, Math.ceil((total || 1) / pageSize));
   const visibleCount = servers.length;
-  const start = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const end = total === 0 || visibleCount === 0 ? 0 : Math.min(total, start + visibleCount - 1);
   const canPrev = currentPage > 1;
-  const canNext = currentPage < totalPages;
+  const canNext = combinedServers.length < total;
 
   return (
     <div className="space-y-6">
+      {/* Warning */}
+      {warningMessage && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex gap-3">
+          <div className="mt-1 h-2.5 w-2.5 rounded-full bg-yellow-500" />
+          <div>
+            <p className="text-sm text-yellow-800 font-semibold">警告</p>
+            <p className="text-sm text-yellow-800 mt-1">{warningMessage}</p>
+          </div>
+        </div>
+      )}
+
       {/* Cache indicator */}
       {isCached && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -159,21 +239,34 @@ export default function CatalogList({ catalogSource, onInstall, onSelect }: Cata
         initialCategory={categoryFilter}
       />
 
+      {/* Loading indicator (non-blocking) */}
+      {isValidating && (
+        <div className="text-sm text-gray-500">更新中...</div>
+      )}
+
       {/* Results count & pagination */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <p className="text-sm text-gray-700">
-          {total === 0 ? (
-            'No servers found'
-          ) : (
-            <>
-              Showing <span className="font-medium">{start}</span>-
-              <span className="font-medium">{end}</span> of{' '}
-              <span className="font-medium">{total}</span> servers
-            </>
-          )}
+          {total === 0
+            ? 'No servers found'
+            : `読み込み済み ${visibleCount}/${total} 件`}
         </p>
 
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-gray-100 rounded-md px-2 py-1">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`px-2 py-1 text-sm rounded ${viewMode === 'grid' ? 'bg-white shadow-sm font-semibold' : 'text-gray-600'}`}
+            >
+              グリッド
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-2 py-1 text-sm rounded ${viewMode === 'list' ? 'bg-white shadow-sm font-semibold' : 'text-gray-600'}`}
+            >
+              リスト
+            </button>
+          </div>
           {servers.length > 0 && (
             <button
               onClick={() => mutate()}
@@ -182,29 +275,13 @@ export default function CatalogList({ catalogSource, onInstall, onSelect }: Cata
               Refresh
             </button>
           )}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              disabled={!canPrev}
-              className="px-3 py-1 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            <span className="text-sm text-gray-600">
-              Page <span className="font-medium">{currentPage}</span> / {totalPages}
-            </span>
-            <button
-              onClick={() => setPage((prev) => prev + 1)}
-              disabled={!canNext}
-              className="px-3 py-1 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
+          <div className="text-sm text-gray-600">
+            Page <span className="font-medium">{currentPage}</span> / {totalPages}
           </div>
         </div>
       </div>
 
-      {/* Server grid */}
+      {/* Server list / grid */}
       {servers.length === 0 ? (
         <div className="text-center py-12">
           <svg
@@ -231,12 +308,26 @@ export default function CatalogList({ catalogSource, onInstall, onSelect }: Cata
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {servers.map((item) => (
-            <CatalogCard key={item.id} item={item} onInstall={onInstall} onSelect={onSelect} />
-          ))}
-        </div>
+        viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {servers.map((item) => (
+              <CatalogCard key={item.id} item={item} onInstall={onInstall} onSelect={onSelect} />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {servers.map((item) => (
+              <CatalogRow key={item.id} item={item} onInstall={onInstall} onSelect={onSelect} />
+            ))}
+          </div>
+        )
       )}
+      <div
+        ref={loadMoreRef}
+        className="h-12 flex items-center justify-center text-sm text-gray-500"
+      >
+        {canNext ? (isLoadingMore ? '読み込み中...' : 'スクロールで追加読み込み') : 'すべて読み込みました'}
+      </div>
     </div>
   );
 }

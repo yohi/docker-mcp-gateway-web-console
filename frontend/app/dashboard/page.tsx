@@ -103,6 +103,7 @@ export default function DashboardPage() {
             ) : (
               <ContainerList
                 containers={containers}
+                warning={(data as any)?.warning}
                 onRefresh={handleRefresh}
                 onViewLogs={setViewingLogsFor}
               />

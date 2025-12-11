@@ -1,8 +1,12 @@
+import logging
+
+from cryptography.fernet import Fernet
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER = "PLEASE_SET_OAUTH_TOKEN_ENCRYPTION_KEY"
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -31,6 +35,10 @@ class Settings(BaseSettings):
 
     # Catalog Configuration
     catalog_cache_ttl_seconds: int = 3600
+    # GitHub catalog fetch concurrency and retry settings
+    catalog_github_fetch_concurrency: int = 8
+    catalog_github_fetch_retries: int = 2
+    catalog_github_fetch_retry_base_delay_seconds: float = 0.5
     # 公式MCPレジストリ (github.com/docker/mcp-registry) を既定とする
     catalog_default_url: str = "https://api.github.com/repos/docker/mcp-registry/contents/servers"
     # GitHub API のレート制限回避用トークン（任意）
@@ -68,6 +76,21 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
         return [origin.strip() for origin in self.cors_origins.split(",")]
+
+    def model_post_init(self, __context: object) -> None:
+        """Ensure OAuth トークン暗号化キーが未設定の場合でも起動できるよう自動生成する。"""
+        if (
+            not self.oauth_token_encryption_key
+            or self.oauth_token_encryption_key.strip() == ""
+            or self.oauth_token_encryption_key == OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER
+        ):
+            self.oauth_token_encryption_key = Fernet.generate_key().decode("utf-8")
+            logger.warning(
+                "環境変数 OAUTH_TOKEN_ENCRYPTION_KEY が未設定のため、起動時に一時キーを自動生成しました。"
+                " 再起動ごとにキーが変わるため、運用環境では必ず環境変数を設定してください。"
+                " 一時キー: %s",
+                self.oauth_token_encryption_key,
+            )
 
 
 settings = Settings()

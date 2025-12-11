@@ -7,9 +7,10 @@ interface ContainerListProps {
   containers: ContainerInfo[];
   onRefresh: () => void;
   onViewLogs: (containerId: string) => void;
+  warning?: string;
 }
 
-export default function ContainerList({ containers, onRefresh, onViewLogs }: ContainerListProps) {
+export default function ContainerList({ containers, warning, onRefresh, onViewLogs }: ContainerListProps) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'running':
@@ -27,6 +28,31 @@ export default function ContainerList({ containers, onRefresh, onViewLogs }: Con
     const date = new Date(dateString);
     return date.toLocaleString('ja-JP');
   };
+
+  if (warning) {
+    return (
+      <div className="bg-white shadow-md rounded-lg p-6 border border-yellow-300">
+        <div className="flex items-start gap-3">
+          <div className="mt-1 h-3 w-3 rounded-full bg-yellow-500 animate-pulse" />
+          <div>
+            <p className="text-gray-800 font-semibold">Docker に接続できませんでした</p>
+            <p className="text-gray-600 text-sm mt-1">{warning}</p>
+            <ul className="text-gray-600 text-sm mt-3 list-disc list-inside space-y-1">
+              <li>ホストで Docker デーモンが起動しているか確認</li>
+              <li>ソケット権限: `sudo usermod -aG docker $USER` 実行後に再ログイン</li>
+              <li>rootless Docker の場合: `DOCKER_HOST=unix:///run/user/$UID/docker.sock` を設定</li>
+            </ul>
+            <button
+              onClick={onRefresh}
+              className="mt-4 inline-flex items-center px-3 py-1.5 rounded bg-yellow-500 text-white text-sm font-semibold hover:bg-yellow-600 transition"
+            >
+              再読み込み
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (containers.length === 0) {
     return (

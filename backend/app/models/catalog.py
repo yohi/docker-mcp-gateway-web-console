@@ -51,3 +51,7 @@ class CatalogResponse(BaseModel):
     categories: List[str] = Field(
         default_factory=list, description="結果集合に含まれるカテゴリ一覧（重複なし）"
     )
+    warning: str | None = Field(
+        default=None,
+        description="取得時の警告メッセージ（例: GitHub トークン復号失敗によるフェールセーフ）。",
+    )
