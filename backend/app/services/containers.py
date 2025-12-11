@@ -105,10 +105,14 @@ class ContainerService:
                 fallback = f"unix://{runtime_dir}/docker.sock"
                 if fallback not in attempted_hosts:
                     attempted_hosts.append(fallback)
-            uid = os.getuid()
-            fallback_user = f"unix:///run/user/{uid}/docker.sock"
-            if fallback_user not in attempted_hosts:
-                attempted_hosts.append(fallback_user)
+            try:
+                uid = os.getuid()
+            except AttributeError:
+                uid = None
+            if isinstance(uid, int):
+                fallback_user = f"unix:///run/user/{uid}/docker.sock"
+                if fallback_user not in attempted_hosts:
+                    attempted_hosts.append(fallback_user)
 
         errors: list[str] = []
         for host in attempted_hosts:
