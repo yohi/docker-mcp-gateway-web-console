@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     catalog_default_url: str = "https://api.github.com/repos/docker/mcp-registry/contents/servers"
     # GitHub API のレート制限回避用トークン（任意）
     github_token: str = ""
+    # GitHub server.yaml 取得時の並列度とリトライ設定
+    catalog_github_fetch_concurrency: int = 8
+    catalog_github_fetch_retries: int = 2
+    catalog_github_fetch_retry_base_delay_seconds: float = 0.5
 
     # CORS Configuration
     cors_origins: str = "http://localhost:3000"

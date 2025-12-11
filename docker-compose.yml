@@ -33,10 +33,13 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/docker.sock:/var/run/docker.sock
+      - ./backend/data:/app/data
     environment:
       - BITWARDEN_CLI_PATH=/usr/local/bin/bw
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - OAUTH_TOKEN_ENCRYPTION_KEY=${OAUTH_TOKEN_ENCRYPTION_KEY}
       - SESSION_TIMEOUT_MINUTES=30
       - CATALOG_CACHE_TTL_SECONDS=3600
       - CORS_ORIGINS=http://localhost:3000,http://localhost:3001

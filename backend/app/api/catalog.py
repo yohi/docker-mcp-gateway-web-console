@@ -24,27 +24,27 @@ async def get_catalog(
 ) -> CatalogResponse:
     """
     Fetch catalog data from a remote source.
-    
+
     This endpoint fetches the catalog of available MCP servers from the specified URL.
     if no URL is provided, it uses the default registry URL.
     If the fetch fails, it attempts to return cached data if available.
-    
+
     Args:
         source: URL of the catalog JSON file (optional)
-        
+
     Returns:
         CatalogResponse with list of available MCP servers
-        
+
     Raises:
         HTTPException: If catalog cannot be fetched and no cache is available
     """
     # Use default URL if source is not provided
     source_url = source or settings.catalog_default_url
-    
+
     try:
         # Check if we have valid cached data first
         cached_items = await catalog_service.get_cached_catalog(source_url)
-        
+
         if cached_items is not None:
             # We have valid cache, try to fetch fresh data in background
             # but return cached data immediately
@@ -59,7 +59,9 @@ async def get_catalog(
             return CatalogResponse(
                 servers=cached_items,
                 total=len(cached_items),
-                cached=True
+                cached=True,
+                page=1,
+                page_size=len(cached_items) or 1,
             )
         else:
             # No cache, must fetch fresh data
@@ -67,9 +69,11 @@ async def get_catalog(
             return CatalogResponse(
                 servers=items,
                 total=len(items),
-                cached=is_cached
+                cached=is_cached,
+                page=1,
+                page_size=len(items) or 1,
             )
-            
+
     except CatalogError as e:
         logger.error(f"Failed to fetch catalog: {e}")
         raise HTTPException(
@@ -88,45 +92,67 @@ async def get_catalog(
 async def search_catalog(
     source: Optional[str] = Query(None, description="URL of the catalog JSON file"),
     q: str = Query(default="", description="Search keyword"),
-    category: Optional[str] = Query(default=None, description="Category filter")
+    category: Optional[str] = Query(default=None, description="Category filter"),
+    page: int = Query(default=1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(default=50, ge=1, le=200, description="Items per page"),
 ) -> CatalogResponse:
     """
     Search and filter catalog items.
-    
+
     This endpoint allows searching the catalog by keyword and filtering by category.
     The search looks for matches in both the name and description fields.
     if no URL is provided, it uses the default registry URL.
-    
+
     Args:
         source: URL of the catalog JSON file (optional)
         q: Search keyword (searches in name and description)
         category: Category filter (exact match)
-        
+
     Returns:
         CatalogResponse with filtered list of MCP servers
-        
+
     Raises:
         HTTPException: If catalog cannot be fetched
     """
     source_url = source or settings.catalog_default_url
-    
+
     try:
-        # Fetch catalog data (will use cache if available)
-        items, is_cached = await catalog_service.fetch_catalog(source_url)
-        
+        # Cache first: return cached immediately, refresh in background
+        cached_items = await catalog_service.get_cached_catalog(source_url)
+        is_cached = cached_items is not None
+
+        if cached_items is not None:
+            async def _background_fetch(url: str):
+                try:
+                    await catalog_service.fetch_catalog(url)
+                except Exception as e:
+                    logger.error(f"Background fetch failed for {url}: {e}")
+
+            asyncio.create_task(_background_fetch(source_url))
+            items = cached_items
+        else:
+            items, is_cached = await catalog_service.fetch_catalog(source_url)
+
         # Apply search and filters
         filtered_items = await catalog_service.search_catalog(
             items=items,
             query=q,
             category=category
         )
-        
+
+        total = len(filtered_items)
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_items = filtered_items[start:end]
+
         return CatalogResponse(
-            servers=filtered_items,
-            total=len(filtered_items),
-            cached=is_cached
+            servers=page_items,
+            total=total,
+            cached=is_cached,
+            page=page,
+            page_size=page_size,
         )
-        
+
     except CatalogError as e:
         logger.error(f"Failed to search catalog: {e}")
         raise HTTPException(
@@ -147,24 +173,24 @@ async def clear_catalog_cache(
 ) -> dict:
     """
     Clear catalog cache.
-    
+
     This endpoint allows clearing the catalog cache, either for a specific source
     or for all sources.
-    
+
     Args:
         source: Optional URL of specific catalog to clear, or None to clear all
-        
+
     Returns:
         Success message
     """
     try:
         catalog_service.clear_cache(source)
-        
+
         if source:
             return {"success": True, "message": f"Cache cleared for {source}"}
         else:
             return {"success": True, "message": "All catalog cache cleared"}
-            
+
     except Exception as e:
         logger.error(f"Error clearing cache: {e}")
         raise HTTPException(

@@ -47,6 +47,15 @@ class CatalogService:
         # Cache structure: {source_url: (catalog_data, expiry_time)}
         self._cache: Dict[str, tuple[List[CatalogItem], datetime]] = {}
         self._cache_ttl = timedelta(seconds=settings.catalog_cache_ttl_seconds)
+        self._github_fetch_concurrency = max(
+            1, getattr(settings, "catalog_github_fetch_concurrency", 8)
+        )
+        self._github_fetch_retries = max(
+            1, getattr(settings, "catalog_github_fetch_retries", 2)
+        )
+        self._github_fetch_retry_base_delay = max(
+            0.1, getattr(settings, "catalog_github_fetch_retry_base_delay_seconds", 0.5)
+        )
 
     @staticmethod
     def _is_secret_env(key: str) -> bool:
@@ -156,8 +165,12 @@ class CatalogService:
                             if isinstance(item, dict) and item.get("type") == "dir"
                         ]
 
+                        semaphore = asyncio.Semaphore(self._github_fetch_concurrency)
                         tasks = [
-                            self._fetch_github_server_yaml(client, item) for item in dir_items
+                            self._fetch_github_server_yaml_with_limit(
+                                semaphore, client, item
+                            )
+                            for item in dir_items
                         ]
                         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -252,6 +265,25 @@ class CatalogService:
             required_secrets=[],
         )
 
+    async def _fetch_github_server_yaml_with_limit(
+        self, semaphore: asyncio.Semaphore, client: httpx.AsyncClient, item: dict
+    ) -> Optional[CatalogItem]:
+        """
+        GitHub server.yaml 取得時の並列度を制御する。
+        """
+        async with semaphore:
+            return await self._fetch_github_server_yaml(client, item)
+
+    def _should_retry_github(self, error: Exception) -> bool:
+        """
+        GitHub API 取得のリトライ可否を判定する。
+        """
+        if isinstance(error, httpx.HTTPStatusError):
+            return error.response.status_code in {429, 500, 502, 503, 504}
+        if isinstance(error, httpx.RequestError):
+            return True
+        return False
+
     async def _fetch_github_server_yaml(
         self, client: httpx.AsyncClient, item: dict
     ) -> Optional[CatalogItem]:
@@ -264,69 +296,90 @@ class CatalogService:
 
         server_yaml_url = f"https://api.github.com/repos/docker/mcp-registry/contents/{path}/server.yaml"
 
-        try:
-            response = await client.get(
-                server_yaml_url,
-                headers=self._github_headers(server_yaml_url),
-            )
-            if response.status_code == 404:
+        delay = self._github_fetch_retry_base_delay
+        last_error: Optional[Exception] = None
+
+        for attempt in range(self._github_fetch_retries):
+            try:
+                response = await client.get(
+                    server_yaml_url,
+                    headers=self._github_headers(server_yaml_url),
+                )
+                if response.status_code == 404:
+                    return None
+
+                response.raise_for_status()
+                payload = response.json()
+                content = payload.get("content")
+                if not content:
+                    return None
+
+                decoded = base64.b64decode(content)
+                data = yaml.safe_load(decoded) or {}
+
+                name = (
+                    data.get("about", {}).get("title")
+                    or data.get("name")
+                    or item.get("name")
+                    or "unknown"
+                )
+                description = (
+                    data.get("about", {}).get("description")
+                    or data.get("meta", {}).get("description")
+                    or f"docker/mcp-registry: {path}"
+                )
+                vendor = (
+                    data.get("source", {}).get("project")
+                    or data.get("meta", {}).get("vendor")
+                    or "docker"
+                )
+                category = data.get("meta", {}).get("category") or "general"
+                docker_image = data.get("image") or ""
+                icon_url = (
+                    data.get("about", {}).get("icon")
+                    or data.get("meta", {}).get("icon")
+                    or ""
+                )
+
+                required_envs: List[str] = data.get("required_envs") or []
+                if not isinstance(required_envs, list):
+                    required_envs = []
+                required_secrets = [
+                    env for env in required_envs if self._is_secret_env(env)
+                ]
+
+                return CatalogItem(
+                    id=item.get("name") or name,
+                    name=name,
+                    description=description,
+                    vendor=vendor,
+                    category=category,
+                    docker_image=docker_image,
+                    icon_url=icon_url,
+                    default_env={},
+                    required_envs=required_envs,
+                    required_secrets=required_secrets,
+                )
+            except Exception as e:
+                last_error = e
+                should_retry = self._should_retry_github(e) and attempt < (
+                    self._github_fetch_retries - 1
+                )
+                if should_retry:
+                    logger.debug(
+                        f"Retrying server.yaml fetch for {path}: {e} "
+                        f"(attempt {attempt + 2}/{self._github_fetch_retries})"
+                    )
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, self._github_fetch_retry_base_delay * 4)
+                    continue
+
+                logger.warning(f"Failed to fetch server.yaml for {path}: {e}")
                 return None
 
-            response.raise_for_status()
-            payload = response.json()
-            content = payload.get("content")
-            if not content:
-                return None
-
-            decoded = base64.b64decode(content)
-            data = yaml.safe_load(decoded) or {}
-
-            name = (
-                data.get("about", {}).get("title")
-                or data.get("name")
-                or item.get("name")
-                or "unknown"
-            )
-            description = (
-                data.get("about", {}).get("description")
-                or data.get("meta", {}).get("description")
-                or f"docker/mcp-registry: {path}"
-            )
-            vendor = (
-                data.get("source", {}).get("project")
-                or data.get("meta", {}).get("vendor")
-                or "docker"
-            )
-            category = data.get("meta", {}).get("category") or "general"
-            docker_image = data.get("image") or ""
-            icon_url = (
-                data.get("about", {}).get("icon")
-                or data.get("meta", {}).get("icon")
-                or ""
-            )
-
-            required_envs: List[str] = data.get("required_envs") or []
-            if not isinstance(required_envs, list):
-                required_envs = []
-            required_secrets = [
-                env for env in required_envs if self._is_secret_env(env)
-            ]
-
-            return CatalogItem(
-                id=item.get("name") or name,
-                name=name,
-                description=description,
-                vendor=vendor,
-                category=category,
-                docker_image=docker_image,
-                icon_url=icon_url,
-                default_env={},
-                required_envs=required_envs,
-                required_secrets=required_secrets,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to fetch server.yaml for {path}: {e}")
-            return None
+        if last_error:
+            logger.warning(f"Failed to fetch server.yaml for {path}: {last_error}")
+        return None
 
     def _github_headers(self, url: str) -> Dict[str, str]:
         """

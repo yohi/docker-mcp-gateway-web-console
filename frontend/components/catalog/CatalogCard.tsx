@@ -43,6 +43,9 @@ export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardPr
         }
     };
 
+    const imageMissing = !item.docker_image;
+    const imageBlocked = imageMissing || item.docker_image?.startsWith('mcp/github-chat');
+
     return (
         <div
             className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white flex flex-col h-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -104,13 +107,12 @@ export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardPr
                     )}
                     {allowStatus && (
                         <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                allowStatus === 'allowed'
-                                    ? 'bg-green-100 text-green-800'
-                                    : allowStatus === 'pending'
-                                        ? 'bg-yellow-100 text-yellow-800'
-                                        : 'bg-red-100 text-red-800'
-                            }`}
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${allowStatus === 'allowed'
+                                ? 'bg-green-100 text-green-800'
+                                : allowStatus === 'pending'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}
                         >
                             allowlist: {allowStatus}
                         </span>
@@ -128,7 +130,7 @@ export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardPr
                 </div>
 
                 <div className="text-xs text-gray-500 mb-2">
-                    <span className="font-mono">{item.docker_image}</span>
+                    <span className="font-mono">{item.docker_image || 'イメージ未指定'}</span>
                 </div>
             </div>
 
@@ -154,9 +156,15 @@ export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardPr
                             event.stopPropagation();
                             onInstall(item);
                         }}
-                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                        disabled={imageBlocked}
+                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={
+                            imageBlocked
+                                ? 'イメージ未指定または取得不可のためインストールできません'
+                                : undefined
+                        }
                     >
-                        インストール
+                        {imageBlocked ? 'インストール不可' : 'インストール'}
                     </button>
                 )}
             </div>

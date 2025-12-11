@@ -72,11 +72,16 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
       showSuccess(`サーバー ${item.name} がインストールされました`);
       onClose();
     } catch (err: any) {
-      showError(err.message || 'Installation failed');
+      const detail: string | undefined = err?.detail || err?.message;
+      const msg =
+        detail?.toLowerCase().includes('image not found') || detail?.toLowerCase().includes('docker image not found')
+          ? `Dockerイメージが見つかりません: ${item.docker_image}`
+          : detail || 'インストールに失敗しました';
+      showError(msg);
     }
   };
 
-  // Sort keys to put required secrets first/top or organize nicely? 
+  // Sort keys to put required secrets first/top or organize nicely?
   // For now just existing order.
   const fields = Object.keys(formData);
 
@@ -115,8 +120,8 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
                         }
                         error={
                           item.required_envs.includes(key) &&
-                          !formData[key] &&
-                          (touched[key] || submitAttempted)
+                            !formData[key] &&
+                            (touched[key] || submitAttempted)
                             ? '必須項目です'
                             : undefined
                         }

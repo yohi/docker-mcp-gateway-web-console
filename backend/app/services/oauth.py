@@ -7,6 +7,7 @@ import json
 import logging
 import secrets
 import uuid
+from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -170,14 +171,27 @@ class OAuthService:
         self._scope_policy = ScopePolicyService(permitted_scopes or [])
         self._credential_creator = credential_creator
         encryption_key = settings.oauth_token_encryption_key
+        key_path = Path(settings.state_db_path).with_name("oauth_key.txt")
         if (
             not encryption_key
             or encryption_key.strip() == ""
             or encryption_key == OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER
         ):
-            raise ConfigurationError(
-                "oauth_token_encryption_key が未設定またはプレースホルダーのままです。環境変数 OAUTH_TOKEN_ENCRYPTION_KEY に有効な Fernet キーを設定してください。"
-            )
+            try:
+                if key_path.exists():
+                    encryption_key = key_path.read_text().strip()
+                else:
+                    encryption_key = Fernet.generate_key().decode("utf-8")
+                    key_path.parent.mkdir(parents=True, exist_ok=True)
+                    key_path.write_text(encryption_key)
+                settings.oauth_token_encryption_key = encryption_key
+                logger.info("OAUTH_TOKEN_ENCRYPTION_KEY を data ディレクトリの永続キーで設定しました。")
+            except Exception:
+                encryption_key = Fernet.generate_key().decode("utf-8")
+                logger.warning(
+                    "OAUTH_TOKEN_ENCRYPTION_KEY の設定に失敗しました。生成したキーは実行中のみ有効です。",
+                    exc_info=True,
+                )
         self._token_cipher = TokenCipher(
             encryption_key, settings.oauth_token_encryption_key_id
         )

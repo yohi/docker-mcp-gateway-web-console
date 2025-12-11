@@ -12,7 +12,7 @@ from ..models.containers import (
     ContainerListResponse,
 )
 from ..services.auth import AuthService
-from ..services.containers import ContainerService
+from ..services.containers import ContainerService, ContainerError
 from ..services.secrets import SecretManager
 from .auth import get_auth_service, get_session_id
 
@@ -52,10 +52,10 @@ async def list_containers(
 ):
     """
     List all Docker containers.
-    
+
     Query parameters:
     - all: If true, include stopped containers. If false, only running containers.
-    
+
     Requires valid session authentication.
     """
     try:
@@ -66,14 +66,20 @@ async def list_containers(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired session"
             )
-        
+
         # List containers
         containers = await container_service.list_containers(all_containers=all)
-        
+
         return ContainerListResponse(containers=containers)
-        
+
     except HTTPException:
         raise
+    except ContainerError as e:
+        logger.error(f"Container error creating container: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
     except RuntimeError as e:
         logger.error(f"Failed to list containers: {e}")
         raise HTTPException(
@@ -135,14 +141,14 @@ async def create_container(
 ):
     """
     Create and start a new Docker container.
-    
+
     This endpoint:
     1. Validates the session
     2. Resolves any Bitwarden references in environment variables
     3. Creates the Docker container
     4. Starts the container
     5. Returns the container ID
-    
+
     Requires valid session authentication.
     """
     try:
@@ -151,6 +157,12 @@ async def create_container(
         )
     except HTTPException:
         raise
+    except ContainerError as e:
+        logger.error(f"Container error installing container: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
     except RuntimeError as e:
         logger.exception("Failed to create container")
         raise HTTPException(
@@ -174,7 +186,7 @@ async def install_container(
 ):
     """
     Install (create and start) a new Docker container.
-    
+
     本エンドポイントはUIのインストールフロー用エイリアスで、`POST /containers` と同等の処理を行う。
     セッション検証後、環境変数のBitwarden参照解決を行い、コンテナを作成・起動してIDを返却する。
     """
@@ -207,7 +219,7 @@ async def start_container(
 ):
     """
     Start a stopped container.
-    
+
     Requires valid session authentication.
     """
     try:
@@ -218,16 +230,16 @@ async def start_container(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired session"
             )
-        
+
         # Start container
         success = await container_service.start_container(container_id)
-        
+
         return ContainerActionResponse(
             success=success,
             message=f"Container {container_id} started successfully",
             container_id=container_id,
         )
-        
+
     except HTTPException:
         raise
     except RuntimeError as e:
@@ -254,10 +266,10 @@ async def stop_container(
 ):
     """
     Stop a running container.
-    
+
     Query parameters:
     - timeout: Seconds to wait before killing the container (default: 10)
-    
+
     Requires valid session authentication.
     """
     try:
@@ -268,16 +280,16 @@ async def stop_container(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired session"
             )
-        
+
         # Stop container
         success = await container_service.stop_container(container_id, timeout=timeout)
-        
+
         return ContainerActionResponse(
             success=success,
             message=f"Container {container_id} stopped successfully",
             container_id=container_id,
         )
-        
+
     except HTTPException:
         raise
     except RuntimeError as e:
@@ -304,10 +316,10 @@ async def restart_container(
 ):
     """
     Restart a container.
-    
+
     Query parameters:
     - timeout: Seconds to wait before killing the container during stop (default: 10)
-    
+
     Requires valid session authentication.
     """
     try:
@@ -318,16 +330,16 @@ async def restart_container(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired session"
             )
-        
+
         # Restart container
         success = await container_service.restart_container(container_id, timeout=timeout)
-        
+
         return ContainerActionResponse(
             success=success,
             message=f"Container {container_id} restarted successfully",
             container_id=container_id,
         )
-        
+
     except HTTPException:
         raise
     except RuntimeError as e:
@@ -354,10 +366,10 @@ async def delete_container(
 ):
     """
     Delete a container.
-    
+
     Query parameters:
     - force: If true, force removal even if running (default: false)
-    
+
     Requires valid session authentication.
     """
     try:
@@ -368,16 +380,16 @@ async def delete_container(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired session"
             )
-        
+
         # Delete container
         success = await container_service.delete_container(container_id, force=force)
-        
+
         return ContainerActionResponse(
             success=success,
             message=f"Container {container_id} deleted successfully",
             container_id=container_id,
         )
-        
+
     except HTTPException:
         raise
     except RuntimeError as e:
@@ -402,10 +414,10 @@ async def stream_logs(
 ):
     """
     Stream container logs via WebSocket.
-    
+
     The client should send the session_id as the first message after connecting.
     Then logs will be streamed in real-time.
-    
+
     Message format:
     {
         "timestamp": "2024-01-01T12:00:00Z",
@@ -414,19 +426,19 @@ async def stream_logs(
     }
     """
     await websocket.accept()
-    
+
     try:
         # Wait for session_id from client
         session_data = await websocket.receive_json()
         session_id = session_data.get("session_id")
-        
+
         if not session_id:
             await websocket.send_json({
                 "error": "Missing session_id in first message"
             })
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
-        
+
         # Validate session
         auth_service = get_auth_service()
         is_valid = await auth_service.validate_session(session_id)
@@ -436,7 +448,7 @@ async def stream_logs(
             })
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
-        
+
         # Stream logs
         async for log_entry in container_service.stream_logs(container_id):
             await websocket.send_json({
@@ -444,7 +456,7 @@ async def stream_logs(
                 "message": log_entry.message,
                 "stream": log_entry.stream,
             })
-            
+
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for container {container_id}")
     except RuntimeError as e:

@@ -7,6 +7,8 @@ import { searchCatalog } from '@/lib/api/catalog';
 import SearchBar from './SearchBar';
 import CatalogCard from './CatalogCard'; // Changed import
 
+const PAGE_SIZE = 30;
+
 interface CatalogListProps {
   catalogSource: string;
   onInstall: (item: CatalogItem) => void;
@@ -16,22 +18,25 @@ interface CatalogListProps {
 export default function CatalogList({ catalogSource, onInstall, onSelect }: CatalogListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategory] = useState('');
+  const [page, setPage] = useState(1);
 
   // SWR fetcher function
   const fetcher = useCallback(
     async (key: string) => {
-      const [, source, query, category] = key.split('|');
+      const [, source, query, category, pageStr, sizeStr] = key.split('|');
       return searchCatalog({
         source,
         q: query || undefined,
         category: category || undefined,
+        page: Number(pageStr) || 1,
+        page_size: Number(sizeStr) || PAGE_SIZE,
       });
     },
     []
   );
 
   // Create cache key that includes search params
-  const cacheKey = `catalog|${catalogSource}|${searchQuery}|${categoryFilter}`;
+  const cacheKey = `catalog|${catalogSource}|${searchQuery}|${categoryFilter}|${page}|${PAGE_SIZE}`;
 
   // Fetch catalog data with SWR
   const { data, error, isLoading, mutate } = useSWR(
@@ -48,6 +53,7 @@ export default function CatalogList({ catalogSource, onInstall, onSelect }: Cata
   const handleSearch = useCallback((query: string, category: string) => {
     setSearchQuery(query);
     setCategory(category);
+    setPage(1);
   }, []);
 
   // Extract unique categories from data
@@ -71,6 +77,9 @@ export default function CatalogList({ catalogSource, onInstall, onSelect }: Cata
 
   // Error state
   if (error) {
+    const message = error.message || 'An error occurred while fetching the catalog.';
+    const maybeRateLimit =
+      message.toLowerCase().includes('rate limit') || message.includes('403') || message.includes('429');
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <div className="flex">
@@ -93,7 +102,8 @@ export default function CatalogList({ catalogSource, onInstall, onSelect }: Cata
               Failed to load catalog
             </h3>
             <p className="mt-1 text-sm text-red-700">
-              {error.message || 'An error occurred while fetching the catalog.'}
+              {message}
+              {maybeRateLimit && ' （GitHub APIのレート制限の可能性があります。少し待ってから再試行してください）'}
             </p>
             <button
               onClick={() => mutate()}
@@ -109,6 +119,10 @@ export default function CatalogList({ catalogSource, onInstall, onSelect }: Cata
 
   const servers = data?.servers || [];
   const isCached = data?.cached || false;
+  const total = data?.total || 0;
+  const currentPage = data?.page || page;
+  const pageSize = data?.page_size || PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <div className="space-y-6">
@@ -137,18 +151,34 @@ export default function CatalogList({ catalogSource, onInstall, onSelect }: Cata
           ) : (
             <>
               Showing <span className="font-medium">{servers.length}</span>{' '}
-              {servers.length === 1 ? 'server' : 'servers'}
+              {servers.length === 1 ? 'server' : 'servers'} (page {currentPage}/{totalPages}, total {total})
             </>
           )}
         </p>
 
         {servers.length > 0 && (
-          <button
-            onClick={() => mutate()}
-            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              className="px-3 py-1 text-sm border border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              前へ
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              className="px-3 py-1 text-sm border border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              次へ
+            </button>
+            <button
+              onClick={() => mutate()}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Refresh
+            </button>
+          </div>
         )}
       </div>
 

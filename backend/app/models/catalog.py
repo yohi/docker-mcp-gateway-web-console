@@ -45,3 +45,5 @@ class CatalogResponse(BaseModel):
     servers: List[CatalogItem]
     total: int = Field(..., description="Total number of servers in result")
     cached: bool = Field(default=False, description="Whether data is from cache")
+    page: int = Field(default=1, description="Current page number (1-based)")
+    page_size: int = Field(default=50, description="Items per page")

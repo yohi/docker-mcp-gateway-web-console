@@ -7,6 +7,7 @@ import os
 import subprocess
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Callable, Dict, Optional
 
 from ..config import settings
@@ -23,7 +24,7 @@ class AuthError(Exception):
 class AuthService:
     """
     Manages Bitwarden authentication and session lifecycle.
-    
+
     Responsibilities:
     - Authenticate users via Bitwarden (API key or master password)
     - Create and manage sessions
@@ -34,7 +35,7 @@ class AuthService:
     def __init__(self, on_session_end: Optional['Callable[[str], None]'] = None):
         """
         Initialize the Auth Service.
-        
+
         Args:
             on_session_end: Optional callback function to be called when a session ends.
                            Receives session_id as argument.
@@ -43,17 +44,19 @@ class AuthService:
         self._sessions: Dict[str, Session] = {}
         self._session_timeout = timedelta(minutes=settings.session_timeout_minutes)
         self._on_session_end = on_session_end
+        self._persist_path = Path(settings.state_db_path).with_name("sessions.json")
+        self._load_sessions()
 
     async def login(self, login_request: LoginRequest) -> Session:
         """
         Authenticate user with Bitwarden and create a session.
-        
+
         Args:
             login_request: Login credentials and method
-            
+
         Returns:
             Session object with session_id and bw_session_key
-            
+
         Raises:
             AuthError: If authentication fails
         """
@@ -62,15 +65,15 @@ class AuthService:
             login_request.validate_credentials()
         except ValueError as e:
             raise AuthError(str(e)) from e
-        
+
         # Authenticate with Bitwarden
         bw_session_key = await self._authenticate_bitwarden(login_request)
-        
+
         # Create session
         session_id = str(uuid.uuid4())
         now = datetime.now()
         expires_at = now + self._session_timeout
-        
+
         session = Session(
             session_id=session_id,
             user_email=login_request.email,
@@ -79,146 +82,195 @@ class AuthService:
             expires_at=expires_at,
             last_activity=now
         )
-        
+
         # Store session
         self._sessions[session_id] = session
-        
+        self._persist_sessions()
+
         logger.info(f"Session created for user {login_request.email}: {session_id}")
-        
+
         return session
 
     async def logout(self, session_id: str) -> bool:
         """
         Terminate a session and revoke vault access.
-        
+
         Args:
             session_id: Session identifier
-            
+
         Returns:
             True if session was successfully terminated, False if session not found
         """
         if session_id not in self._sessions:
             logger.warning(f"Logout attempted for non-existent session: {session_id}")
             return False
-        
+
         session = self._sessions[session_id]
-        
+
         # Lock the Bitwarden vault for this session
         await self._lock_bitwarden(session.bw_session_key)
-        
+
         # Remove session from storage
         del self._sessions[session_id]
-        
+        self._persist_sessions()
+
         # Trigger session end callback if provided
         if self._on_session_end:
             try:
                 self._on_session_end(session_id)
             except Exception as e:
                 logger.error(f"Error in session end callback for {session_id}: {e}")
-        
+
         logger.info(f"Session terminated: {session_id}")
-        
+
         return True
 
     async def validate_session(self, session_id: str) -> bool:
         """
         Check if a session is valid and not expired.
-        
+
         Args:
             session_id: Session identifier
-            
+
         Returns:
             True if session is valid, False otherwise
         """
         if session_id not in self._sessions:
             return False
-        
+
         session = self._sessions[session_id]
         now = datetime.now()
-        
+
         # Check if session has expired
         if now >= session.expires_at:
             logger.info(f"Session expired: {session_id}")
             # Clean up expired session
             await self.logout(session_id)
             return False
-        
+
         # Check for inactivity timeout
         time_since_activity = now - session.last_activity
         if time_since_activity >= self._session_timeout:
             logger.info(f"Session timed out due to inactivity: {session_id}")
             await self.logout(session_id)
             return False
-        
+
         # Update last activity time
         session.last_activity = now
-        
+
         return True
 
     async def get_vault_access(self, session_id: str) -> Optional[str]:
         """
         Get Bitwarden vault access key for a session.
-        
+
         Args:
             session_id: Session identifier
-            
+
         Returns:
             Bitwarden session key if session is valid, None otherwise
         """
         if not await self.validate_session(session_id):
             return None
-        
+
         session = self._sessions[session_id]
         return session.bw_session_key
 
     async def get_session(self, session_id: str) -> Optional[Session]:
         """
         Retrieve a session by ID.
-        
+
         Args:
             session_id: Session identifier
-            
+
         Returns:
             Session object if found and valid, None otherwise
         """
         if not await self.validate_session(session_id):
             return None
-        
+
         return self._sessions.get(session_id)
 
     async def cleanup_expired_sessions(self) -> int:
         """
         Remove all expired sessions from storage.
-        
+
         Returns:
             Number of sessions cleaned up
         """
         now = datetime.now()
         expired_sessions = []
-        
+
         for session_id, session in self._sessions.items():
             if now >= session.expires_at or (now - session.last_activity) >= self._session_timeout:
                 expired_sessions.append(session_id)
-        
+
         # Clean up expired sessions
         for session_id in expired_sessions:
             await self.logout(session_id)
-        
+
         if expired_sessions:
             logger.info(f"Cleaned up {len(expired_sessions)} expired sessions")
-        
+            self._persist_sessions()
+
         return len(expired_sessions)
+
+    def _persist_sessions(self) -> None:
+        """セッションをディスクに永続化する。"""
+        try:
+            self._persist_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {}
+            for sid, s in self._sessions.items():
+                payload[sid] = {
+                    "session_id": s.session_id,
+                    "user_email": s.user_email,
+                    "bw_session_key": s.bw_session_key,
+                    "created_at": s.created_at.isoformat(),
+                    "expires_at": s.expires_at.isoformat(),
+                    "last_activity": s.last_activity.isoformat(),
+                }
+            self._persist_path.write_text(json.dumps(payload))
+        except Exception:
+            logger.debug("Failed to persist sessions", exc_info=True)
+
+    def _load_sessions(self) -> None:
+        """永続化されたセッションを読み込み、有効なもののみ復元する。"""
+        if not self._persist_path.exists():
+            return
+        try:
+            data = json.loads(self._persist_path.read_text() or "{}")
+            now = datetime.now()
+            for sid, raw in data.items():
+                try:
+                    created_at = datetime.fromisoformat(raw["created_at"])
+                    expires_at = datetime.fromisoformat(raw["expires_at"])
+                    last_activity = datetime.fromisoformat(raw["last_activity"])
+                    if now >= expires_at:
+                        continue
+                    session = Session(
+                        session_id=sid,
+                        user_email=raw["user_email"],
+                        bw_session_key=raw["bw_session_key"],
+                        created_at=created_at,
+                        expires_at=expires_at,
+                        last_activity=last_activity,
+                    )
+                    self._sessions[sid] = session
+                except Exception:
+                    logger.debug("Skip invalid persisted session", exc_info=True)
+        except Exception:
+            logger.debug("Failed to load persisted sessions", exc_info=True)
 
     async def _authenticate_bitwarden(self, login_request: LoginRequest) -> str:
         """
         Authenticate with Bitwarden CLI and obtain session key.
-        
+
         Args:
             login_request: Login credentials
-            
+
         Returns:
             Bitwarden session key
-            
+
         Raises:
             AuthError: If authentication fails
         """
@@ -239,12 +291,12 @@ class AuthService:
                     login_request.two_step_login_method,
                     login_request.two_step_login_code
                 )
-            
+
             # Verify the session key works by unlocking the vault
             await self._verify_session_key(bw_session_key)
-            
+
             return bw_session_key
-            
+
         except AuthError:
             raise
         except Exception as e:
@@ -255,15 +307,15 @@ class AuthService:
         """
         Login to Bitwarden using API key (Client ID & Secret).
         This method bypasses 2FA but requires Master Password to unlock the vault.
-        
+
         Args:
             client_id: Bitwarden Client ID
             client_secret: Bitwarden Client Secret
             master_password: Master Password (for unlocking)
-            
+
         Returns:
             Bitwarden session key
-            
+
         Raises:
             AuthError: If login or unlock fails
         """
@@ -271,12 +323,12 @@ class AuthService:
         try:
             # Set API key as environment variable and login
             cmd = [settings.bitwarden_cli_path, "login", "--apikey"]
-            
+
             # Use os.environ as base to keep PATH etc, but update with API keys
             env = os.environ.copy()
             env["BW_CLIENTID"] = client_id
             env["BW_CLIENTSECRET"] = client_secret
-            
+
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
@@ -284,7 +336,7 @@ class AuthService:
                 stderr=asyncio.subprocess.PIPE,
                 env=env
             )
-            
+
             # Wait for process with timeout
             try:
                 stdout, stderr = await asyncio.wait_for(
@@ -296,17 +348,17 @@ class AuthService:
                     process.kill()
                     await asyncio.wait_for(process.wait(), timeout=5.0)
                 raise AuthError("Bitwarden login timed out")
-            
+
             if process.returncode != 0:
                 stdout_msg = stdout.decode().strip()
                 stderr_msg = stderr.decode().strip()
                 combined = f"{stdout_msg}\n{stderr_msg}".strip()
                 if "You are already logged in" not in combined:
                     raise AuthError(f"Bitwarden login failed: {combined}")
-            
+
             # For API key login, we must unlock the vault to get the session key
             return await self._unlock_vault(master_password)
-            
+
         except asyncio.TimeoutError:
             raise AuthError("Bitwarden login timed out")
         except Exception as e:
@@ -330,16 +382,16 @@ class AuthService:
     ) -> str:
         """
         Login to Bitwarden using master password.
-        
+
         Args:
             email: User email
             password: Master password
             two_step_method: Optional 2FA method enum value
             two_step_code: Optional 2FA code
-            
+
         Returns:
             Bitwarden session key
-            
+
         Raises:
             AuthError: If login fails
         """
@@ -347,21 +399,21 @@ class AuthService:
         try:
             # Login with master password
             cmd = [settings.bitwarden_cli_path, "login", email, "--raw"]
-            
+
             # Add 2FA parameters if provided
             if (two_step_method is not None) ^ (two_step_code is not None):
                 raise ValueError("Both two_step_method and two_step_code must be provided together")
-            
+
             if two_step_method is not None and two_step_code:
                 cmd.extend(["--method", str(two_step_method), "--code", two_step_code])
-            
+
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             # Send password to stdin
             try:
                 stdout, stderr = await asyncio.wait_for(
@@ -373,22 +425,22 @@ class AuthService:
                     process.kill()
                     await asyncio.wait_for(process.wait(), timeout=5.0)
                 raise AuthError("Bitwarden login timed out")
-            
+
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
                 # Common error messages
                 if "Invalid credentials" in error_msg or "Username or password is incorrect" in error_msg:
                     raise AuthError("Invalid email or password")
                 raise AuthError(f"Bitwarden login failed: {error_msg}")
-            
+
             # Session key is returned in stdout
             session_key = stdout.decode().strip()
-            
+
             if not session_key:
                 raise AuthError("No session key returned from Bitwarden")
-            
+
             return session_key
-            
+
         except asyncio.TimeoutError:
             raise AuthError("Bitwarden login timed out")
         except Exception as e:
@@ -406,13 +458,13 @@ class AuthService:
     async def _unlock_vault(self, password: str) -> str:
         """
         Unlock Bitwarden vault and get session key.
-        
+
         Args:
             password: Master password or API key
-            
+
         Returns:
             Bitwarden session key
-            
+
         Raises:
             AuthError: If unlock fails
         """
@@ -422,7 +474,7 @@ class AuthService:
             env = os.environ.copy()
             # 非対話実行のため、環境変数経由でパスワードを渡す
             env["BW_PASSWORD"] = password
-            
+
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 "--passwordenv",
@@ -431,7 +483,7 @@ class AuthService:
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
             )
-            
+
             try:
                 stdout, stderr = await asyncio.wait_for(
                     process.communicate(),
@@ -442,23 +494,23 @@ class AuthService:
                     process.kill()
                     await asyncio.wait_for(process.wait(), timeout=5.0)
                 raise AuthError("Bitwarden unlock timed out")
-            
+
             stdout_msg = stdout.decode().strip()
             stderr_msg = stderr.decode().strip()
-            
+
             if process.returncode != 0:
                 raise AuthError(
                     f"Bitwarden unlock failed: {stderr_msg or stdout_msg or 'Unknown error'}"
                 )
-            
+
             if not stdout_msg:
                 detail = "No session key returned from unlock"
                 if stderr_msg:
                     detail = f"{detail}: {stderr_msg}"
                 raise AuthError(detail)
-            
+
             return stdout_msg
-            
+
         except asyncio.TimeoutError:
             raise AuthError("Bitwarden unlock timed out")
         except Exception as e:
@@ -476,10 +528,10 @@ class AuthService:
     async def _verify_session_key(self, session_key: str) -> None:
         """
         Verify that a session key is valid by testing vault access.
-        
+
         Args:
             session_key: Bitwarden session key to verify
-            
+
         Raises:
             AuthError: If session key is invalid
         """
@@ -492,13 +544,13 @@ class AuthService:
                 "--session",
                 session_key
             ]
-            
+
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             try:
                 stdout, stderr = await asyncio.wait_for(
                     process.communicate(),
@@ -509,11 +561,11 @@ class AuthService:
                     process.kill()
                     await asyncio.wait_for(process.wait(), timeout=5.0)
                 raise AuthError("Session verification timed out")
-            
+
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
                 raise AuthError(f"Invalid session key: {error_msg}")
-            
+
         except asyncio.TimeoutError:
             raise AuthError("Session verification timed out")
         except Exception as e:
@@ -531,7 +583,7 @@ class AuthService:
     async def _lock_bitwarden(self, session_key: str) -> None:
         """
         Lock the Bitwarden vault for a session.
-        
+
         Args:
             session_key: Bitwarden session key
         """
@@ -543,13 +595,13 @@ class AuthService:
                 "--session",
                 session_key
             ]
-            
+
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             try:
                 await asyncio.wait_for(
                     process.communicate(),
@@ -560,11 +612,11 @@ class AuthService:
                     process.kill()
                     await asyncio.wait_for(process.wait(), timeout=5.0)
                 logger.warning("Bitwarden lock command timed out")
-            
+
             # We don't raise errors here since logout should succeed even if lock fails
             if process.returncode != 0:
                 logger.warning("Failed to lock Bitwarden vault, but continuing with logout")
-                
+
         except Exception as e:
             # Log but don't raise - logout should succeed even if lock fails
             logger.warning(f"Error locking Bitwarden vault: {e}")

@@ -23,10 +23,14 @@ export interface CatalogResponse {
   servers: CatalogItem[];
   total: number;
   cached: boolean;
+  page: number;
+  page_size: number;
 }
 
 export interface CatalogSearchParams {
   source?: string;
   q?: string;
   category?: string;
+  page?: number;
+  page_size?: number;
 }
