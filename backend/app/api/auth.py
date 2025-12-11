@@ -12,6 +12,7 @@ from ..models.auth import (
     SessionValidationResponse,
 )
 from ..services.auth import AuthError, AuthService
+from ..services.state_store import StateStore
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def get_auth_service() -> AuthService:
     """Dependency to get the auth service instance."""
     global _auth_service
     if _auth_service is None:
-        _auth_service = AuthService()
+        _auth_service = AuthService(state_store=StateStore())
     return _auth_service
 
 

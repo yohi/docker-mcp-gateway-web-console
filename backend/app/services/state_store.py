@@ -10,9 +10,11 @@ from typing import Dict, List, Optional
 from ..config import settings
 from ..models.state import (
     AuditLogEntry,
+    AuthSessionRecord,
     CredentialRecord,
     GatewayAllowEntry,
     JobRecord,
+    GitHubTokenRecord,
     SessionRecord,
     SignaturePolicyRecord,
 )
@@ -105,6 +107,21 @@ class StateStore:
                     metadata TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS github_tokens (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    token_ref TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    updated_by TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS auth_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    user_email TEXT NOT NULL,
+                    bw_session_key TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    last_activity TEXT NOT NULL
+                );
                 """
             )
             conn.commit()
@@ -183,6 +200,111 @@ class StateStore:
                 "DELETE FROM credentials WHERE credential_key=?",
                 (credential_key,),
             )
+            conn.commit()
+
+    # GitHub token operations
+    def save_github_token(self, record: GitHubTokenRecord) -> None:
+        """GitHub トークンレコードを保存する（単一行）。"""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO github_tokens (id, token_ref, source, updated_by, updated_at)
+                VALUES (1, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    token_ref=excluded.token_ref,
+                    source=excluded.source,
+                    updated_by=excluded.updated_by,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    json.dumps(record.token_ref),
+                    record.source,
+                    record.updated_by,
+                    _to_iso(record.updated_at),
+                ),
+            )
+            conn.commit()
+
+    def get_github_token(self) -> Optional[GitHubTokenRecord]:
+        """GitHub トークンレコードを取得する。存在しない場合は None。"""
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM github_tokens WHERE id=1").fetchone()
+        if row is None:
+            return None
+        return GitHubTokenRecord(
+            token_ref=json.loads(row["token_ref"]),
+            source=row["source"],
+            updated_by=row["updated_by"],
+            updated_at=_from_iso(row["updated_at"]),
+        )
+
+    def delete_github_token(self) -> None:
+        """GitHub トークンレコードを削除する。存在しない場合は何もしない。"""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM github_tokens WHERE id=1")
+            conn.commit()
+
+    # Auth session operations
+    def save_auth_session(self, record: AuthSessionRecord) -> None:
+        """ログインセッションレコードを保存する。"""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO auth_sessions (
+                    session_id, user_email, bw_session_key,
+                    created_at, expires_at, last_activity
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.session_id,
+                    record.user_email,
+                    record.bw_session_key,
+                    _to_iso(record.created_at),
+                    _to_iso(record.expires_at),
+                    _to_iso(record.last_activity),
+                ),
+            )
+            conn.commit()
+
+    def get_auth_session(self, session_id: str) -> Optional[AuthSessionRecord]:
+        """ログインセッションレコードを取得する。存在しない場合は None。"""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM auth_sessions WHERE session_id=?", (session_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        return AuthSessionRecord(
+            session_id=row["session_id"],
+            user_email=row["user_email"],
+            bw_session_key=row["bw_session_key"],
+            created_at=_from_iso(row["created_at"]),
+            expires_at=_from_iso(row["expires_at"]),
+            last_activity=_from_iso(row["last_activity"]),
+        )
+
+    def list_auth_sessions(self) -> List[AuthSessionRecord]:
+        """全ログインセッションレコードを取得する。"""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM auth_sessions").fetchall()
+        sessions: List[AuthSessionRecord] = []
+        for row in rows:
+            sessions.append(
+                AuthSessionRecord(
+                    session_id=row["session_id"],
+                    user_email=row["user_email"],
+                    bw_session_key=row["bw_session_key"],
+                    created_at=_from_iso(row["created_at"]),
+                    expires_at=_from_iso(row["expires_at"]),
+                    last_activity=_from_iso(row["last_activity"]),
+                )
+            )
+        return sessions
+
+    def delete_auth_session(self, session_id: str) -> None:
+        """ログインセッションレコードを削除する。存在しない場合は何もしない。"""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM auth_sessions WHERE session_id=?", (session_id,))
             conn.commit()
 
     # Session operations
@@ -447,12 +569,19 @@ class StateStore:
             )
             job_deleted = cur.rowcount
 
+            cur.execute(
+                "DELETE FROM auth_sessions WHERE expires_at < ?",
+                (_to_iso(now),),
+            )
+            auth_session_deleted = cur.rowcount
+
             conn.commit()
 
         return {
             "credentials": cred_deleted,
             "sessions": session_deleted,
             "jobs": job_deleted,
+            "auth_sessions": auth_session_deleted,
         }
 
     def _sanitize_metadata(self, metadata: Dict[str, object]) -> Dict[str, object]:

@@ -23,6 +23,26 @@ class CredentialRecord(BaseModel):
     created_at: datetime = Field(default_factory=_now_utc)
 
 
+class GitHubTokenRecord(BaseModel):
+    """GitHub パーソナルアクセストークンの永続化レコード。"""
+
+    token_ref: Dict[str, Any]
+    source: str
+    updated_by: str
+    updated_at: datetime = Field(default_factory=_now_utc)
+
+
+class AuthSessionRecord(BaseModel):
+    """ログインセッションの永続化レコード。"""
+
+    session_id: str
+    user_email: str
+    bw_session_key: str
+    created_at: datetime = Field(default_factory=_now_utc)
+    expires_at: datetime
+    last_activity: datetime
+
+
 class SessionRecord(BaseModel):
     """セッション状態の永続化レコード。"""
 
