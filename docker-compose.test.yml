@@ -38,10 +38,12 @@ services:
       - "8001:8000"  # Use different port to avoid conflicts
     volumes:
       - ./backend:/app
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
+      - "bw-cli-config:/root/.config/Bitwarden CLI"
+      - "bw-cli-cache:/root/.cache/Bitwarden CLI"
     environment:
       - BITWARDEN_CLI_PATH=/usr/local/bin/bw
-      - DOCKER_HOST=unix:///var/run/docker.sock
+      - DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/var/run/docker.sock}}
       - SESSION_TIMEOUT_MINUTES=30
       - CATALOG_CACHE_TTL_SECONDS=3600
       - CORS_ORIGINS=http://localhost:3001
@@ -82,3 +84,7 @@ services:
 networks:
   mcp-gateway-test:
     driver: bridge
+
+volumes:
+  bw-cli-config:
+  bw-cli-cache:

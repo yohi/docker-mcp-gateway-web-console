@@ -3,6 +3,7 @@
 import { KeyboardEvent, useMemo } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
 import { useContainers } from '@/hooks/useContainers';
+import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 
 interface CatalogCardProps {
     item: CatalogItem;
@@ -17,11 +18,7 @@ export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardPr
 
     const status = useMemo(() => {
         if (isLoading) return 'loading';
-        const normalizedName = item.name.toLowerCase();
-        const container = containers.find(c =>
-            c.image === item.docker_image ||
-            c.name.toLowerCase() === normalizedName
-        );
+        const container = containers.find((c) => matchCatalogItemContainer(item, c));
         if (container) {
             if (container.status === 'running') return 'running';
             return 'installed';

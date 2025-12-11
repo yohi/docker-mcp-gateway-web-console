@@ -14,6 +14,7 @@ import yaml
 from ..config import settings
 from ..models.catalog import Catalog, CatalogItem
 from ..schemas.catalog import RegistryItem
+from .github_token import GitHubTokenService
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class CatalogService:
         # Cache structure: {source_url: (catalog_data, expiry_time)}
         self._cache: Dict[str, tuple[List[CatalogItem], datetime]] = {}
         self._cache_ttl = timedelta(seconds=settings.catalog_cache_ttl_seconds)
+        self._github_token_service = GitHubTokenService()
 
     @staticmethod
     def _is_secret_env(key: str) -> bool:
@@ -334,7 +336,7 @@ class CatalogService:
         """
         if "api.github.com" not in url:
             return {}
-        token = settings.github_token
+        token = self._github_token_service.get_active_token()
         if not token:
             return {}
         return {"Authorization": f"Bearer {token}"}

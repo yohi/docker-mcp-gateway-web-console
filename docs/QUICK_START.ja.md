@@ -93,6 +93,8 @@ docker-compose up -d
    - `YOUR-ITEM-ID` を実際のBitwardenアイテムIDに置き換える
 5. 「Start Container」をクリック
 
+> 補足: 設定画面「GitHubトークン設定」からBitwarden検索→保存を行うと、トークンが暗号化保存されカタログ取得時に自動利用されます（値は表示されません）。
+
 ### 実行確認
 
 1. 「Dashboard」へ移動

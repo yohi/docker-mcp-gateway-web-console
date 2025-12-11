@@ -23,7 +23,10 @@ describe('Catalog API', () => {
             },
         ],
         total: 1,
+        page: 1,
+        page_size: 10,
         cached: true,
+        categories: ['utilities'],
     };
 
     describe('fetchCatalog', () => {
@@ -80,12 +83,16 @@ describe('Catalog API', () => {
                 source: 'http://example.com',
                 q: 'test',
                 category: 'utilities',
+                page: 2,
+                page_size: 20,
             };
             await searchCatalog(params);
 
             const callUrl = mockFetch.mock.calls[0][0];
             expect(callUrl).toContain('q=test');
             expect(callUrl).toContain('category=utilities');
+            expect(callUrl).toContain('page=2');
+            expect(callUrl).toContain('page_size=20');
         });
 
         it('calls correct URL with optional source', async () => {

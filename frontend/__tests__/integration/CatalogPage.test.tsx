@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import CatalogPage from '../../app/catalog/page';
-import { createContainer } from '../../lib/api/containers';
+import { installContainer } from '../../lib/api/containers';
 import { useSession } from '../../contexts/SessionContext';
 
 // Mocks
@@ -10,7 +10,7 @@ jest.mock('../../lib/api/catalog', () => ({
     searchCatalog: jest.fn(),
 }));
 jest.mock('../../lib/api/containers', () => ({
-    createContainer: jest.fn(),
+    installContainer: jest.fn(),
 }));
 
 // Mock Router
@@ -49,9 +49,16 @@ jest.mock('swr', () => ({
                 category: 'cat',
                 docker_image: 'img:fake',
                 required_secrets: [],
-                default_env: { 'E1': 'V1' }
+                default_env: { 'E1': 'V1' },
+                vendor: '',
+                icon_url: '',
+                required_envs: [],
             }],
-            cached: false
+            total: 1,
+            page: 1,
+            page_size: 12,
+            cached: false,
+            categories: ['cat']
         },
         isLoading: false,
         error: undefined,
@@ -80,7 +87,7 @@ describe('Catalog Page Integration', () => {
     });
 
     it('allows installing a server from catalog', async () => {
-        (createContainer as jest.Mock).mockResolvedValue({ container_id: 'cid' });
+        (installContainer as jest.Mock).mockResolvedValue({ container_id: 'cid' });
 
         render(<CatalogPage />);
 
@@ -103,7 +110,7 @@ describe('Catalog Page Integration', () => {
 
         // 5. Verify call
         await waitFor(() => {
-            expect(createContainer).toHaveBeenCalledWith(expect.objectContaining({
+            expect(installContainer).toHaveBeenCalledWith(expect.objectContaining({
                 name: 'Test Server',
                 image: 'img:fake',
                 env: expect.objectContaining({ 'E1': 'V1' })

@@ -7,6 +7,7 @@ import { MainLayout } from '@/components/layout';
 import { fetchGatewayConfig, saveGatewayConfig } from '@/lib/api/config';
 import { GatewayConfig } from '@/lib/types/config';
 import ConfigForm from '@/components/config/ConfigForm';
+import GitHubTokenSection from '@/components/config/GitHubTokenSection';
 import { useToast } from '@/contexts/ToastContext';
 
 export default function ConfigPage() {
@@ -110,6 +111,10 @@ export default function ConfigPage() {
             <p className="mt-2 text-gray-600">
               MCP Gatewayの設定を管理します。機密情報にはBitwarden参照記法 {`{{ bw:item-id:field }}`} を使用してください。
             </p>
+          </div>
+
+          <div className="mb-8">
+            <GitHubTokenSection />
           </div>
 
           {/* Error Message */}

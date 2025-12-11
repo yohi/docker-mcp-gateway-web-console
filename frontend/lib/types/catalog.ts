@@ -22,11 +22,16 @@ export interface CatalogItem {
 export interface CatalogResponse {
   servers: CatalogItem[];
   total: number;
+  page: number;
+  page_size: number;
   cached: boolean;
+  categories: string[];
 }
 
 export interface CatalogSearchParams {
   source?: string;
   q?: string;
   category?: string;
+  page?: number;
+  page_size?: number;
 }

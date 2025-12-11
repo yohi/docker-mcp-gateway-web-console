@@ -31,6 +31,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 |----------|-------------|---------|---------|
 | `BITWARDEN_CLI_PATH` | Bitwarden CLI実行ファイルへのパス | `/usr/local/bin/bw` | `/usr/bin/bw` |
 | `DOCKER_HOST` | Dockerデーモンソケット | `unix:///var/run/docker.sock` | `tcp://localhost:2375` |
+| `DOCKER_SOCKET_PATH` | Dockerソケットの実ファイルパス（`unix://`指定時） | `/var/run/docker.sock` | `/run/user/1000/docker.sock` |
 
 ### オプション変数
 
@@ -52,6 +53,8 @@ BITWARDEN_CLI_PATH=/usr/local/bin/bw
 
 # Docker Configuration
 DOCKER_HOST=unix:///var/run/docker.sock
+# ルートレス Docker 等、ソケットパスが異なる場合に上書き
+# DOCKER_SOCKET_PATH=/run/user/1000/docker.sock
 
 # Session Management
 SESSION_TIMEOUT_MINUTES=30
@@ -83,10 +86,15 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 # Backend
 BACKEND_PORT=8000
 BITWARDEN_CLI_PATH=/usr/local/bin/bw
-DOCKER_HOST=unix:///var/run/docker.sock
+DOCKER_HOST=unix://${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
+DOCKER_SOCKET_PATH=/var/run/docker.sock
 SESSION_TIMEOUT_MINUTES=30
 LOG_LEVEL=INFO
 ```
+
+ルートレス Docker や別ユーザーで動作するデーモンに接続する場合は、
+`DOCKER_SOCKET_PATH` を実際のソケットパス（例: `/run/user/1000/docker.sock`）に
+合わせてください。Compose 側のボリュームマウントも同じパスに自動で切り替わります。
 
 ## 本番環境の考慮事項
 
