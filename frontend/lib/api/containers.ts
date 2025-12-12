@@ -194,7 +194,15 @@ export async function fetchContainerSummaries(): Promise<ContainerSummary[]> {
     if (response.status === 401 || response.status === 403) {
       throw new Error('認証が失効しました。再ログインしてください。');
     }
-    return [];
+    const message = response.statusText || 'Failed to fetch container summaries';
+    let detail = '';
+    try {
+      detail = await response.text();
+    } catch {
+      detail = '';
+    }
+    const errorMessage = detail ? `${message}: ${detail}` : message;
+    throw new Error(errorMessage);
   }
 
   const body = (await response.json()) as ContainerListResponse;
