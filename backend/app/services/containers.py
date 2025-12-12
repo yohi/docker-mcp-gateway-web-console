@@ -5,8 +5,8 @@ import logging
 import os
 import re
 import time
-from datetime import datetime
-from typing import AsyncIterator, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, AsyncIterator, Dict, List, Optional
 from urllib.parse import urlparse
 
 import docker
@@ -19,7 +19,9 @@ from ..models.containers import (
     ContainerInfo,
     LogEntry,
 )
+from ..models.state import ContainerConfigRecord
 from .secrets import SecretManager
+from .state_store import StateStore
 
 
 class ContainerError(Exception):
@@ -74,7 +76,7 @@ class ContainerService:
     - Stream container logs
     """
 
-    def __init__(self, secret_manager: SecretManager):
+    def __init__(self, secret_manager: SecretManager, state_store: Optional[StateStore] = None):
         """
         Initialize the Container Service.
         
@@ -83,6 +85,7 @@ class ContainerService:
         """
         self.secret_manager = secret_manager
         self._client: Optional[docker.DockerClient] = None
+        self._state_store = state_store or StateStore()
         self._last_client_error: Optional[ContainerUnavailableError] = None
         self._last_client_error_at: Optional[float] = None
 
@@ -249,6 +252,73 @@ class ContainerService:
             labels=labels,
         )
 
+    def _container_summary_to_info(self, summary: dict[str, Any]) -> ContainerInfo:
+        """
+        Convert /containers/json summary response to ContainerInfo without per-container inspect.
+        """
+        container_id = summary.get("Id") or summary.get("ID")
+        if not container_id:
+            raise ContainerError("コンテナIDの取得に失敗しました")
+
+        names = summary.get("Names") or []
+        name = ""
+        if isinstance(names, list) and names:
+            name = names[0]
+        elif isinstance(summary.get("Name"), str):
+            name = summary.get("Name")  # type: ignore[assignment]
+        name = name.lstrip("/") if isinstance(name, str) else str(container_id)
+
+        created_raw = summary.get("Created")
+        created_at = datetime.now(timezone.utc)
+        if isinstance(created_raw, (int, float)):
+            try:
+                created_at = datetime.fromtimestamp(created_raw, tz=timezone.utc)
+            except (OSError, OverflowError, ValueError):
+                pass
+        elif isinstance(created_raw, str):
+            try:
+                created_at = datetime.fromtimestamp(float(created_raw), tz=timezone.utc)
+            except (OSError, OverflowError, ValueError):
+                pass
+
+        ports: dict[str, int] = {}
+        for port in summary.get("Ports") or []:
+            if not isinstance(port, dict):
+                continue
+            private_port = port.get("PrivatePort")
+            public_port = port.get("PublicPort")
+            if private_port is None or public_port is None:
+                continue
+            try:
+                ports[str(int(private_port))] = int(public_port)
+            except (TypeError, ValueError):
+                continue
+
+        labels = summary.get("Labels") or {}
+        if not isinstance(labels, dict):
+            labels = {}
+
+        state_value = str(summary.get("State") or summary.get("Status") or "").lower()
+        if state_value == "running":
+            status = "running"
+        elif state_value in {"exited", "created", "paused"}:
+            status = "stopped"
+        else:
+            status = "error"
+
+        image = summary.get("Image") or summary.get("ImageID") or ""
+        image_str = str(image) if image is not None else ""
+
+        return ContainerInfo(
+            id=str(container_id),
+            name=name,
+            image=image_str,
+            status=status,
+            created_at=created_at,
+            ports=ports,
+            labels={k: str(v) for k, v in labels.items()},
+        )
+
     async def list_containers(self, all_containers: bool = True) -> List[ContainerInfo]:
         """
         List all Docker containers.
@@ -264,15 +334,33 @@ class ContainerService:
         """
         try:
             client = self._get_client()
-            
-            # Run blocking Docker operation in thread pool
             loop = asyncio.get_event_loop()
-            containers = await loop.run_in_executor(
-                None,
-                lambda: client.containers.list(all=all_containers)
+            summaries: list[dict[str, Any]] = await loop.run_in_executor(
+                None, lambda: client.api.containers(all=all_containers)
             )
-            
-            return [self._container_to_info(c) for c in containers]
+            results: list[ContainerInfo] = []
+            for summary in summaries or []:
+                try:
+                    results.append(self._container_summary_to_info(summary))
+                except ContainerError as e:
+                    logging.getLogger(__name__).warning(
+                        "コンテナ情報の解析に失敗しました (Id=%s): %s",
+                        summary.get("Id") or summary.get("ID") or "unknown",
+                        e,
+                    )
+                except DockerException as e:
+                    logging.getLogger(__name__).warning(
+                        "コンテナ情報の取得に失敗しました (Id=%s): %s",
+                        summary.get("Id") or summary.get("ID") or "unknown",
+                        e,
+                    )
+                except Exception as e:  # noqa: BLE001
+                    logging.getLogger(__name__).warning(
+                        "コンテナ情報の処理中に予期せぬエラーが発生しました (Id=%s): %s",
+                        summary.get("Id") or summary.get("ID") or "unknown",
+                        e,
+                    )
+            return results
             
         except ContainerUnavailableError:
             raise
@@ -388,6 +476,20 @@ class ContainerService:
             # Start the container
             await loop.run_in_executor(None, container.start)
             
+            try:
+                self._state_store.save_container_config(
+                    ContainerConfigRecord(
+                        container_id=container.id,
+                        name=sanitized_name,
+                        image=config.image,
+                        config=config.model_dump(),
+                    )
+                )
+            except Exception as store_exc:  # noqa: BLE001
+                logging.getLogger(__name__).warning(
+                    "コンテナ設定の保存に失敗しました: %s", store_exc
+                )
+
             return container.id
             
         except ContainerUnavailableError:
@@ -429,6 +531,13 @@ class ContainerService:
         except Exception as e:
             # Catch secret resolution errors
             raise ContainerError(f"Failed to create container: {e}") from e
+
+    def get_container_config(self, container_id: str) -> dict:
+        """保存済みのコンテナ設定を返す。"""
+        record = self._state_store.get_container_config(container_id)
+        if record is None:
+            raise ContainerError("コンテナ設定が保存されていません")
+        return record.config
 
     async def exec_command(
         self,

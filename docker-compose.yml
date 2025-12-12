@@ -31,21 +31,26 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - "8000:8000"
+    # Run as root to avoid permission issues with rootless Docker socket access inside the container
+    user: "0:0"
     volumes:
+      - ./data:/app/data
       - ./backend:/app
-      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
-      # rootless Docker 対応のため /run/user を併せてマウントし、DOCKER_HOST=unix:///run/user/$UID/docker.sock でも利用できるようにする
-      - /run/user:/run/user:ro
+      - ${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}:${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}
+      - /run/user/${UID:-1000}/docker.sock:/run/user/${UID:-1000}/docker.sock
       - "bw-cli-config:/root/.config/Bitwarden CLI"
       - "bw-cli-cache:/root/.cache/Bitwarden CLI"
     environment:
       - BITWARDEN_CLI_PATH=/usr/local/bin/bw
-      - DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/var/run/docker.sock}}
+      - DOCKER_HOST=${DOCKER_HOST:-unix:///run/user/${UID:-1000}/docker.sock}
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/${UID:-1000}}
       - SESSION_TIMEOUT_MINUTES=30
       - CATALOG_CACHE_TTL_SECONDS=3600
       - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
+      - HOME=/root
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
     networks:
       - mcp-gateway
     healthcheck:
@@ -62,3 +67,4 @@ networks:
 volumes:
   bw-cli-config:
   bw-cli-cache:
+  data-volume:

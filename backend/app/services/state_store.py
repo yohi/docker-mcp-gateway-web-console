@@ -11,6 +11,7 @@ from ..config import settings
 from ..models.state import (
     AuditLogEntry,
     AuthSessionRecord,
+    ContainerConfigRecord,
     CredentialRecord,
     GatewayAllowEntry,
     JobRecord,
@@ -122,6 +123,13 @@ class StateStore:
                     expires_at TEXT NOT NULL,
                     last_activity TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS container_configs (
+                    container_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    image TEXT NOT NULL,
+                    config TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
             conn.commit()
@@ -201,6 +209,43 @@ class StateStore:
                 (credential_key,),
             )
             conn.commit()
+
+    # Container config operations
+    def save_container_config(self, record: ContainerConfigRecord) -> None:
+        """コンテナ設定レコードを保存する。"""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO container_configs (
+                    container_id, name, image, config, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    record.container_id,
+                    record.name,
+                    record.image,
+                    json.dumps(record.config),
+                    _to_iso(record.created_at),
+                ),
+            )
+            conn.commit()
+
+    def get_container_config(self, container_id: str) -> Optional[ContainerConfigRecord]:
+        """コンテナ設定レコードを取得する。"""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM container_configs WHERE container_id=?",
+                (container_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return ContainerConfigRecord(
+            container_id=row["container_id"],
+            name=row["name"],
+            image=row["image"],
+            config=json.loads(row["config"]),
+            created_at=_from_iso(row["created_at"]),
+        )
 
     # GitHub token operations
     def save_github_token(self, record: GitHubTokenRecord) -> None:

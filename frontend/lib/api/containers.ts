@@ -181,6 +181,19 @@ export function createLogWebSocket(containerId: string): WebSocket {
   return new WebSocket(`${wsUrl}/api/containers/${containerId}/logs`);
 }
 
+export async function fetchContainerConfig(containerId: string): Promise<ContainerConfig> {
+  const headers = buildAuthHeaders();
+  const url = `${API_BASE_URL}/api/containers/${containerId}/config`;
+
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to fetch container config' }));
+    throw new Error(error.detail || 'Failed to fetch container config');
+  }
+
+  return (await response.json()) as ContainerConfig;
+}
+
 export async function fetchContainerSummaries(): Promise<{ warning?: string | null; containers: ContainerSummary[] }> {
   const headers = buildAuthHeaders();
   const url = new URL(`${API_BASE_URL}/api/containers`);

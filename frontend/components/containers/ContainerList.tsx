@@ -7,10 +7,11 @@ interface ContainerListProps {
   containers: ContainerInfo[];
   onRefresh: () => void;
   onViewLogs: (containerId: string) => void;
+  onConfigure?: (container: ContainerInfo) => void;
   warning?: string;
 }
 
-export default function ContainerList({ containers, warning, onRefresh, onViewLogs }: ContainerListProps) {
+export default function ContainerList({ containers, warning, onRefresh, onViewLogs, onConfigure }: ContainerListProps) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'running':
@@ -105,6 +106,16 @@ export default function ContainerList({ containers, warning, onRefresh, onViewLo
               onRefresh={onRefresh}
               onViewLogs={onViewLogs}
             />
+            {onConfigure && (
+              <button
+                type="button"
+                onClick={() => onConfigure(container)}
+                className="ml-3 h-10 px-3 py-2 text-sm rounded bg-gray-100 text-gray-800 hover:bg-gray-200 border border-gray-200 transition"
+                title={container.status !== 'running' ? '停止中のため一部情報は取得できません' : undefined}
+              >
+                設定
+              </button>
+            )}
           </div>
 
           {Object.keys(container.ports).length > 0 && (

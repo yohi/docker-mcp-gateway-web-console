@@ -20,6 +20,7 @@ from ..services.containers import (
     ContainerService,
 )
 from ..services.secrets import SecretManager
+from ..services.state_store import StateStore
 from .auth import get_auth_service, get_session_id
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ router = APIRouter(prefix="/containers", tags=["containers"])
 # Singleton instances
 _container_service: ContainerService = None
 _secret_manager: SecretManager = None
+_state_store: StateStore = None
 
 
 def _docker_unavailable(e: ContainerUnavailableError) -> HTTPException:
@@ -58,9 +60,11 @@ def get_container_service(
     secret_manager: Annotated[SecretManager, Depends(get_secret_manager)]
 ) -> ContainerService:
     """Dependency to get the container service instance."""
-    global _container_service
+    global _container_service, _state_store
     if _container_service is None:
-        _container_service = ContainerService(secret_manager)
+        _state_store = StateStore()
+        _state_store.init_schema()
+        _container_service = ContainerService(secret_manager, state_store=_state_store)
     return _container_service
 
 
@@ -122,6 +126,12 @@ async def list_containers(
             containers=[],
             warning="Docker デーモンに接続できないため空の一覧を返しました。"
             " ホスト上で Docker が起動していることと、DOCKER_HOST/ソケットの権限を確認してください。",
+        )
+    except ContainerError as e:
+        logger.error("Failed to list containers: %s", e)
+        return ContainerListResponse(
+            containers=[],
+            warning="コンテナ一覧の取得に失敗しました。不要なコンテナが削除中の可能性があります。再読み込みしてください。",
         )
     except RuntimeError as e:
         logger.error(f"Failed to list containers: {e}")
@@ -229,6 +239,36 @@ async def create_container(
         ) from e
 
 
+@router.get("/{container_id}/config", response_model=ContainerConfig)
+async def get_container_config(
+    container_id: str,
+    session_id: Annotated[str, Depends(get_session_id)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    container_service: Annotated[ContainerService, Depends(get_container_service)],
+):
+    """保存済みのコンテナ設定を取得する。"""
+    is_valid = await auth_service.validate_session(session_id)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session"
+        )
+    try:
+        config_data = container_service.get_container_config(container_id)
+        return ContainerConfig.model_validate(config_data)
+    except ContainerError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
+    except Exception:
+        logger.exception("Unexpected error getting container config")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve container config",
+        )
+
+
 @router.post("/install", response_model=ContainerCreateResponse, status_code=status.HTTP_201_CREATED)
 async def install_container(
     config: ContainerConfig,
@@ -243,6 +283,11 @@ async def install_container(
     セッション検証後、環境変数のBitwarden参照解決を行い、コンテナを作成・起動してIDを返却する。
     """
     try:
+        if not config.image:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="コンテナイメージが指定されていません",
+            )
         return await _create_container_internal(
             config, session_id, auth_service, container_service, "install"
         )
