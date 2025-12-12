@@ -8,7 +8,7 @@ export function useContainers(refreshIntervalMs: number | null = null) {
     const refreshInterval = refreshIntervalMs ?? 0; // デフォルトは自動ポーリングなし
 
     const { data, error, mutate } = useSWR(
-        session ? 'containers' : null,
+        session ? ['containers', session.session_id] : null,
         () => fetchContainers(true),
         {
             refreshInterval,

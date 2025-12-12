@@ -64,5 +64,5 @@ class ContainerListResponse(BaseModel):
     containers: List[ContainerInfo] = Field(..., description="List of containers")
     warning: Optional[str] = Field(
         default=None,
-        description="Docker が利用不可の場合の警告メッセージ（フェールセーフ）。",
+        description="Docker が利用不可の場合の警告メッセージ(フェールセーフ).",
     )

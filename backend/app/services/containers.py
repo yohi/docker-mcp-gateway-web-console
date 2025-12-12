@@ -143,6 +143,7 @@ class ContainerService:
 
         errors: list[str] = []
         for host in attempted_hosts:
+            client: docker.DockerClient | None = None
             parsed = urlparse(host)
             socket_path = parsed.path if parsed.scheme == "unix" else None
             if socket_path:
@@ -173,6 +174,11 @@ class ContainerService:
                 return self._client
 
             except DockerException as e:
+                if client is not None:
+                    try:
+                        client.close()
+                    except Exception:
+                        pass
                 errors.append(f"{host}: {e}")
 
         error = ContainerUnavailableError(attempted_hosts, errors)

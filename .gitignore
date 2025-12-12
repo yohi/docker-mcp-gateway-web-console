@@ -48,14 +48,19 @@ coverage/
 playwright-report/
 test-results/
 
-# Gemini / AI
+# AI Agent
 GEMINI.md
+CLAUDE.md
 .gemini/
 .agent/
-.selena/
 .serena/
+.codex/
 
 # Kiro
-# .kiro/settings/rules
-# .kiro/settings/templates
-.codex/
+.kiro/settings/rules
+.kiro/settings/templates
+
+# Runtime data
+backend/data/state.db
+backend/data/*.db
+backend/data/oauth_encryption.key

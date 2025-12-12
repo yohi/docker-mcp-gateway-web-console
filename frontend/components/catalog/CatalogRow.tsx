@@ -42,12 +42,14 @@ const CatalogRow = ({ item, onInstall, onSelect }: Props) => {
       </div>
       <div className="flex flex-wrap gap-2">
         <button
+          type="button"
           onClick={() => onInstall(item)}
           className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition"
         >
           インストール
         </button>
         <button
+          type="button"
           onClick={() => onSelect(item)}
           className="px-3 py-1.5 bg-gray-100 text-gray-800 text-sm rounded-md hover:bg-gray-200 transition"
         >

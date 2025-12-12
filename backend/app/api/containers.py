@@ -33,13 +33,16 @@ _secret_manager: SecretManager = None
 
 def _docker_unavailable(e: ContainerUnavailableError) -> HTTPException:
     """Docker 接続不可時の共通レスポンスを生成する。"""
+    detail: dict[str, object] = {
+        "message": "Docker daemon is unavailable.",
+        "remediation": "Docker デーモンを起動し、DOCKER_HOST またはソケットパスが正しいことを確認してください。",
+    }
+    safe_hosts = [host for host in e.attempted_hosts if not host.startswith("unix://")]
+    if safe_hosts:
+        detail["attempted_hosts"] = safe_hosts
     return HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail={
-            "message": str(e),
-            "remediation": "Docker デーモンを起動し、DOCKER_HOST またはソケットパスが正しいことを確認してください。",
-            "attempted_hosts": e.attempted_hosts,
-        },
+        detail=detail,
     )
 
 
@@ -67,7 +70,7 @@ _last_docker_warn_at: float | None = None
 
 def _log_docker_unavailable(e: ContainerUnavailableError) -> None:
     """
-    同一メッセージの連続 WARN スパムを抑制する（最終ログから60秒未満なら skip）。
+    同一メッセージの連続 WARN スパムを抑制する (最終ログから60秒未満なら skip)。
     """
     global _last_docker_warn_message, _last_docker_warn_at
     now = time.monotonic()

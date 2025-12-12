@@ -191,6 +191,9 @@ export async function fetchContainerSummaries(): Promise<ContainerSummary[]> {
   });
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('認証が失効しました。再ログインしてください。');
+    }
     return [];
   }
 

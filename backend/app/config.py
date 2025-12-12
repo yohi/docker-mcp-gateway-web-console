@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from cryptography.fernet import Fernet
 from pydantic import Field
@@ -61,6 +62,10 @@ class Settings(BaseSettings):
     oauth_token_encryption_key_id: str = Field(
         default="default", validation_alias="OAUTH_TOKEN_ENCRYPTION_KEY_ID"
     )
+    # 暗号鍵の永続化パス (env > file > generate の順で利用)
+    oauth_token_key_file: str = Field(
+        default="data/oauth_encryption.key", validation_alias="OAUTH_TOKEN_ENCRYPTION_KEY_FILE"
+    )
 
     # Application Configuration
     log_level: str = "INFO"
@@ -78,19 +83,50 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",")]
 
     def model_post_init(self, __context: object) -> None:
-        """Ensure OAuth トークン暗号化キーが未設定の場合でも起動できるよう自動生成する。"""
-        if (
-            not self.oauth_token_encryption_key
-            or self.oauth_token_encryption_key.strip() == ""
-            or self.oauth_token_encryption_key == OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER
-        ):
-            self.oauth_token_encryption_key = Fernet.generate_key().decode("utf-8")
+        """OAuth トークン暗号化キーを env > ファイル > 生成の順で取得し、妥当性を検証する。"""
+        env_key = self.oauth_token_encryption_key
+        # 1. 環境変数が設定されている場合は優先して検証
+        if env_key and env_key.strip() and env_key != OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER:
+            try:
+                Fernet(env_key.encode())
+                logger.info("環境変数 OAUTH_TOKEN_ENCRYPTION_KEY から暗号鍵を読み込みました。")
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "環境変数 OAUTH_TOKEN_ENCRYPTION_KEY が不正です。32バイトの URL-safe base64 文字列を設定してください。"
+                )
+                raise exc
+
+        key_path = Path(self.oauth_token_key_file)
+
+        # 2. ファイルが存在する場合は読み込んで検証
+        if key_path.exists():
+            try:
+                key_bytes = key_path.read_bytes().strip()
+                key_str = key_bytes.decode("utf-8")
+                Fernet(key_str.encode())
+                self.oauth_token_encryption_key = key_str
+                logger.info("暗号鍵をファイル %s から読み込みました。", key_path)
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.error("暗号鍵ファイル %s の読み込みに失敗しました。", key_path)
+                raise exc
+
+        # 3. いずれも無ければ新規生成し、ファイルへ保存 (600)
+        try:
+            key_path.parent.mkdir(parents=True, exist_ok=True)
+            new_key = Fernet.generate_key().decode("utf-8")
+            key_path.write_text(new_key, encoding="utf-8")
+            key_path.chmod(0o600)
+            self.oauth_token_encryption_key = new_key
             logger.warning(
-                "環境変数 OAUTH_TOKEN_ENCRYPTION_KEY が未設定のため、起動時に一時キーを自動生成しました。"
-                " 再起動ごとにキーが変わるため、運用環境では必ず環境変数を設定してください。"
-                " 一時キー: %s",
-                self.oauth_token_encryption_key,
+                "環境変数 OAUTH_TOKEN_ENCRYPTION_KEY が未設定のため、新規キーを生成し %s に保存しました。"
+                " 運用環境では環境変数またはシークレットでの供給を推奨します。",
+                key_path,
             )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("暗号鍵ファイル %s の生成・保存に失敗しました。", key_path)
+            raise exc
 
 
 settings = Settings()

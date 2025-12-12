@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import re
+import contextvars
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -58,7 +59,9 @@ class CatalogService:
         self._github_fetch_retry_base_delay = max(
             0.1, getattr(settings, "catalog_github_fetch_retry_base_delay_seconds", 0.5)
         )
-        self._warning: Optional[str] = None
+        self._warning_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+            "catalog_warning", default=None
+        )
 
     @staticmethod
     def _is_secret_env(key: str) -> bool:
@@ -137,7 +140,7 @@ class CatalogService:
     @property
     def warning(self) -> Optional[str]:
         """直近の警告（GitHub トークン復号失敗など）を返す。"""
-        return self._warning
+        return self._warning_var.get()
 
     async def _fetch_from_url(self, source_url: str) -> List[CatalogItem]:
         """
@@ -394,7 +397,7 @@ class CatalogService:
         try:
             token = self._github_token_service.get_active_token()
         except GitHubTokenError as exc:
-            self._warning = (
+            self._warning_var.set(
                 "保存済み GitHub トークンの復号に失敗したため、未認証でカタログを取得しています。"
                 " トークンを再保存するか環境変数 GITHUB_TOKEN を設定してください。"
             )
@@ -405,11 +408,11 @@ class CatalogService:
             return {}
 
         if token:
-            self._warning = None
+            self._warning_var.set(None)
             return {"Authorization": f"Bearer {token}"}
 
         # トークン未設定の場合は警告をクリアして匿名取得
-        self._warning = None
+        self._warning_var.set(None)
         return {}
 
     def _extract_servers(self, data: Any, depth: int = 0) -> Optional[List[dict]]:

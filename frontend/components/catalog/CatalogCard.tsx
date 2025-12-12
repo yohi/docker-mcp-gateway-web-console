@@ -1,6 +1,6 @@
 'use client';
 
-import { KeyboardEvent, useMemo, useState } from 'react';
+import { KeyboardEvent, useMemo, useState, type MouseEvent } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
 import { useContainers } from '@/hooks/useContainers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
@@ -15,6 +15,7 @@ interface CatalogCardProps {
 export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardProps) {
     const { containers, isLoading, refresh } = useContainers();
     const [isDeleting, setIsDeleting] = useState(false);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
     const scopes = item.required_scopes || [];
     const allowStatus = item.allowlist_status;
 
@@ -36,6 +37,28 @@ export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardPr
     const handleSelect = () => {
         if (onSelect) {
             onSelect(item);
+        }
+    };
+
+    const handleUninstall = async (event: MouseEvent<HTMLButtonElement>) => {
+        event.stopPropagation();
+        if (!matchedContainer || matchedContainer === 'loading') return;
+        setIsDeleting(true);
+        setDeleteError(null);
+        try {
+            await deleteContainer(
+                matchedContainer.id,
+                matchedContainer.status === 'running'
+            );
+            await refresh();
+        } catch (err) {
+            const message =
+                err instanceof Error
+                    ? err.message
+                    : 'コンテナの削除に失敗しました。もう一度お試しください。';
+            setDeleteError(message);
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -150,24 +173,15 @@ export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardPr
                     </div>
                 ) : status === 'installed' ? (
                     <button
-                        onClick={async (event) => {
-                            event.stopPropagation();
-                            if (!matchedContainer) return;
-                            setIsDeleting(true);
-                            try {
-                                await deleteContainer(matchedContainer.id, true);
-                                await refresh();
-                            } catch (err) {
-                                console.error('Failed to delete container', err);
-                            } finally {
-                                setIsDeleting(false);
-                            }
-                        }}
+                        onClick={handleUninstall}
                         disabled={isDeleting}
                         className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
                     >
                         {isDeleting ? '削除中...' : 'アンインストール'}
                     </button>
+                    {deleteError && (
+                        <p className="mt-2 text-sm text-red-600">{deleteError}</p>
+                    )}
                 ) : (
                     <button
                         onClick={(event) => {

@@ -146,6 +146,7 @@ async def search_catalog(
                 page_size=page_size,
                 cached=is_cached,
                 categories=[],
+                warning=catalog_service.warning,
             )
 
         max_page = max(1, math.ceil(total / page_size))

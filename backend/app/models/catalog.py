@@ -53,5 +53,5 @@ class CatalogResponse(BaseModel):
     )
     warning: str | None = Field(
         default=None,
-        description="取得時の警告メッセージ（例: GitHub トークン復号失敗によるフェールセーフ）。",
+        description="取得時の警告メッセージ(例: GitHub トークン復号失敗によるフェールセーフ)。",
     )

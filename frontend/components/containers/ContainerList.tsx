@@ -43,6 +43,7 @@ export default function ContainerList({ containers, warning, onRefresh, onViewLo
               <li>rootless Docker の場合: `DOCKER_HOST=unix:///run/user/$UID/docker.sock` を設定</li>
             </ul>
             <button
+              type="button"
               onClick={onRefresh}
               className="mt-4 inline-flex items-center px-3 py-1.5 rounded bg-yellow-500 text-white text-sm font-semibold hover:bg-yellow-600 transition"
             >
