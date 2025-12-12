@@ -102,3 +102,13 @@ class AuditLogEntry(BaseModel):
     event_type: str
     metadata: Dict[str, Any]
     created_at: datetime = Field(default_factory=_now_utc)
+
+
+class ContainerConfigRecord(BaseModel):
+    """コンテナ設定の永続化レコード。"""
+
+    container_id: str
+    name: str
+    image: str
+    config: Dict[str, Any]
+    created_at: datetime = Field(default_factory=_now_utc)

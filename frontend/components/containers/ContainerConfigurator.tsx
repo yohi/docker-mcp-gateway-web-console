@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ContainerConfig } from '../../lib/types/containers';
 import { createContainer } from '../../lib/api/containers';
 
@@ -8,12 +8,22 @@ interface ContainerConfiguratorProps {
   onSuccess: () => void;
   onCancel: () => void;
   initialConfig?: Partial<ContainerConfig>;
+  onSubmit?: (config: ContainerConfig) => Promise<void>;
+  submitLabel?: string;
+  isSubmitting?: boolean;
+  title?: string;
+  description?: string;
 }
 
 export default function ContainerConfigurator({
   onSuccess,
   onCancel,
   initialConfig,
+  onSubmit,
+  submitLabel,
+  isSubmitting,
+  title,
+  description,
 }: ContainerConfiguratorProps) {
   const [config, setConfig] = useState<ContainerConfig>({
     name: initialConfig?.name || '',
@@ -25,6 +35,22 @@ export default function ContainerConfigurator({
     command: initialConfig?.command,
     network_mode: initialConfig?.network_mode,
   });
+
+  // 初期値が変わった場合にフォームを更新
+  useEffect(() => {
+    if (initialConfig) {
+      setConfig({
+        name: initialConfig.name || '',
+        image: initialConfig.image || '',
+        env: initialConfig.env || {},
+        ports: initialConfig.ports || {},
+        volumes: initialConfig.volumes || {},
+        labels: initialConfig.labels || {},
+        command: initialConfig.command,
+        network_mode: initialConfig.network_mode,
+      });
+    }
+  }, [initialConfig]);
 
   const [envKey, setEnvKey] = useState('');
   const [envValue, setEnvValue] = useState('');
@@ -107,7 +133,11 @@ export default function ContainerConfigurator({
     setError(null);
 
     try {
-      await createContainer(config);
+      if (onSubmit) {
+        await onSubmit(config);
+      } else {
+        await createContainer(config);
+      }
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'コンテナの作成に失敗しました');
@@ -122,9 +152,11 @@ export default function ContainerConfigurator({
         <form onSubmit={handleSubmit}>
           {/* Header */}
           <div className="p-6 border-b border-gray-200">
-            <h2 className="text-2xl font-bold text-gray-800">コンテナ設定</h2>
+            <h2 className="text-2xl font-bold text-gray-800">
+              {title || 'コンテナ設定'}
+            </h2>
             <p className="text-gray-600 text-sm mt-1">
-              新しいコンテナを作成するための設定を入力してください
+              {description || '新しいコンテナを作成するための設定を入力してください'}
             </p>
           </div>
 
@@ -340,10 +372,10 @@ export default function ContainerConfigurator({
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || isSubmitting}
               className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors"
             >
-              {loading ? '作成中...' : 'コンテナを作成'}
+              {loading || isSubmitting ? '処理中...' : submitLabel || 'コンテナを作成'}
             </button>
           </div>
         </form>

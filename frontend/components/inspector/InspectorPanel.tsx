@@ -6,6 +6,7 @@ import { fetchCapabilities } from '../../lib/api/inspector';
 import ToolsList from './ToolsList';
 import ResourcesList from './ResourcesList';
 import PromptsList from './PromptsList';
+import { startContainer } from '../../lib/api/containers';
 
 type TabType = 'tools' | 'resources' | 'prompts';
 
@@ -22,6 +23,7 @@ export default function InspectorPanel({ containerId, containerName, onClose }: 
   const [prompts, setPrompts] = useState<PromptInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
 
   const loadCapabilities = useCallback(async () => {
     setLoading(true);
@@ -42,6 +44,22 @@ export default function InspectorPanel({ containerId, containerName, onClose }: 
   useEffect(() => {
     loadCapabilities();
   }, [loadCapabilities]);
+
+  const handleStart = async () => {
+    setStarting(true);
+    setError(null);
+    try {
+      await startContainer(containerId);
+      await loadCapabilities();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'コンテナの起動に失敗しました';
+      setError(message);
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const notRunning = error?.toLowerCase().includes('not running') ?? false;
 
   const tabs: { id: TabType; label: string; count: number }[] = [
     { id: 'tools', label: 'Tools', count: tools.length },
@@ -110,19 +128,47 @@ export default function InspectorPanel({ containerId, containerName, onClose }: 
 
       {/* Content */}
       <div className="p-6 max-h-[60vh] overflow-y-auto">
-        {activeTab === 'tools' && (
-          <ToolsList tools={tools} loading={loading} error={error} />
-        )}
-        {activeTab === 'resources' && (
-          <ResourcesList resources={resources} loading={loading} error={error} />
-        )}
-        {activeTab === 'prompts' && (
-          <PromptsList prompts={prompts} loading={loading} error={error} />
+        {notRunning ? (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 space-y-3">
+            <p className="text-sm text-yellow-800 font-semibold">
+              コンテナが停止中のため、MCP情報を取得できません。
+            </p>
+            {error && <p className="text-sm text-yellow-800">{error}</p>}
+            <div className="flex gap-3">
+              <button
+                onClick={handleStart}
+                disabled={starting}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-60 text-sm"
+              >
+                {starting ? '起動中...' : 'コンテナを起動して再取得'}
+              </button>
+              {onClose && (
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md border border-gray-200 text-sm hover:bg-gray-200"
+                >
+                  閉じる
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            {activeTab === 'tools' && (
+              <ToolsList tools={tools} loading={loading} error={error} />
+            )}
+            {activeTab === 'resources' && (
+              <ResourcesList resources={resources} loading={loading} error={error} />
+            )}
+            {activeTab === 'prompts' && (
+              <PromptsList prompts={prompts} loading={loading} error={error} />
+            )}
+          </>
         )}
       </div>
 
       {/* Footer with summary */}
-      {!loading && !error && (
+      {!loading && !error && !notRunning && (
         <div className="bg-gray-50 px-6 py-3 border-t border-gray-200">
           <p className="text-sm text-gray-600">
             合計: {tools.length} Tools, {resources.length} Resources, {prompts.length} Prompts

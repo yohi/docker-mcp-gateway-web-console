@@ -116,16 +116,24 @@ class Settings(BaseSettings):
         try:
             key_path.parent.mkdir(parents=True, exist_ok=True)
             new_key = Fernet.generate_key().decode("utf-8")
-            key_path.write_text(new_key, encoding="utf-8")
-            key_path.chmod(0o600)
+            try:
+                key_path.write_text(new_key, encoding="utf-8")
+                key_path.chmod(0o600)
+                logger.warning(
+                    "環境変数 OAUTH_TOKEN_ENCRYPTION_KEY が未設定のため、新規キーを生成し %s に保存しました。"
+                    " 運用環境では環境変数またはシークレットでの供給を推奨します。",
+                    key_path,
+                )
+            except PermissionError:
+                # ディスク書き込み不可の場合はメモリ上でのみ使用し、再起動時に再生成される
+                logger.warning(
+                    "暗号鍵ファイル %s への書き込み権限がありません。生成したキーをメモリ上でのみ使用します。"
+                    " 永続化したい場合はディレクトリの権限を修正してください。",
+                    key_path,
+                )
             self.oauth_token_encryption_key = new_key
-            logger.warning(
-                "環境変数 OAUTH_TOKEN_ENCRYPTION_KEY が未設定のため、新規キーを生成し %s に保存しました。"
-                " 運用環境では環境変数またはシークレットでの供給を推奨します。",
-                key_path,
-            )
         except Exception as exc:  # noqa: BLE001
-            logger.error("暗号鍵ファイル %s の生成・保存に失敗しました。", key_path)
+            logger.error("暗号鍵ファイル %s の生成に失敗しました。", key_path)
             raise exc
 
 

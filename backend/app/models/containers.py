@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 
 class ContainerConfig(BaseModel):
     """Configuration for creating a Docker container."""
-    name: str = Field(..., description="Container name")
-    image: str = Field(..., description="Docker image to use")
+    name: str = Field(..., min_length=1, description="Container name")
+    image: str = Field(..., min_length=1, description="Docker image to use")
     env: Dict[str, str] = Field(default_factory=dict, description="Environment variables (may contain Bitwarden references)")
     ports: Dict[str, int] = Field(default_factory=dict, description="Port mappings (container_port: host_port)")
     volumes: Dict[str, str] = Field(default_factory=dict, description="Volume mappings (host_path: container_path)")
