@@ -19,10 +19,12 @@ export function useContainerSummaries() {
           setSummaries(containers);
           setWarning(warning ?? null);
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           setSummaries([]);
-          setWarning(null);
+          const message =
+            err instanceof Error ? err.message : typeof err === 'string' ? err : String(err);
+          setWarning(message);
         }
       } finally {
         if (!cancelled) {
