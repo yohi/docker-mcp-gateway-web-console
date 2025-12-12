@@ -181,7 +181,7 @@ export function createLogWebSocket(containerId: string): WebSocket {
   return new WebSocket(`${wsUrl}/api/containers/${containerId}/logs`);
 }
 
-export async function fetchContainerSummaries(): Promise<ContainerSummary[]> {
+export async function fetchContainerSummaries(): Promise<{ warning?: string | null; containers: ContainerSummary[] }> {
   const headers = buildAuthHeaders();
   const url = new URL(`${API_BASE_URL}/api/containers`);
   url.searchParams.append('all', 'true');
@@ -206,10 +206,13 @@ export async function fetchContainerSummaries(): Promise<ContainerSummary[]> {
   }
 
   const body = (await response.json()) as ContainerListResponse;
-  return (body?.containers || []).map((c) => ({
-    id: c.id,
-    name: c.name,
-    image: c.image,
-    status: c.status,
-  }));
+  return {
+    warning: body?.warning,
+    containers: (body?.containers || []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      image: c.image,
+      status: c.status,
+    })),
+  };
 }

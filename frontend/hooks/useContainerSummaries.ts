@@ -6,6 +6,7 @@ import { ContainerSummary } from '@/lib/types/containers';
 
 export function useContainerSummaries() {
   const [summaries, setSummaries] = useState<ContainerSummary[]>([]);
+  const [warning, setWarning] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -13,13 +14,15 @@ export function useContainerSummaries() {
     const load = async () => {
       setIsLoading(true);
       try {
-        const data = await fetchContainerSummaries();
+        const { containers, warning } = await fetchContainerSummaries();
         if (!cancelled) {
-          setSummaries(data);
+          setSummaries(containers);
+          setWarning(warning ?? null);
         }
       } catch {
         if (!cancelled) {
           setSummaries([]);
+          setWarning(null);
         }
       } finally {
         if (!cancelled) {
@@ -33,5 +36,5 @@ export function useContainerSummaries() {
     };
   }, []);
 
-  return { summaries, isLoading };
+  return { summaries, warning, isLoading };
 }
