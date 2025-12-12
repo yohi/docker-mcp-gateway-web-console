@@ -8,6 +8,7 @@ import {
   ContainerInstallPayload,
   ContainerInstallResponse,
   InstallationError,
+  ContainerSummary,
 } from '../types/containers';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -178,4 +179,40 @@ export async function deleteContainer(containerId: string, force: boolean = fals
 export function createLogWebSocket(containerId: string): WebSocket {
   const wsUrl = API_BASE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
   return new WebSocket(`${wsUrl}/api/containers/${containerId}/logs`);
+}
+
+export async function fetchContainerSummaries(): Promise<{ warning?: string | null; containers: ContainerSummary[] }> {
+  const headers = buildAuthHeaders();
+  const url = new URL(`${API_BASE_URL}/api/containers`);
+  url.searchParams.append('all', 'true');
+
+  const response = await fetch(url.toString(), {
+    headers,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('認証が失効しました。再ログインしてください。');
+    }
+    const message = response.statusText || 'Failed to fetch container summaries';
+    let detail = '';
+    try {
+      detail = await response.text();
+    } catch {
+      detail = '';
+    }
+    const errorMessage = detail ? `${message}: ${detail}` : message;
+    throw new Error(errorMessage);
+  }
+
+  const body = (await response.json()) as ContainerListResponse;
+  return {
+    warning: body?.warning,
+    containers: (body?.containers || []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      image: c.image,
+      status: c.status,
+    })),
+  };
 }

@@ -64,6 +64,7 @@ async def get_catalog(
                 page_size=max(len(cached_items), 1),
                 cached=True,
                 categories=sorted({item.category for item in cached_items}),
+                warning=catalog_service.warning,
             )
         else:
             # No cache, must fetch fresh data
@@ -75,6 +76,7 @@ async def get_catalog(
                 page_size=max(len(items), 1),
                 cached=is_cached,
                 categories=sorted({item.category for item in items}),
+                warning=catalog_service.warning,
             )
             
     except CatalogError as e:
@@ -144,6 +146,7 @@ async def search_catalog(
                 page_size=page_size,
                 cached=is_cached,
                 categories=[],
+                warning=catalog_service.warning,
             )
 
         max_page = max(1, math.ceil(total / page_size))
@@ -160,6 +163,7 @@ async def search_catalog(
             page_size=page_size,
             cached=is_cached,
             categories=categories,
+            warning=catalog_service.warning,
         )
         
     except CatalogError as e:

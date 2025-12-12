@@ -26,6 +26,7 @@ export interface CatalogResponse {
   page_size: number;
   cached: boolean;
   categories: string[];
+  warning?: string;
 }
 
 export interface CatalogSearchParams {

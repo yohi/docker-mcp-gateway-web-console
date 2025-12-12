@@ -18,6 +18,7 @@ services:
       - MAX_LOG_LINES=${MAX_LOG_LINES:-1000}
     volumes:
       - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:ro
+      - /run/user:/run/user:ro
       - backend-data:/app/data
       - "bw-cli-config:/root/.config/Bitwarden CLI"
       - "bw-cli-cache:/root/.cache/Bitwarden CLI"

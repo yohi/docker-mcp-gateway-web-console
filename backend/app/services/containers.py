@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import re
+import time
 from datetime import datetime
 from typing import AsyncIterator, Dict, List, Optional
 from urllib.parse import urlparse
@@ -24,6 +25,20 @@ from .secrets import SecretManager
 class ContainerError(Exception):
     """Exception raised for container operation errors."""
     pass
+
+
+class ContainerUnavailableError(ContainerError):
+    """Docker デーモンに接続できない場合の例外。"""
+
+    def __init__(self, attempted_hosts: list[str], errors: list[str]) -> None:
+        self.attempted_hosts = attempted_hosts
+        self.errors = errors
+        message = (
+            "Docker デーモンに接続できません。"
+            f" 試行した DOCKER_HOST: {', '.join(attempted_hosts)}。"
+            f" 詳細: {' | '.join(errors)}"
+        )
+        super().__init__(message)
 
 
 class ContainerAlreadyExistsError(ContainerError):
@@ -68,6 +83,8 @@ class ContainerService:
         """
         self.secret_manager = secret_manager
         self._client: Optional[docker.DockerClient] = None
+        self._last_client_error: Optional[ContainerUnavailableError] = None
+        self._last_client_error_at: Optional[float] = None
 
     def _normalize_container_name(self, name: str) -> str:
         """
@@ -99,7 +116,16 @@ class ContainerService:
         if self._client is not None:
             return self._client
 
+        # 直近の失敗をキャッシュし、連続リクエストでの遅延を避ける
+        if self._last_client_error and self._last_client_error_at:
+            if time.monotonic() - self._last_client_error_at < 30:
+                raise self._last_client_error
+
         attempted_hosts: list[str] = [settings.docker_host]
+        # 一般的なデフォルトソケットを常に最後のフォールバックとして試行する
+        default_unix = "unix:///var/run/docker.sock"
+        if default_unix not in attempted_hosts:
+            attempted_hosts.append(default_unix)
         if settings.docker_host.startswith("unix://"):
             runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
             if runtime_dir:
@@ -117,6 +143,7 @@ class ContainerService:
 
         errors: list[str] = []
         for host in attempted_hosts:
+            client: docker.DockerClient | None = None
             parsed = urlparse(host)
             socket_path = parsed.path if parsed.scheme == "unix" else None
             if socket_path:
@@ -133,6 +160,8 @@ class ContainerService:
                 client = docker.DockerClient(base_url=host)
                 client.ping()
                 self._client = client
+                self._last_client_error = None
+                self._last_client_error_at = None
 
                 if host != settings.docker_host:
                     logging.getLogger(__name__).warning(
@@ -145,13 +174,17 @@ class ContainerService:
                 return self._client
 
             except DockerException as e:
+                if client is not None:
+                    try:
+                        client.close()
+                    except Exception:
+                        pass
                 errors.append(f"{host}: {e}")
 
-        raise ContainerError(
-            "Docker デーモンに接続できません。"
-            f" 試行した DOCKER_HOST: {', '.join(attempted_hosts)}。"
-            f" 詳細: {' | '.join(errors)}"
-        )
+        error = ContainerUnavailableError(attempted_hosts, errors)
+        self._last_client_error = error
+        self._last_client_error_at = time.monotonic()
+        raise error
 
     def _parse_container_status(self, container: Container) -> str:
         """
@@ -241,6 +274,8 @@ class ContainerService:
             
             return [self._container_to_info(c) for c in containers]
             
+        except ContainerUnavailableError:
+            raise
         except DockerException as e:
             raise ContainerError(f"Failed to list containers: {e}") from e
 
@@ -355,6 +390,8 @@ class ContainerService:
             
             return container.id
             
+        except ContainerUnavailableError:
+            raise
         except ImageNotFound as e:
             raise ContainerError(f"Docker image not found: {config.image}") from e
         except APIError as e:
@@ -438,6 +475,8 @@ class ContainerService:
 
             return (exit_code or 0, combined_output)
 
+        except ContainerUnavailableError:
+            raise
         except NotFound as e:
             raise ContainerError(f"Container not found: {container_id}") from e
         except APIError as e:
@@ -471,6 +510,8 @@ class ContainerService:
             
             return True
             
+        except ContainerUnavailableError:
+            raise
         except NotFound as e:
             raise ContainerError(f"Container not found: {container_id}") from e
         except APIError as e:
@@ -508,6 +549,8 @@ class ContainerService:
             
             return True
             
+        except ContainerUnavailableError:
+            raise
         except NotFound as e:
             raise ContainerError(f"Container not found: {container_id}") from e
         except APIError as e:
@@ -545,6 +588,8 @@ class ContainerService:
             
             return True
             
+        except ContainerUnavailableError:
+            raise
         except NotFound as e:
             raise ContainerError(f"Container not found: {container_id}") from e
         except APIError as e:
@@ -582,6 +627,8 @@ class ContainerService:
             
             return True
             
+        except ContainerUnavailableError:
+            raise
         except NotFound as e:
             raise ContainerError(f"Container not found: {container_id}") from e
         except APIError as e:
@@ -681,6 +728,8 @@ class ContainerService:
                     stream=stream,
                 )
                 
+        except ContainerUnavailableError:
+            raise
         except NotFound as e:
             raise ContainerError(f"Container not found: {container_id}") from e
         except APIError as e:
