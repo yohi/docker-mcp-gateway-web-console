@@ -363,6 +363,57 @@ def test_gateway_allowlist_roundtrip(store: StateStore) -> None:
     assert entries[0].value == "example.com"
 
 
+def test_is_endpoint_allowed_exact_match_and_default_port(
+    store: StateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ドメイン単位の許可がデフォルトポートのみ許可することを検証する。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+
+    assert store.is_endpoint_allowed("https://api.example.com/sse") is True
+    # ポート指定なしの許可は標準ポートのみ許可する
+    assert store.is_endpoint_allowed("https://api.example.com:8443/sse") is False
+
+
+def test_is_endpoint_allowed_port_specific(
+    store: StateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ポート番号を含む許可リストが厳密にマッチすることを検証する。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com:8443")
+
+    assert store.is_endpoint_allowed("https://api.example.com:8443/sse") is True
+    assert store.is_endpoint_allowed("https://api.example.com:8080/sse") is False
+
+
+def test_is_endpoint_allowed_wildcard_subdomain(
+    store: StateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ワイルドカードがサブドメインのみにマッチすることを検証する。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "*.example.com")
+
+    assert store.is_endpoint_allowed("https://api.example.com/sse") is True
+    assert store.is_endpoint_allowed("https://v2.api.example.com/sse") is True
+    # ルートドメインはワイルドカードにマッチしない
+    assert store.is_endpoint_allowed("https://example.com/sse") is False
+
+
+def test_is_endpoint_allowed_ipv6_is_rejected(
+    store: StateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """IPv6 リテラルは許可リストに含まれていても拒否されることを検証する。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "2001:db8::1")
+
+    assert store.is_endpoint_allowed("https://[2001:db8::1]/sse") is False
+
+
+def test_is_endpoint_allowed_empty_allowlist_denies_all(
+    store: StateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """許可リストが空の場合はすべて拒否されることを検証する。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "")
+
+    assert store.is_endpoint_allowed("https://api.example.com/sse") is False
+
+
 def test_audit_log_sanitizes_tokens(store: StateStore) -> None:
     """監査ログにトークン値が残らないようにマスクされることを検証する。"""
     now = datetime.now(timezone.utc)

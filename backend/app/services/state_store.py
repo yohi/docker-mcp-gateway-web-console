@@ -1,11 +1,13 @@
 """SQLite ベースの永続化ストア実装。"""
 
+import os
 import json
 import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 from ..config import settings
 from ..models.state import (
@@ -611,6 +613,48 @@ class StateStore:
                 ),
             )
             conn.commit()
+
+    def is_endpoint_allowed(self, url: str) -> bool:
+        """
+        REMOTE_MCP_ALLOWED_DOMAINS に基づきエンドポイント URL を検証する。
+
+        空リストは deny-all とし、IPv6 リテラルはセキュリティ理由で拒否する。
+        """
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if not host:
+            return False
+        if ":" in host:
+            return False
+
+        scheme = (parsed.scheme or "").lower()
+        port = parsed.port or (443 if scheme == "https" else 80)
+
+        raw_allowlist = os.getenv("REMOTE_MCP_ALLOWED_DOMAINS", "")
+        allowlist = [entry.strip().lower() for entry in raw_allowlist.split(",") if entry.strip()]
+        if not allowlist:
+            return False
+
+        for entry in allowlist:
+            entry_host = entry
+            entry_port = None
+            if ":" in entry:
+                entry_host, entry_port_str = entry.rsplit(":", 1)
+                try:
+                    entry_port = int(entry_port_str)
+                except ValueError:
+                    continue
+            else:
+                entry_port = 443 if scheme == "https" else 80
+
+            if entry_host.startswith("*."):
+                suffix = entry_host[2:]
+                if host.endswith("." + suffix) and entry_port == port:
+                    return True
+            elif host == entry_host and entry_port == port:
+                return True
+
+        return False
 
     def get_recent_audit_logs(self, limit: int = 20) -> List[AuditLogEntry]:
         """最近の監査ログを取得する。"""

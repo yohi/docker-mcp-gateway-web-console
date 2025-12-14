@@ -13,7 +13,7 @@
   - code_verifier は Backend で保存せず、クライアント側でセッションストレージに短命保持
   - _Requirements: 3.2, 3.3, 4.1_
 
-- [ ] 1.3 (P) StateStore に is_endpoint_allowed メソッドを追加
+- [x] 1.3 (P) StateStore に is_endpoint_allowed メソッドを追加
   - REMOTE_MCP_ALLOWED_DOMAINS 環境変数を読み取り、ホスト名・ポート・ワイルドカードマッチングを実行
   - ポート指定なしのエントリはデフォルトポート（HTTPS=443, HTTP=80）のみ許可
   - IPv6 リテラルは明示的に拒否（セキュリティ理由：パース複雑性）
