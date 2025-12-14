@@ -1,9 +1,9 @@
 {
     "feature_name": "remote-mcp-registration",
     "created_at": "2025-12-14T16:31:07+09:00",
-    "updated_at": "2025-12-14T17:00:08+09:00",
+    "updated_at": "2025-12-14T19:19:21+09:00",
     "language": "ja",
-    "phase": "design-generated",
+    "phase": "tasks-generated",
     "approvals": {
         "requirements": {
             "generated": true,
@@ -11,10 +11,10 @@
         },
         "design": {
             "generated": true,
-            "approved": false
+            "approved": true
         },
         "tasks": {
-            "generated": false,
+            "generated": true,
             "approved": false
         }
     },
