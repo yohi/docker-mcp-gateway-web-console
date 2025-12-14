@@ -7,7 +7,7 @@
   - credential_key は credentials テーブルへの外部参照（オプショナル）
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 1.2 (P) oauth_states テーブルの追加
+- [x] 1.2 (P) oauth_states テーブルの追加
   - state (PK), server_id, code_challenge, code_challenge_method, scopes, authorize_url, token_url, client_id, redirect_uri, expires_at, created_at カラムを定義
   - expires_at にインデックスを作成し、定期 GC で TTL 超過行を削除
   - code_verifier は Backend で保存せず、クライアント側でセッションストレージに短命保持
