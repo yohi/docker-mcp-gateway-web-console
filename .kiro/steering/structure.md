@@ -1,6 +1,6 @@
 # Project Structure
 
-最終更新: 2025-12-10
+最終更新: 2025-12-14
 
 ## 組織方針
 
@@ -11,7 +11,7 @@
 ### Frontend Application
 **Location**: `/frontend/` — Next.js 14 (App Router)
 - `app/`: ルーティング、ページ、レイアウト
-- `components/`: 再利用 UI コンポーネント（カタログ/OAuth モーダル、セッション実行パネル等）
+- `components/`: 再利用 UI コンポーネント（カタログ/OAuth モーダル、GitHub トークン設定、セッション実行パネル等）
 - `lib/`: API クライアント・型・バリデータ
 - `contexts/`: セッション/トーストなどのコンテキスト
 - `hooks/`: Docker コンテナやインストールフローのフック
@@ -20,11 +20,11 @@
 
 ### Backend Application
 **Location**: `/backend/` — FastAPI + Docker SDK
-- `app/api/`: ルートハンドラー（認証、カタログ、コンテナ、インスペクタ、OAuth コールバック、ゲートウェイ、セッション）
-- `app/services/`: コアロジック（Docker 操作、秘密管理、カタログ取得、OAuth フロー、セッション実行と mTLS バンドル生成、署名検証ポリシー適用、外部/E2B ゲートウェイ許可リストとヘルスチェック、監査メトリクス、state ストア）
-- `app/models/`: Pydantic モデル（設定、カタログ、署名ポリシー、状態記録）
+- `app/api/`: ルートハンドラー（認証、カタログ、GitHub トークン、コンテナ、インスペクタ、OAuth コールバック、ゲートウェイ、セッション）
+- `app/services/`: コアロジック（Docker 操作、秘密管理、カタログ取得、GitHub トークン管理、OAuth フロー、セッション実行と mTLS バンドル生成、署名検証ポリシー適用、外部/E2B ゲートウェイ許可リストとヘルスチェック、監査メトリクス、state ストア）
+- `app/models/`: Pydantic モデル（設定、カタログ、GitHub トークン、署名ポリシー、状態記録）
 - `app/schemas/`: カタログ関連スキーマ
-- `data/`: SQLite `state.db`（セッション・ゲートウェイ・資格情報）と証明書生成先ディレクトリ
+- `data/`: SQLite `state.db`（セッション・ゲートウェイ・資格情報・トークン）と証明書生成先ディレクトリ
 - `tests/`: Pytest ベースの検証（API/プロパティ/署名/ゲートウェイ/状態ストア）
 
 ### Docs / Ops
@@ -49,6 +49,6 @@
 ## コード設計原則
 
 - **サービス層集中**: ビジネスロジックは `services/` に集約し、API 層は薄く保つ。
-- **シークレット安全性**: ディスク保存を避け、環境変数または Bitwarden から動的注入し、OAuth トークンは Fernet で暗号化。
+- **シークレット安全性**: ディスク保存を避け、環境変数または Bitwarden から動的注入し、OAuth/GitHub トークンは Fernet で暗号化。
 - **許可リスト・署名検証**: 外部ゲートウェイは許可リスト検証＋定期ヘルスチェック、MCP イメージは署名検証ポリシーで強制/監査を選択。
 - **テスト容易性**: API/サービス単位で Pytest、UI/E2E は Jest/Playwright で検証。
