@@ -82,6 +82,15 @@ graph TB
 | Data / Storage | SQLite (state.db) | remote_servers, oauth_states テーブル追加 | スキーマ拡張 |
 | Frontend / CLI | Next.js 14, React 18, Tailwind | リモートサーバー管理 UI | UIコンポーネント追加 |
 
+### Environment Variables
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `OAUTH_ALLOWED_DOMAINS` | string | (既存) | OAuth エンドポイント許可ドメインリスト（既存） |
+| `REMOTE_MCP_ALLOWED_DOMAINS` | string | "" (空文字列 = deny-all) | リモート MCP サーバーエンドポイント許可ドメインリスト（カンマ区切り、ワイルドカード対応）。詳細は Security Considerations > Domain Allowlist 参照 |
+| `REMOTE_MCP_MAX_CONNECTIONS` | int | 20 | 同時 SSE 接続数上限（開発環境では 5 を推奨） |
+| `ALLOW_INSECURE_ENDPOINT` | bool | false | 開発環境専用: localhost/http スキーム許可（本番では必ず false） |
+
 ## System Flows
 
 ### OAuth 認証フロー
@@ -265,9 +274,30 @@ class RemoteMcpServiceInterface:
 - **Concurrency strategy**: SQLite row-level locking; 楽観的ロックは不要（低頻度操作）
 
 ##### Implementation Notes
-- **Integration**: MCP SDK の `sse_client()` をラップし、接続タイムアウト (30s) を設定
+- **Endpoint Allowlist Validation** (P0):
+  - `register_server()` 実行時:
+    1. カタログから endpoint URL を取得
+    2. `StateStore.is_endpoint_allowed(endpoint)` を呼び出し
+    3. False の場合、`RemoteMcpError` を raise し、HTTP 400 Bad Request を返却
+    4. エラーメッセージ: `"Endpoint not allowed: {host}:{port} is not in REMOTE_MCP_ALLOWED_DOMAINS"`
+    5. 監査ログに記録: `{"event": "endpoint_rejected", "server_id": server_id, "endpoint": endpoint, "reason": "not_in_allowlist"}`
+  - `connect()` 実行時:
+    1. サーバーレコードから endpoint URL を取得
+    2. `StateStore.is_endpoint_allowed(endpoint)` を呼び出し（二重チェック）
+    3. False の場合、同様に HTTP 400 と監査ログを記録
+- **Integration**: MCP SDK の `sse_client()` をラップし、以下の接続管理を実装
+  - **接続確立タイムアウト**: `asyncio.wait_for(sse_client.connect(), timeout=30)` で初期接続を制御
+  - **HTTPクライアント設定**: `httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0))` でSSE接続のHTTPレイヤータイムアウトを設定
 - **Validation**: endpoint は HTTPS 必須 (`_normalize_oauth_url` パターンを流用)
-- **Risks**: 長時間 SSE 接続によるリソース枯渇 → アイドル検出で自動切断
+- **アイドル検出と自動切断**:
+  - **実装機構**: RemoteMcpService 側で実装（MCP SDK の標準機能ではない）
+  - **Heartbeat**: 120秒ごとに MCP ping リクエストを送信し、応答を待機
+  - **アイドルタイムアウト**: 連続300秒（5分）応答がない場合、接続を切断して `status=ERROR` に更新
+  - **実装パターン**: バックグラウンド `asyncio.Task` で各接続の最終アクティビティ時刻を監視
+- **リソース枯渇対策**:
+  - **同時接続数上限**: 開発環境 5並列、本番環境 20並列（環境変数 `REMOTE_MCP_MAX_CONNECTIONS` で設定可能）
+  - **上限超過時**: 新規接続試行は HTTP 429 (Too Many Requests) を返却
+  - **接続プール管理**: `asyncio.Semaphore` で並行数を制御
 
 ---
 
@@ -307,15 +337,32 @@ class RemoteMcpServiceInterface:
 
 | Field | Detail |
 |-------|--------|
-| Intent | リモートサーバー (server_type=remote) 対応 |
+| Intent | リモートサーバー (server_type=remote) 対応とフィルタ時の検証 |
 | Requirements | 1.1–1.5 |
 
 ##### Responsibilities & Constraints
 - `_filter_items_missing_image` を「docker_image OR remote_endpoint が存在」に変更
-- `CatalogItem` に `server_type`, `remote_endpoint` フィールド追加
+  - **優先順位**: docker_image が存在すれば優先して使用、なければ remote_endpoint を使用
+  - **両方存在する場合**: docker_image を優先（リモートサーバーとしては扱わない）
+- `CatalogItem` モデル拡張:
+  - `server_type`: Optional[str] — 'docker' または 'remote' を格納
+  - `remote_endpoint`: Optional[str] — リモート MCP サーバーの SSE エンドポイント URL
+  - `is_remote`: bool — フィルタ処理後に設定される派生フィールド（`remote_endpoint` が有効な場合 True）
+- **URL 検証責務**: CatalogService のフィルタ段階で `remote_endpoint` の URL 形式・スキーム検証を実施
+  - 不正な形式の endpoint を持つアイテムはカタログ取得時に除外
+  - 検証エラーは警告ログに記録し、ユーザーには表示しない
+  - **注意**: `REMOTE_MCP_ALLOWED_DOMAINS` による許可リスト検証は CatalogService では実施せず、RemoteMcpService.register_server() で実施（責任分離）
 
 ##### Implementation Notes
-- **Validation**: `remote_endpoint` は URL 形式かつ HTTPS 必須
+- **Validation Logic**:
+  - 既存の `_normalize_oauth_url` パターンを流用し、URL 検証ロジックを一元化
+  - **標準スキーム**: HTTPS 必須
+  - **開発環境対応**: 環境変数 `ALLOW_INSECURE_ENDPOINT=true` を設定時、`localhost` および `http://` スキームを一時的に許可
+  - **検証内容**:
+    - URL 形式の正当性（`urllib.parse.urlparse` による検証）
+    - スキームが `https` であること（開発環境除く）
+    - ホスト名が空でないこと
+- **バリデーション設計参照**: 詳細な検証ロジックと例外処理については、Requirements 8.1–8.6（セキュリティ制約）および `.kiro/steering/tech.md`（URL 検証パターン）を参照
 
 ---
 
@@ -359,6 +406,13 @@ class RemoteMcpServiceInterface:
   -- NOTE: code_verifier は Backend で保存せず、クライアント側でセッションストレージに短命保持
   -- NOTE: expires_at にインデックスを作成し、定期 GC で削除
   ```
+
+##### Implementation Notes
+- **Endpoint Allowlist Validation**:
+  - `is_endpoint_allowed(url: str) -> bool` メソッドを追加（詳細は Security Considerations > Domain Allowlist > REMOTE_MCP_ALLOWED_DOMAINS を参照）
+  - `REMOTE_MCP_ALLOWED_DOMAINS` 環境変数を読み取り、ホスト名・ポート・ワイルドカードマッチングを実行
+  - RemoteMcpService.register_server() および connect() から呼び出される
+  - 不許可エンドポイントの場合、False を返し、呼び出し元で HTTP 400 Bad Request と監査ログを記録
 
 ---
 
@@ -408,9 +462,37 @@ class RemoteMcpServiceInterface:
 
 ### Domain Model
 - **Aggregates**: `RemoteServer` (server_id をルートとし、credential との関連を管理)
-- **Entities**: `RemoteServerRecord`, `OAuthStateRecord`
+- **Entities**: `RemoteServerRecord`, `OAuthStateRecord`, `CatalogItem` (拡張)
 - **Value Objects**: `RemoteServerStatus` (Enum)
 - **Domain Events**: `ServerRegistered`, `ServerAuthenticated`, `ServerDisabled`, `ConnectionFailed`
+
+#### CatalogItem 拡張モデル
+```python
+from typing import Optional
+from pydantic import BaseModel, HttpUrl
+
+class CatalogItem(BaseModel):
+    """カタログアイテム（Docker/リモートサーバー両対応）"""
+    id: str
+    name: str
+    description: str
+
+    # 既存フィールド
+    docker_image: Optional[str] = None
+
+    # 新規フィールド
+    server_type: Optional[str] = None  # 'docker' | 'remote'
+    remote_endpoint: Optional[HttpUrl] = None  # リモート MCP SSE エンドポイント
+    is_remote: bool = False  # 派生フィールド（フィルタ後に設定）
+
+    # OAuth 設定（リモートサーバー用）
+    oauth_config: Optional[dict] = None
+```
+
+**フィールド優先順位と派生ルール**:
+- `docker_image` が存在 → `is_remote=False`, `server_type='docker'`
+- `docker_image` が None かつ `remote_endpoint` が有効 → `is_remote=True`, `server_type='remote'`
+- 両方存在 → `docker_image` を優先、`is_remote=False`
 
 ### Logical Data Model
 
@@ -437,26 +519,74 @@ class RemoteMcpServiceInterface:
 - 認証失効: 自動リフレッシュ試行、失敗時は再認証誘導 (10.3)
 
 ### Error Categories and Responses
-- **User Errors (4xx)**: 400 (不正リクエスト)、401 (未認証)、404 (サーバー未登録)、409 (重複登録)
-- **System Errors (5xx)**: 500 (内部エラー)、502 (リモートサーバー応答不能)
-- **Business Logic Errors (422)**: 無効な endpoint URL、TLS 非対応
+- **User Errors (4xx)**:
+  - 400 (不正リクエスト): 不許可エンドポイント、無効なパラメータ
+  - 401 (未認証): OAuth 認証が必要
+  - 404 (サーバー未登録): 指定された server_id が存在しない
+  - 409 (重複登録): 同じカタログアイテムが既に登録済み
+  - 429 (Too Many Requests): 同時接続数上限超過
+- **System Errors (5xx)**:
+  - 500 (内部エラー): データベースエラー、予期しない例外
+  - 502 (リモートサーバー応答不能): SSE 接続失敗、タイムアウト
+- **Business Logic Errors (422)**:
+  - 無効な endpoint URL: URL 形式不正、TLS 非対応
+
+**Endpoint Not Allowed Error (400)**:
+```json
+{
+  "error": "endpoint_not_allowed",
+  "message": "Endpoint not allowed: api.malicious.com:8080 is not in REMOTE_MCP_ALLOWED_DOMAINS",
+  "details": {
+    "endpoint": "https://api.malicious.com:8080/sse",
+    "allowed_domains": "localhost,127.0.0.1,*.trusted.com"
+  }
+}
+```
 
 ### Monitoring
-- 監査ログ: `server_registered`, `server_authenticated`, `connection_failed` イベントを `audit_logs` に記録 (9.1–9.4)
-- メトリクス: `remote_server_connections_total`, `oauth_flow_success_total`, `oauth_flow_failure_total`
+- **監査ログ**: 以下のイベントを `audit_logs` に記録 (9.1–9.4):
+  - `server_registered`: サーバー登録成功
+  - `server_authenticated`: OAuth 認証完了
+  - `connection_failed`: SSE 接続失敗
+  - `endpoint_rejected`: 不許可エンドポイントへの接続試行（詳細は Security Considerations > Domain Allowlist > Implementation Notes 参照）
+- **メトリクス**:
+  - `remote_server_connections_total`: 接続試行数
+  - `remote_server_connections_rejected_total`: 不許可エンドポイントによる拒否数（新規）
+  - `oauth_flow_success_total`: OAuth フロー成功数
+  - `oauth_flow_failure_total`: OAuth フロー失敗数
 
 ## Testing Strategy
 
 ### Unit Tests
-- `RemoteMcpService.register_server` — 正常登録・重複拒否
-- `RemoteMcpService.connect` — credential 復号・SSE 接続モック
+- `StateStore.is_endpoint_allowed` — 許可リスト検証ロジック
+  - 完全一致マッチング（`api.example.com` → `https://api.example.com/sse`）
+  - ポート番号マッチング（`api.example.com:8443` → `https://api.example.com:8443/sse`）
+  - ワイルドカードマッチング（`*.example.com` → `https://api.example.com/sse`, `https://v2.api.example.com/sse`）
+  - ワイルドカード非マッチ（`*.example.com` ≠ `https://example.com/sse`）
+  - ポート不一致拒否（`api.example.com:8443` ≠ `https://api.example.com:8080/sse`）
+  - 空リストは deny-all（`REMOTE_MCP_ALLOWED_DOMAINS=""` → すべて False）
+- `RemoteMcpService.register_server` — 正常登録・重複拒否・allowlist 検証
+  - 許可エンドポイントの登録成功
+  - 不許可エンドポイントの登録失敗（HTTP 400 + 監査ログ）
+- `RemoteMcpService.connect` — credential 復号・SSE 接続モック・allowlist 検証
+  - 許可エンドポイントへの接続成功
+  - 不許可エンドポイントへの接続失敗（HTTP 400 + 監査ログ）
 - `OAuthService._persist_state` / `_validate_state` — TTL 検証
-- `CatalogService._filter_items` — remote_endpoint 対応
+- `CatalogService._filter_items` — remote_endpoint 対応と URL 検証
+  - `docker_image` 優先ロジック（両方存在時）
+  - `remote_endpoint` 単独時の `is_remote=True` 設定
+  - HTTPS スキーム検証（`ALLOW_INSECURE_ENDPOINT=false` 時）
+  - 開発環境での `localhost`/`http` 許可（`ALLOW_INSECURE_ENDPOINT=true` 時）
+  - 不正な URL 形式のアイテム除外
 
 ### Integration Tests
 - OAuth フロー全体 (start → callback → token 保存)
 - リモートサーバー登録 → 認証 → 接続テスト
 - カタログ取得 → リモートサーバーフィルタリング
+- **Allowlist 統合テスト**:
+  - `REMOTE_MCP_ALLOWED_DOMAINS` 設定変更 → 新規登録・接続の可否確認
+  - ワイルドカードエントリでの登録・接続フロー
+  - 不許可ドメインへの登録試行 → HTTP 400 + 監査ログ検証
 
 ### E2E/UI Tests
 - リモートサーバー一覧表示
@@ -464,8 +594,11 @@ class RemoteMcpServiceInterface:
 - 接続テスト実行と結果表示
 
 ### Performance/Load
-- 同時 OAuth フロー 10 並列
-- SSE 接続 5 並列 (バックエンドリソース監視)
+- **同時 OAuth フロー**: 10 並列（認証フロー処理能力の検証）
+- **SSE 接続負荷テスト**:
+  - 開発環境: 5 並列（上限検証）
+  - 本番環境: 20 並列（上限検証 + リソース監視）
+- **接続上限超過テスト**: 上限+1 接続時に HTTP 429 返却を確認
 
 ## Security Considerations
 
@@ -479,8 +612,149 @@ class RemoteMcpServiceInterface:
 - ログ・エラー応答に認証情報を含めない (5.6, 8.6)
 
 ### Domain Allowlist
-- `OAUTH_ALLOWED_DOMAINS` による OAuth エンドポイント制限
-- `REMOTE_MCP_ALLOWED_DOMAINS` (新規環境変数) によるリモートサーバーエンドポイント制限
+
+#### OAUTH_ALLOWED_DOMAINS
+OAuth エンドポイント制限（既存機能、詳細は既存ドキュメント参照）
+
+#### REMOTE_MCP_ALLOWED_DOMAINS
+
+**目的**: リモート MCP サーバーエンドポイントへの接続を許可ドメインリストで制限し、不正なサーバーへの接続を防止
+
+##### Format and Syntax
+- **形式**: カンマ区切りリスト（空白は trimmed）
+- **エントリ**: ホスト名 + オプションのポート番号
+  - 例: `api.example.com`, `api.example.com:8443`, `mcp.service.local:9000`
+- **ワイルドカード**: サブドメインマッチング用のプレフィックスワイルドカード（`*.example.com`）のみサポート
+  - `*.example.com` は `api.example.com`, `v2.api.example.com` にマッチ
+  - `example.com` 自体にはマッチしない（明示的に `example.com,*.example.com` と指定）
+  - **制限事項**: フルパスワイルドカード（`api.example.com/*`）やプロトコルワイルドカード（`http*://`）は不可
+- **ポート番号**: 指定されたエントリはポート番号も厳密にマッチ必須
+  - `api.example.com:8443` は `api.example.com:8080` にマッチしない
+
+##### Default Value
+- **デフォルト**: 空文字列（deny-all）— すべてのリモートサーバー接続を拒否
+- **開発環境推奨**: `localhost,127.0.0.1,*.local` — ローカル開発用
+- **本番環境例**: `api.production.com,*.trusted-partner.com:8443`
+
+##### Configuration Examples
+```bash
+# 開発環境
+REMOTE_MCP_ALLOWED_DOMAINS="localhost,127.0.0.1,*.local"
+ALLOW_INSECURE_ENDPOINT=true
+
+# ステージング環境
+REMOTE_MCP_ALLOWED_DOMAINS="api.staging.example.com,*.staging-partners.com"
+ALLOW_INSECURE_ENDPOINT=false
+
+# 本番環境
+REMOTE_MCP_ALLOWED_DOMAINS="api.production.com,api-v2.production.com:8443,*.trusted-partner.com"
+ALLOW_INSECURE_ENDPOINT=false
+```
+
+##### Reload Behavior
+- **優先実装**: ランタイムリロード
+  - **方式 1**: 環境変数に基づく設定ファイル（`config/allowlist.json`）を監視し、変更検出時に自動リロード
+  - **方式 2**: SIGHUP シグナル受信時に環境変数を再読み込み
+- **フォールバック**: アプリケーション再起動（上記ランタイムリロードが実装されていない場合）
+- **動作保証**: リロード中は既存接続を維持、新規接続のみ新ルールを適用
+
+##### Validation Rules and Algorithm
+
+**統一検証ルール** (CatalogService line 318 の HTTPS-only check と統合):
+1. URL をパースし、スキーム・ホスト・ポートを抽出（`urllib.parse.urlparse`）
+2. スキーム検証:
+   - `ALLOW_INSECURE_ENDPOINT=false` (デフォルト): `https` 必須
+   - `ALLOW_INSECURE_ENDPOINT=true`: `http` または `https` 許可（`localhost` と `127.0.0.1` のみ）
+3. ホスト名が空でないことを確認
+4. 許可リスト検証（`StateStore.is_endpoint_allowed()` を呼び出し）
+
+**Validation Algorithm** (`StateStore.is_endpoint_allowed(url: str) -> bool`):
+```python
+def is_endpoint_allowed(url: str) -> bool:
+    """
+    リモート MCP エンドポイント URL が許可リストに含まれるか検証
+
+    Args:
+        url: 検証対象の URL (例: "https://api.example.com:8443/sse")
+
+    Returns:
+        True if allowed, False otherwise
+    """
+    # 1. URL パース
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname  # "api.example.com"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+
+    # 2. 許可リストを取得（環境変数からカンマ区切りでパース）
+    allowlist = os.getenv("REMOTE_MCP_ALLOWED_DOMAINS", "").split(",")
+    allowlist = [entry.strip() for entry in allowlist if entry.strip()]
+
+    # 3. 空リストはdeny-all
+    if not allowlist:
+        return False
+
+    # 4. 各エントリとマッチング
+    for entry in allowlist:
+        # ポート番号を分離
+        if ":" in entry:
+            entry_host, entry_port_str = entry.rsplit(":", 1)
+            try:
+                entry_port = int(entry_port_str)
+            except ValueError:
+                continue  # 不正なポート番号は無視
+        else:
+            entry_host = entry
+            entry_port = None  # ポート指定なし（全ポート許可）
+
+        # ワイルドカードマッチング
+        if entry_host.startswith("*."):
+            # サブドメインマッチング
+            suffix = entry_host[2:]  # "*.example.com" -> "example.com"
+            if host.endswith("." + suffix):
+                if entry_port is None or entry_port == port:
+                    return True
+        else:
+            # 完全一致
+            if host == entry_host:
+                if entry_port is None or entry_port == port:
+                    return True
+
+    return False
+```
+
+##### Implementation Notes
+
+**StateStore 拡張**:
+```python
+class StateStore:
+    def is_endpoint_allowed(self, url: str) -> bool:
+        """上記アルゴリズムを実装"""
+        ...
+```
+
+**RemoteMcpService 統合**:
+- `register_server()` と `connect()` の両方で呼び出し
+- 不許可エンドポイントの場合:
+  - HTTP 400 Bad Request を返却
+  - エラーメッセージ: `"Endpoint not allowed: {host}:{port} is not in REMOTE_MCP_ALLOWED_DOMAINS"`
+  - 監査ログに記録: `{"event": "endpoint_rejected", "url": url, "reason": "not_in_allowlist"}`
+
+**監査ログ例**:
+```json
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "event": "endpoint_rejected",
+  "server_id": "remote-server-123",
+  "endpoint": "https://malicious.example.com/sse",
+  "reason": "not_in_allowlist",
+  "correlation_id": "req-abc-123"
+}
+```
+
+#### ALLOW_INSECURE_ENDPOINT
+開発環境専用の設定（上記 Validation Rules と統合）:
+- `true` 設定時、`localhost` および `127.0.0.1` に限り `http://` スキームを一時的に許可
+- **本番環境では必ず `false`**（デフォルト）: HTTPS 必須ポリシーを維持
 
 ## Performance & Scalability
 
@@ -490,8 +764,11 @@ class RemoteMcpServiceInterface:
 - カタログ取得: < 2秒 (キャッシュヒット時)
 
 ### Connection Management
-- SSE 接続タイムアウト: 30秒
-- アイドル接続自動切断: 5分
+- **SSE 接続確立タイムアウト**: 30秒（`asyncio.wait_for` + `httpx.Timeout` による制御）
+- **Heartbeat 間隔**: 120秒（MCP ping による生存確認）
+- **アイドル接続自動切断**: 連続300秒（5分）無応答で切断
+- **同時接続数上限**: 開発環境 5、本番環境 20（環境変数 `REMOTE_MCP_MAX_CONNECTIONS` で設定）
+- **接続プール管理**: `asyncio.Semaphore` による並行制御
 
 ## Migration Strategy
 
