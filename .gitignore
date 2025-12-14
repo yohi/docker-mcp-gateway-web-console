@@ -61,6 +61,7 @@ CLAUDE.md
 .kiro/settings/templates
 
 # Runtime data
+data/state.db
+data/oauth_encryption.key
 backend/data/state.db
-backend/data/*.db
 backend/data/oauth_encryption.key
