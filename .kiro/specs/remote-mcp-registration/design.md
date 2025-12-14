@@ -890,7 +890,7 @@ class StateStore:
 - 不許可エンドポイントの場合:
   - HTTP 400 Bad Request を返却
   - エラーメッセージ: `"Endpoint not allowed: {host}:{port} is not in REMOTE_MCP_ALLOWED_DOMAINS"`
-  - 監査ログに記録: `{"event": "endpoint_rejected", "endpoint": endpoint, "reason": "not_in_allowlist"}`
+  - 監査ログに記録: `{"event": "endpoint_rejected", "server_id": server_id, "endpoint": endpoint, "reason": "not_in_allowlist"}`
 
 **監査ログ例**:
 ```json
