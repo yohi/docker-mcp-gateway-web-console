@@ -156,13 +156,18 @@ export default function DashboardPage() {
           />
         )}
 
-        {editingContainer && (
-          <ContainerEditModal
-            container={filteredContainers.find((c) => c.id === editingContainer)!}
-            onClose={() => setEditingContainer(null)}
-            onUpdated={handleRefresh}
-          />
-        )}
+        {(() => {
+          if (!editingContainer) return null;
+          const found = containers.find((c) => c.id === editingContainer);
+          if (!found) return null;
+          return (
+            <ContainerEditModal
+              container={found}
+              onClose={() => setEditingContainer(null)}
+              onUpdated={handleRefresh}
+            />
+          );
+        })()}
 
         {viewingLogsFor && (
           <LogViewer

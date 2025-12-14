@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     catalog_github_fetch_retry_base_delay_seconds: float = 0.5
     # 公式MCPレジストリ (github.com/docker/mcp-registry) を既定とする
     catalog_default_url: str = "https://api.github.com/repos/docker/mcp-registry/contents/servers"
-    # GitHub API のレート制限回避用トークン（任意）
+    # GitHub API のレート制限回避用トークン(任意)
     github_token: str = ""
 
     # CORS Configuration
@@ -57,9 +57,13 @@ class Settings(BaseSettings):
     )
     oauth_redirect_uri: str = "http://localhost:8000/api/catalog/oauth/callback"
     oauth_request_timeout_seconds: int = 10
-    # サーバーごとに OAuth エンドポイント等を上書きできるか（カタログ/クライアント由来の値を使用するため慎重に運用する）
+    # サーバーごとに OAuth エンドポイント等を上書きできるか(カタログ/クライアント由来の値を使用するため慎重に運用する)
     oauth_allow_override: bool = Field(default=False, validation_alias="OAUTH_ALLOW_OVERRIDE")
-    # アクセス/リフレッシュトークンの暗号化キー（Fernet）。必ず環境変数 OAUTH_TOKEN_ENCRYPTION_KEY で本番用のキーを指定すること。
+    # OAuth URL の許可ドメインリスト(カンマ区切り)。空の場合は GitHub のみ許可。
+    oauth_allowed_domains: str = Field(
+        default="github.com", validation_alias="OAUTH_ALLOWED_DOMAINS"
+    )
+    # アクセス/リフレッシュトークンの暗号化キー(Fernet)。必ず環境変数 OAUTH_TOKEN_ENCRYPTION_KEY で本番用のキーを指定すること。
     oauth_token_encryption_key: str = Field(
         default=OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER,
         validation_alias="OAUTH_TOKEN_ENCRYPTION_KEY",
@@ -77,7 +81,7 @@ class Settings(BaseSettings):
     # Security: Only log request bodies in debug/non-production environments
     # to prevent logging sensitive data (passwords, API keys, PII)
     log_request_body: bool = False
-    # CLI 経由のパスワード引数を許可するか（デフォルト: 無効）
+    # CLI 経由のパスワード引数を許可するか(デフォルト: 無効)
     allow_cli_password: bool = Field(
         default=False, validation_alias="AUTH_ALLOW_CLI_PASSWORD"
     )
@@ -86,6 +90,11 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
         return [origin.strip() for origin in self.cors_origins.split(",")]
+
+    @property
+    def oauth_allowed_domains_list(self) -> list[str]:
+        """Parse OAuth allowed domains from comma-separated string."""
+        return [domain.strip().lower() for domain in self.oauth_allowed_domains.split(",") if domain.strip()]
 
     def model_post_init(self, __context: object) -> None:
         """OAuth トークン暗号化キーを env > ファイル > 生成の順で取得し、妥当性を検証する。"""

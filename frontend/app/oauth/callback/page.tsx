@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { exchangeOAuth } from '@/lib/api/oauth';
 import type { OAuthExchangeResult } from '@/lib/api/oauth';
@@ -27,7 +27,7 @@ function safeParseStored(value: string | null): StoredPKCE | null {
   }
 }
 
-export default function OAuthCallbackPage() {
+function OAuthCallbackContent() {
   const router = useRouter();
   const params = useSearchParams();
   const [status, setStatus] = useState<Status>('processing');
@@ -129,5 +129,22 @@ export default function OAuthCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function OAuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[60vh] flex items-center justify-center p-6">
+          <div className="w-full max-w-xl rounded-lg border border-gray-200 bg-white shadow-sm p-6 space-y-3">
+            <h1 className="text-lg font-semibold text-gray-900">OAuth 認証</h1>
+            <div className="text-sm text-gray-700">読み込み中...</div>
+          </div>
+        </div>
+      }
+    >
+      <OAuthCallbackContent />
+    </Suspense>
   );
 }

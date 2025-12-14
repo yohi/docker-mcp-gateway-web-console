@@ -32,10 +32,10 @@ async def initiate_oauth(request: OAuthInitiateRequest) -> OAuthInitiateResponse
         result = oauth_service.start_auth(
             server_id=request.server_id,
             scopes=request.scopes,
-            authorize_url=request.authorize_url,
-            token_url=request.token_url,
+            authorize_url=str(request.authorize_url) if request.authorize_url else None,
+            token_url=str(request.token_url) if request.token_url else None,
             client_id=request.client_id,
-            redirect_uri=request.redirect_uri,
+            redirect_uri=str(request.redirect_uri) if request.redirect_uri else None,
             code_challenge=request.code_challenge,
             code_challenge_method=request.code_challenge_method,
         )
@@ -54,7 +54,7 @@ async def oauth_callback(
     request: Request,
     code: str = Query(..., description="認可コード"),
     state: str = Query(..., description="認可開始時の state"),
-    server_id: str | None = Query(default=None, description="対象サーバーID"),
+    server_id: str = Query(..., description="対象サーバーID"),
     code_verifier: str | None = Query(
         default=None, description="クライアント保持の PKCE code_verifier"
     ),

@@ -3,9 +3,11 @@
 import asyncio
 import base64
 import hashlib
+import ipaddress
 import json
 import logging
 import secrets
+import socket
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -37,13 +39,93 @@ class OAuthState:
     redirect_uri: str
 
 
+def _is_private_or_local_ip(hostname: str) -> bool:
+    """ホスト名がプライベート/ローカル/メタデータIPかチェックする。"""
+    try:
+        # ホスト名をIPアドレスに解決
+        ip_str = socket.gethostbyname(hostname)
+        ip = ipaddress.ip_address(ip_str)
+
+        # プライベート/ローカル/予約済みアドレスをチェック
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            return True
+
+        # クラウドメタデータエンドポイント(169.254.169.254)をチェック
+        if ip_str == "169.254.169.254":
+            return True
+
+        return False
+    except (socket.gaierror, ValueError):
+        # DNS解決失敗またはIPアドレス変換失敗の場合は安全側に倒す
+        return False
+
+
 def _normalize_oauth_url(value: str, *, field_name: str) -> str:
+    """OAuth URLを検証・正規化する。SSRF対策を含む。"""
     url = (value or "").strip()
     if not url:
         raise OAuthError(f"{field_name} が未設定です")
+
     parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+
+    # HTTPSスキームのみ許可(HTTPは拒否)
+    if parsed.scheme != "https":
+        logger.warning(
+            "OAuth URL rejected: non-HTTPS scheme. field=%s url=%s",
+            field_name,
+            url,
+        )
+        raise OAuthError(f"{field_name} は HTTPS スキームである必要があります: {url}")
+
+    if not parsed.netloc:
         raise OAuthError(f"{field_name} が不正です: {url}")
+
+    # ホスト名を抽出(ポート番号を除く)
+    hostname = parsed.hostname or parsed.netloc.split(":")[0]
+
+    # IPアドレス形式をチェック
+    try:
+        ip = ipaddress.ip_address(hostname)
+        # プライベート/ローカル/予約済みIPを拒否
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            logger.warning(
+                "OAuth URL rejected: private/local IP. field=%s url=%s ip=%s",
+                field_name,
+                url,
+                hostname,
+            )
+            raise OAuthError(f"{field_name} にプライベート/ローカルIPは使用できません")
+
+        # クラウドメタデータエンドポイントを拒否
+        if str(ip) == "169.254.169.254":
+            logger.warning(
+                "OAuth URL rejected: metadata endpoint. field=%s url=%s",
+                field_name,
+                url,
+            )
+            raise OAuthError(f"{field_name} にメタデータエンドポイントは使用できません")
+    except ValueError:
+        # IPアドレスではなくホスト名の場合
+        # ローカルホスト名を拒否
+        if hostname.lower() in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}:
+            logger.warning(
+                "OAuth URL rejected: localhost. field=%s url=%s hostname=%s",
+                field_name,
+                url,
+                hostname,
+            )
+            raise OAuthError(f"{field_name} に localhost は使用できません")
+
+        # DNS解決してプライベートIPをチェック
+        if _is_private_or_local_ip(hostname):
+            logger.warning(
+                "OAuth URL rejected: resolves to private IP. field=%s url=%s hostname=%s",
+                field_name,
+                url,
+                hostname,
+            )
+            raise OAuthError(f"{field_name} がプライベートIPに解決されます")
+
     return url
 
 
@@ -59,6 +141,25 @@ def _is_github_oauth_endpoints(authorize_url: str, token_url: str) -> bool:
     return _strip_trailing_slash(authorize_url) == GITHUB_AUTHORIZE_URL and _strip_trailing_slash(
         token_url
     ) == GITHUB_TOKEN_URL
+
+
+def _is_domain_allowed(url: str, allowed_domains: list[str]) -> bool:
+    """URLのドメインが許可リストに含まれているかチェックする。"""
+    if not allowed_domains:
+        return False
+
+    try:
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+
+        for allowed_domain in allowed_domains:
+            # 完全一致またはサブドメイン一致
+            if hostname == allowed_domain or hostname.endswith(f".{allowed_domain}"):
+                return True
+
+        return False
+    except Exception:
+        return False
 
 
 def _origin(url: str) -> str:
@@ -354,6 +455,27 @@ class OAuthService:
             raise OAuthError("client_id が未設定です")
         use_redirect_uri = _normalize_oauth_url(use_redirect_uri, field_name="redirect_uri")
 
+        # 許可ドメインリストチェック
+        allowed_domains = settings.oauth_allowed_domains_list
+        if not _is_domain_allowed(use_authorize_url, allowed_domains):
+            logger.warning(
+                "OAuth URL rejected: domain not in allowlist. url=%s allowed_domains=%s",
+                use_authorize_url,
+                allowed_domains,
+            )
+            raise OAuthError(
+                f"authorize_url のドメインが許可リストに含まれていません。許可ドメイン: {', '.join(allowed_domains)}"
+            )
+        if not _is_domain_allowed(use_token_url, allowed_domains):
+            logger.warning(
+                "OAuth URL rejected: domain not in allowlist. url=%s allowed_domains=%s",
+                use_token_url,
+                allowed_domains,
+            )
+            raise OAuthError(
+                f"token_url のドメインが許可リストに含まれていません。許可ドメイン: {', '.join(allowed_domains)}"
+            )
+
         missing = self._scope_policy.validate(scopes)
         state = secrets.token_urlsafe(32)
         if missing:
@@ -426,7 +548,7 @@ class OAuthService:
         self,
         code: str,
         state: str,
-        server_id: Optional[str] = None,
+        server_id: str,
         code_verifier: Optional[str] = None,
     ) -> dict:
         """認可コードをトークンに交換する。"""
@@ -436,7 +558,7 @@ class OAuthService:
         oauth_state = self._state_store_mem.get(state)
         if oauth_state is None:
             raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
-        if server_id and oauth_state.server_id != server_id:
+        if oauth_state.server_id != server_id:
             raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
         oauth_state = self._state_store_mem.pop(state)
 

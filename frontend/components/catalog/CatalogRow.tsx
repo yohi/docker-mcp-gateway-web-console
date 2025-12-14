@@ -2,19 +2,21 @@
 
 import { useMemo, useState } from 'react';
 import type { CatalogItem } from '@/lib/types/catalog';
-import { useContainers } from '@/hooks/useContainers';
+import type { Container } from '@/lib/types/container';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
 import { useToast } from '@/contexts/ToastContext';
 
 type Props = {
   item: CatalogItem;
+  containers: Container[];
+  isContainersLoading: boolean;
+  onContainersRefresh: () => void;
   onInstall: (item: CatalogItem) => void;
   onSelect: (item: CatalogItem) => void;
 };
 
-const CatalogRow = ({ item, onInstall, onSelect }: Props) => {
-  const { containers, refresh, isLoading: isContainersLoading } = useContainers(0);
+const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh, onInstall, onSelect }: Props) => {
   const { showSuccess, showError } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -38,7 +40,7 @@ const CatalogRow = ({ item, onInstall, onSelect }: Props) => {
     setIsDeleting(true);
     try {
       await deleteContainer(matchedContainer.id, matchedContainer.status === 'running');
-      await refresh();
+      onContainersRefresh();
       showSuccess('コンテナを削除しました');
     } catch (err) {
       const message =
