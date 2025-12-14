@@ -398,11 +398,15 @@ class RemoteMcpServiceInterface:
       name TEXT NOT NULL,
       endpoint TEXT NOT NULL,
       status TEXT NOT NULL,
-      credential_key TEXT,
+      credential_key TEXT REFERENCES credentials(credential_key) ON DELETE SET NULL,
       last_connected_at TEXT,
       error_message TEXT,
       created_at TEXT NOT NULL
   );
+  CREATE INDEX IF NOT EXISTS idx_remote_servers_catalog_item_id
+      ON remote_servers(catalog_item_id);
+  -- NOTE: credential_key は credentials テーブルへの外部キー
+  -- NOTE: credential 削除時は SET NULL（サーバーレコードは保持、再認証が必要）
 
   CREATE TABLE IF NOT EXISTS oauth_states (
       state TEXT PRIMARY KEY,                    -- CSRF 防止用の state パラメータ
@@ -422,6 +426,17 @@ class RemoteMcpServiceInterface:
   ```
 
 ##### Implementation Notes
+- **SQLite 外部キー制約の有効化**:
+  - 接続確立時に `PRAGMA foreign_keys = ON` を実行（SQLite はデフォルトで外部キー制約が無効）
+  - `_connect()` メソッドで以下を実行:
+    ```python
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")  # 外部キー制約を有効化
+        return conn
+    ```
+  - これにより、`credential_key` が参照する `credentials` レコードが削除された場合、`remote_servers.credential_key` が自動的に NULL になる（ON DELETE SET NULL）
 - **Endpoint Allowlist Validation**:
   - `is_endpoint_allowed(url: str) -> bool` メソッドを追加（詳細は Security Considerations > Domain Allowlist > REMOTE_MCP_ALLOWED_DOMAINS を参照）
   - `REMOTE_MCP_ALLOWED_DOMAINS` 環境変数を読み取り、ホスト名・ポート・ワイルドカードマッチングを実行
@@ -572,15 +587,32 @@ class CatalogItem(BaseModel):
 - `oauth_states` は一時的データ (TTL 後削除)
 
 **Consistency & Integrity**:
+- **外部キー制約**: `remote_servers.credential_key` → `credentials.credential_key` (ON DELETE SET NULL)
+  - credential 削除時、remote_servers レコードは保持され、credential_key のみ NULL になる
+  - これにより孤児 credential_key を防ぎ、参照整合性を DB レベルで担保
+  - `PRAGMA foreign_keys = ON` を接続時に実行必須（SQLite デフォルトでは無効）
 - サーバー削除時に紐づく credential の削除可否をユーザーに確認 (Requirement 2.6)
 - `oauth_states` の expires_at 超過行は GC で定期削除
 
 ### Physical Data Model
 
 **For SQLite**:
-- `remote_servers`: server_id (PK), catalog_item_id (NOT NULL), status (NOT NULL)
-- `oauth_states`: state (PK), expires_at (INDEX for GC)
-- GC: `DELETE FROM oauth_states WHERE expires_at < datetime('now')`
+- `remote_servers`:
+  - server_id (PK)
+  - catalog_item_id (NOT NULL, INDEX)
+  - credential_key (FK → credentials.credential_key ON DELETE SET NULL)
+  - status (NOT NULL)
+- `oauth_states`:
+  - state (PK)
+  - expires_at (INDEX for GC)
+- **Foreign Key Constraints**:
+  - `PRAGMA foreign_keys = ON` を接続時に実行（SQLite デフォルトでは無効）
+  - `remote_servers.credential_key` → `credentials.credential_key` (ON DELETE SET NULL)
+  - credential 削除時、remote_servers レコードは保持され、credential_key のみ NULL になる（再認証が必要な状態）
+- **Indexes**:
+  - `idx_remote_servers_catalog_item_id` on `remote_servers(catalog_item_id)` — カタログからの逆引き検索を高速化
+  - `expires_at` index on `oauth_states` — GC 処理の高速化
+- **GC**: `DELETE FROM oauth_states WHERE expires_at < datetime('now')`
 
 ## Error Handling
 
@@ -642,6 +674,13 @@ class CatalogItem(BaseModel):
     - `*.example.com` → `https://example.com/sse` ✗ 拒否（ワイルドカード非マッチ）
   - **IPv6 拒否**: `https://[2001:db8::1]/sse` ✗ 拒否（IPv6 非サポート）
   - **空リストは deny-all**: `REMOTE_MCP_ALLOWED_DOMAINS=""` → すべて False
+- `StateStore` — 外部キー制約とインデックス
+  - **外部キー制約の動作確認**:
+    - `PRAGMA foreign_keys` が ON であることを確認
+    - remote_server を credential_key 付きで作成 → credential を削除 → remote_server.credential_key が NULL になることを確認
+    - 存在しない credential_key で remote_server を作成しようとすると FOREIGN KEY constraint failed エラー
+  - **インデックスの存在確認**:
+    - `idx_remote_servers_catalog_item_id` が作成されていることを確認
 - `RemoteMcpService.register_server` — 正常登録・重複拒否・allowlist 検証
   - 許可エンドポイントの登録成功
   - 不許可エンドポイントの登録失敗（HTTP 400 + 監査ログ）
@@ -884,9 +923,17 @@ class StateStore:
 ## Migration Strategy
 
 1. **Phase 1**: StateStore スキーマ追加 (`remote_servers`, `oauth_states`) — 既存テーブルへの影響なし
+   - **重要**: `PRAGMA foreign_keys = ON` を `_connect()` メソッドで実行必須
+   - 外部キー制約 (`credential_key` → `credentials.credential_key`) を定義
+   - インデックス (`idx_remote_servers_catalog_item_id`) を作成
 2. **Phase 2**: CatalogItem モデル拡張 (オプショナルフィールド追加) — 後方互換
 3. **Phase 3**: OAuthService state 永続化 — メモリ管理と並行稼働
 4. **Phase 4**: RemoteMcpService 導入 — 新規 API 追加
 5. **Phase 5**: Frontend UI 追加 — 段階的リリース
 
 **Rollback triggers**: マイグレーション失敗時は前バージョンへロールバック可能（スキーマ変更は IF NOT EXISTS パターン）
+
+**Foreign Key Constraint Migration Notes**:
+- 既存の `credentials` テーブルに影響なし（新規テーブル `remote_servers` のみが参照）
+- SQLite は外部キー制約の事後追加が困難なため、初期スキーマ定義時に含める必要がある
+- 既存 DB がある場合、`remote_servers` テーブルを DROP して再作成（データ損失許容な初期フェーズのみ）
