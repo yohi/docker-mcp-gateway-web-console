@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     # Bitwarden Configuration
     bitwarden_cli_path: str = "/usr/local/bin/bw"

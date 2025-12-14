@@ -1,7 +1,7 @@
 # Implementation Plan
 
 ## 1. データベーススキーマ拡張
-- [ ] 1.1 (P) remote_servers テーブルの追加
+- [x] 1.1 (P) remote_servers テーブルの追加
   - server_id (PK), catalog_item_id, name, endpoint, status, credential_key, last_connected_at, error_message, created_at カラムを定義
   - status は RemoteServerStatus Enum 値を格納（unregistered/registered/auth_required/authenticated/disabled/error）
   - credential_key は credentials テーブルへの外部参照（オプショナル）

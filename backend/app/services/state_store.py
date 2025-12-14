@@ -64,6 +64,17 @@ class StateStore:
                     created_by TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS remote_servers (
+                    server_id TEXT PRIMARY KEY,
+                    catalog_item_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    endpoint TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    credential_key TEXT,
+                    last_connected_at TEXT,
+                    error_message TEXT,
+                    created_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS sessions (
                     session_id TEXT PRIMARY KEY,
                     server_id TEXT NOT NULL,
