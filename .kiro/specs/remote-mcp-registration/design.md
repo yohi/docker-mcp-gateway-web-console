@@ -398,11 +398,16 @@ class RemoteMcpServiceInterface:
       name TEXT NOT NULL,
       endpoint TEXT NOT NULL,
       status TEXT NOT NULL,
-      credential_key TEXT,
+      credential_key TEXT REFERENCES credentials(credential_key) ON DELETE SET NULL,
       last_connected_at TEXT,
       error_message TEXT,
       created_at TEXT NOT NULL
   );
+  CREATE INDEX IF NOT EXISTS idx_remote_servers_catalog_item_id
+      ON remote_servers(catalog_item_id);
+  -- NOTE: credential_key は credentials テーブルへの外部キー
+  -- NOTE: 外部キー制約の前提: credentials.credential_key は PRIMARY KEY または UNIQUE 制約が必要
+  -- NOTE: credential 削除時は SET NULL（サーバーレコードは保持、再認証が必要）
 
   CREATE TABLE IF NOT EXISTS oauth_states (
       state TEXT PRIMARY KEY,                    -- CSRF 防止用の state パラメータ
@@ -417,11 +422,24 @@ class RemoteMcpServiceInterface:
       expires_at TEXT NOT NULL,                  -- TTL (10分) - GC 対象
       created_at TEXT NOT NULL
   );
+  CREATE INDEX IF NOT EXISTS idx_oauth_states_expires_at
+      ON oauth_states(expires_at);
   -- NOTE: code_verifier は Backend で保存せず、クライアント側でセッションストレージに短命保持
-  -- NOTE: expires_at にインデックスを作成し、定期 GC で削除
+  -- NOTE: expires_at インデックスにより、定期 GC で効率的に期限切れ state を削除可能
   ```
 
 ##### Implementation Notes
+- **SQLite 外部キー制約の有効化**:
+  - 接続確立時に `PRAGMA foreign_keys = ON` を実行（SQLite はデフォルトで外部キー制約が無効）
+  - `_connect()` メソッドで以下を実行:
+    ```python
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")  # 外部キー制約を有効化
+        return conn
+    ```
+  - これにより、`credential_key` が参照する `credentials` レコードが削除された場合、`remote_servers.credential_key` が自動的に NULL になる（ON DELETE SET NULL）
 - **Endpoint Allowlist Validation**:
   - `is_endpoint_allowed(url: str) -> bool` メソッドを追加（詳細は Security Considerations > Domain Allowlist > REMOTE_MCP_ALLOWED_DOMAINS を参照）
   - `REMOTE_MCP_ALLOWED_DOMAINS` 環境変数を読み取り、ホスト名・ポート・ワイルドカードマッチングを実行
@@ -572,15 +590,32 @@ class CatalogItem(BaseModel):
 - `oauth_states` は一時的データ (TTL 後削除)
 
 **Consistency & Integrity**:
+- **外部キー制約**: `remote_servers.credential_key` → `credentials.credential_key` (ON DELETE SET NULL)
+  - credential 削除時、remote_servers レコードは保持され、credential_key のみ NULL になる
+  - これにより孤児 credential_key を防ぎ、参照整合性を DB レベルで担保
+  - `PRAGMA foreign_keys = ON` を接続時に実行必須（SQLite デフォルトでは無効）
 - サーバー削除時に紐づく credential の削除可否をユーザーに確認 (Requirement 2.6)
 - `oauth_states` の expires_at 超過行は GC で定期削除
 
 ### Physical Data Model
 
 **For SQLite**:
-- `remote_servers`: server_id (PK), catalog_item_id (NOT NULL), status (NOT NULL)
-- `oauth_states`: state (PK), expires_at (INDEX for GC)
-- GC: `DELETE FROM oauth_states WHERE expires_at < datetime('now')`
+- `remote_servers`:
+  - server_id (PK)
+  - catalog_item_id (NOT NULL, INDEX)
+  - credential_key (FK → credentials.credential_key ON DELETE SET NULL)
+  - status (NOT NULL)
+- `oauth_states`:
+  - state (PK)
+  - expires_at (INDEX for GC)
+- **Foreign Key Constraints**:
+  - `PRAGMA foreign_keys = ON` を接続時に実行（SQLite デフォルトでは無効）
+  - `remote_servers.credential_key` → `credentials.credential_key` (ON DELETE SET NULL)
+  - credential 削除時、remote_servers レコードは保持され、credential_key のみ NULL になる（再認証が必要な状態）
+- **Indexes**:
+  - `idx_remote_servers_catalog_item_id` on `remote_servers(catalog_item_id)` — カタログからの逆引き検索を高速化
+  - `expires_at` index on `oauth_states` — GC 処理の高速化
+- **GC**: `DELETE FROM oauth_states WHERE expires_at < datetime('now')`
 
 ## Error Handling
 
@@ -642,6 +677,13 @@ class CatalogItem(BaseModel):
     - `*.example.com` → `https://example.com/sse` ✗ 拒否（ワイルドカード非マッチ）
   - **IPv6 拒否**: `https://[2001:db8::1]/sse` ✗ 拒否（IPv6 非サポート）
   - **空リストは deny-all**: `REMOTE_MCP_ALLOWED_DOMAINS=""` → すべて False
+- `StateStore` — 外部キー制約とインデックス
+  - **外部キー制約の動作確認**:
+    - `PRAGMA foreign_keys` が ON であることを確認
+    - remote_server を credential_key 付きで作成 → credential を削除 → remote_server.credential_key が NULL になることを確認
+    - 存在しない credential_key で remote_server を作成しようとすると FOREIGN KEY constraint failed エラー
+  - **インデックスの存在確認**:
+    - `idx_remote_servers_catalog_item_id` が作成されていることを確認
 - `RemoteMcpService.register_server` — 正常登録・重複拒否・allowlist 検証
   - 許可エンドポイントの登録成功
   - 不許可エンドポイントの登録失敗（HTTP 400 + 監査ログ）
@@ -848,7 +890,7 @@ class StateStore:
 - 不許可エンドポイントの場合:
   - HTTP 400 Bad Request を返却
   - エラーメッセージ: `"Endpoint not allowed: {host}:{port} is not in REMOTE_MCP_ALLOWED_DOMAINS"`
-  - 監査ログに記録: `{"event": "endpoint_rejected", "url": url, "reason": "not_in_allowlist"}`
+  - 監査ログに記録: `{"event": "endpoint_rejected", "server_id": server_id, "endpoint": endpoint, "reason": "not_in_allowlist"}`
 
 **監査ログ例**:
 ```json
@@ -884,9 +926,118 @@ class StateStore:
 ## Migration Strategy
 
 1. **Phase 1**: StateStore スキーマ追加 (`remote_servers`, `oauth_states`) — 既存テーブルへの影響なし
+   - **重要**: `PRAGMA foreign_keys = ON` を `_connect()` メソッドで実行必須
+   - 外部キー制約 (`credential_key` → `credentials.credential_key`) を定義
+   - インデックス (`idx_remote_servers_catalog_item_id`) を作成
 2. **Phase 2**: CatalogItem モデル拡張 (オプショナルフィールド追加) — 後方互換
 3. **Phase 3**: OAuthService state 永続化 — メモリ管理と並行稼働
 4. **Phase 4**: RemoteMcpService 導入 — 新規 API 追加
 5. **Phase 5**: Frontend UI 追加 — 段階的リリース
 
 **Rollback triggers**: マイグレーション失敗時は前バージョンへロールバック可能（スキーマ変更は IF NOT EXISTS パターン）
+
+**Foreign Key Constraint Migration Notes**:
+- 既存の `credentials` テーブルに影響なし（新規テーブル `remote_servers` のみが参照）
+- SQLite は外部キー制約の事後追加が困難なため、初期スキーマ定義時に含める必要がある
+
+**Destructive Migration Policy**:
+
+*Phase-Environment Mapping*:
+- **Phase 1 (開発)**: Development environment のみ
+  - 環境: `dev`, `local`, Docker Compose ローカル環境
+  - 条件: `ALLOW_DESTRUCTIVE_MIGRATION=true` 設定時のみ破壊的移行を許可
+  - カットオフ: Phase 2 移行開始まで（staging デプロイ前）
+- **Phase 2-3 (ステージング・カナリア)**: `staging`, `canary` 環境
+  - 条件: **破壊的移行は禁止**。安全な移行戦略を必須とする
+  - カットオフ: Phase 4 移行開始まで（本番デプロイ前）
+- **Phase 4-5 (本番)**: Production environment
+  - 条件: **破壊的移行は厳格に禁止**。`ALLOW_DESTRUCTIVE_MIGRATION=false` (デフォルト) を強制
+  - カットオフ: なし（永続的に安全な移行のみ許可）
+
+*Environment Gating Policy*:
+- **環境変数**: `ALLOW_DESTRUCTIVE_MIGRATION` (デフォルト: `false`)
+  - `true`: 開発環境でのみ設定可。`remote_servers` テーブルの DROP/再作成を許可
+  - `false`: ステージング・本番環境での必須設定。破壊的操作を拒否し、安全な移行戦略を要求
+- **実装**: マイグレーションスクリプト実行時に環境変数をチェックし、`false` 時は DROP 操作をスキップ
+- **監査**: `ALLOW_DESTRUCTIVE_MIGRATION=true` での実行は監査ログに記録
+
+*Safe Production Migration Strategy*:
+
+1. **事前バックアップ**:
+   ```bash
+   # SQLite DB 全体をバックアップ
+   cp state.db state.db.backup-$(date +%Y%m%d-%H%M%S)
+
+   # remote_servers テーブルのみエクスポート (存在する場合)
+   sqlite3 state.db ".dump remote_servers" > remote_servers_backup.sql
+   ```
+
+2. **オンライン移行戦略** (テーブル再作成が必要な場合):
+   ```sql
+   -- Step 1: 新しいスキーマで一時テーブルを作成
+   CREATE TABLE IF NOT EXISTS remote_servers_new (
+       server_id TEXT PRIMARY KEY,
+       catalog_item_id TEXT NOT NULL,
+       endpoint TEXT NOT NULL,
+       credential_key TEXT,
+       status TEXT NOT NULL DEFAULT 'REGISTERED',
+       created_at TEXT NOT NULL,
+   updated_at TEXT NOT NULL,
+       FOREIGN KEY (credential_key) REFERENCES credentials(credential_key) ON DELETE SET NULL
+   );
+
+   -- Step 2: 既存データをコピー (スキーマが互換性ある場合)
+   INSERT INTO remote_servers_new
+   SELECT server_id, catalog_item_id, endpoint, credential_key, status, created_at, updated_at
+   FROM remote_servers;
+
+   -- Step 3: 旧テーブルを削除し、新テーブルをリネーム
+   DROP TABLE remote_servers;
+   ALTER TABLE remote_servers_new RENAME TO remote_servers;
+
+   -- Step 4: インデックスを再作成
+   CREATE INDEX IF NOT EXISTS idx_remote_servers_catalog_item_id ON remote_servers(catalog_item_id);
+   ```
+
+3. **制約追加の代替アプローチ** (ALTER が使えない場合):
+   - 上記の「create-new-table-and-copy-with-constraints」パターンを使用
+   - アプリケーションレベルでの外部キー検証を併用（移行期間中）
+
+4. **ロールバック計画**:
+   ```bash
+   # マイグレーション失敗時: バックアップから復元
+   cp state.db.backup-YYYYMMDD-HHMMSS state.db
+
+   # 部分的ロールバック: エクスポートしたデータを再インポート
+   sqlite3 state.db < remote_servers_backup.sql
+   ```
+
+*Existing Pattern Integration*:
+- **IF NOT EXISTS パターン**: 新規テーブル作成時は既に使用（Line 937 参照）
+- **PRAGMA foreign_keys**: 外部キー制約を有効化するため、接続時に `PRAGMA foreign_keys = ON;` を実行
+  - 既存の StateStore 初期化処理に統合済み（想定）
+- **トランザクション管理**: すべての移行操作は単一トランザクション内で実行し、失敗時は自動ロールバック
+
+*Operational Rollout Checklist*:
+
+**Phase 1 (Development)**:
+- [ ] `ALLOW_DESTRUCTIVE_MIGRATION=true` を環境変数に設定
+- [ ] ローカル DB をバックアップ
+- [ ] マイグレーションスクリプトを実行
+- [ ] 外部キー制約の動作を検証（不正な `credential_key` の挿入テスト）
+
+**Phase 2-3 (Staging/Canary)**:
+- [ ] `ALLOW_DESTRUCTIVE_MIGRATION=false` を確認（デフォルト）
+- [ ] 本番同等の DB データを staging にコピー
+- [ ] 安全な移行戦略（上記 Step 1-4）を実行
+- [ ] ロールバック手順をドライランで検証
+- [ ] 監査ログと外部キー制約を検証
+
+**Phase 4-5 (Production)**:
+- [ ] `ALLOW_DESTRUCTIVE_MIGRATION=false` を厳格に強制
+- [ ] 本番 DB の完全バックアップを取得（オフサイトストレージに保存）
+- [ ] メンテナンスウィンドウを設定（低トラフィック時間帯）
+- [ ] 安全な移行戦略を実行（トランザクション内）
+- [ ] 移行後の整合性チェック（外部キー制約、インデックス、データ件数）
+- [ ] ロールバックプランを即座に実行可能な状態で待機
+- [ ] 監視ダッシュボードでエラー率とレスポンスタイムを監視（移行後24時間）

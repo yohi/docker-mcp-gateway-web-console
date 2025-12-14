@@ -30,6 +30,7 @@ def test_schema_created(store: StateStore) -> None:
     tables = store.list_tables()
     expected = {
         "credentials",
+        "remote_servers",
         "sessions",
         "jobs",
         "signature_policies",
@@ -39,6 +40,28 @@ def test_schema_created(store: StateStore) -> None:
         "auth_sessions",
     }
     assert expected.issubset(tables)
+
+
+def test_remote_servers_table_schema(store: StateStore) -> None:
+    """remote_servers テーブルのスキーマが期待通りであることを検証する。"""
+    with store._connect() as conn:
+        rows = conn.execute("PRAGMA table_info(remote_servers)").fetchall()
+    columns = {row["name"] for row in rows}
+    expected_columns = {
+        "server_id",
+        "catalog_item_id",
+        "name",
+        "endpoint",
+        "status",
+        "credential_key",
+        "last_connected_at",
+        "error_message",
+        "created_at",
+    }
+
+    assert expected_columns.issubset(columns)
+    pk_columns = [row["name"] for row in rows if row["pk"]]
+    assert pk_columns == ["server_id"]
 
 
 def test_credential_gc(store: StateStore) -> None:
