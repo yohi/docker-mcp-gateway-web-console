@@ -56,15 +56,31 @@ Docker MCP Toolkit におけるリモート MCP サーバー統合機能の実�
 #### Acceptance Criteria
 1. When ユーザーが「認証/認可を開始」を選択したとき, the Web Console shall 対象サーバーのOAuth認可フロー開始操作を提供する
 2. When OAuth 認可フローを開始するとき, the Backend Service shall OAuth 2.0 認可コードフロー（PKCE を含む）に必要なパラメータを生成する
+   - PKCE code_verifier: 暗号学的に安全な乱数生成器により、43文字以上128文字以下の高エントロピー文字列を生成する
+   - PKCE code_challenge: code_verifier を SHA-256 でハッシュ化し、base64url エンコードした値を生成する（code_challenge_method=S256）
+   - code_challenge および関連する state をセッションストアに保存し、短い TTL（推奨: 10分）を設定する
 3. When OAuth 認可フローを開始するとき, the Backend Service shall CSRF対策として state パラメータを生成し、検証可能な形で保持する
-4. When 認可URLが生成されたとき, the Web Console shall ユーザーが認可ページへ遷移できる手段を提供する
-5. If 対象サーバーがOAuthを要求しないとき, then the Web Console shall OAuth 認可フロー開始操作を要求しない状態で登録/有効化を進められるようにする
+   - State パラメータは暗号学的に安全な乱数で生成される
+   - 有効期限: 生成から 10 分（設定可能）
+   - 検証後は即座に無効化される（単一使用）
+4. When トークン交換を実行するとき, the Backend Service shall 保存された code_verifier をトークンエンドポイントへ送信する
+5. When トークン交換の応答を受信したとき, the Backend Service shall 以下の PKCE 検証を実行する
+   - 受信した認可コードに対応する code_challenge がセッションストアに存在することを確認する
+   - code_verifier を SHA-256 でハッシュ化し base64url エンコードした値が、保存された code_challenge と一致することを確認する
+   - 一致しない場合は、トークン交換を拒否し、認証失敗として扱う
+6. If サポートされていない code_challenge_method（S256 以外）が要求されたとき, then the Backend Service shall 当該リクエストを拒否し、失敗を監査ログに記録する
+7. If PKCE 検証に失敗したとき, then the Backend Service shall 失敗理由（code_challenge 不一致、TTL 超過、code_verifier 欠落等）を含むエラーレスポンスを返し、メトリクスとして記録する
+8. When 認可URLが生成されたとき, the Web Console shall ユーザーが認可ページへ遷移できる手段を提供する
+9. If 対象サーバーがOAuthを要求しないとき, then the Web Console shall OAuth 認可フロー開始操作を要求しない状態で登録/有効化を進められるようにする
 
 ### Requirement 4: OAuth コールバック処理とトークン管理
 **Objective:** As a 利用者, I want OAuth 認可結果を安全に取り込み、認証状態を維持できる, so that リモートMCPサーバーを継続利用できる
 
 #### Acceptance Criteria
 1. When OAuth コールバックを受信したとき, the Backend Service shall state の整合性を検証する
+   - 検証時にタイムスタンプをチェックし、有効期限内であることを確認する
+   - 有効期限外の state は CSRF 試行として拒否する
+   - 検証成功後、当該 state を即座に無効化し、再利用を防止する
 2. If state の検証に失敗したとき, then the Backend Service shall 認可結果を拒否し、認証失敗として扱う
 3. When state の検証に成功したとき, the Backend Service shall 認可コードを用いてアクセストークンを取得する
 4. If トークン取得に失敗したとき, then the Backend Service shall 失敗理由を返し、再試行可能な状態を維持する
@@ -82,7 +98,12 @@ Docker MCP Toolkit におけるリモート MCP サーバー統合機能の実�
    - 暗号化方式: AES-256-GCM
    - マスターキー: アプリケーション起動時に環境変数 CREDENTIAL_ENCRYPTION_KEY から読み込む
    - 利用不可判定: (1) ライブラリ初期化失敗, (2) 権限エラー, (3) プラットフォーム非対応
-   - 複数マシン同期: マスターキーを共有環境から取得することで対応
+   - 複数マシン同期: マスターキーを以下のいずれかのセキュアな配布メカニズムから取得する
+     - 外部シークレットストア: HashiCorp Vault, AWS Secrets Manager, Azure Key Vault, Google Secret Manager
+     - オーケストレーションシークレット: Kubernetes Secrets（ファイルまたは環境変数としてマウント）
+     - CI/CD管理環境変数: GitHub Actions Secrets, GitLab CI/CD Variables, Bitbucket Pipelines Secured Variables
+     - 推奨: Kubernetes Secrets を環境変数としてマウント（例: `kubectl create secret generic credential-encryption-key --from-literal=CREDENTIAL_ENCRYPTION_KEY=<base64-encoded-key>` で作成し、Deployment の `env[].valueFrom.secretKeyRef` で参照）
+     - 代替推奨: AWS Secrets Manager をロールベース認証で取得（例: アプリケーション起動時に IAM ロールを用いて `aws secretsmanager get-secret-value --secret-id credential-encryption-key` を実行し、環境変数へ設定）
 4. When ユーザーが認証情報の削除を要求したとき, the Backend Service shall 当該認証情報を永続ストアから削除する
 5. While 認証情報が存在する間, the Web Console shall 当該情報の有無と紐づくサーバーをユーザーが確認できるように表示する
 6. The Backend Service shall ログおよびエラー応答に認証情報を含めない
