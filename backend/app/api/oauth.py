@@ -32,6 +32,10 @@ async def initiate_oauth(request: OAuthInitiateRequest) -> OAuthInitiateResponse
         result = oauth_service.start_auth(
             server_id=request.server_id,
             scopes=request.scopes,
+            authorize_url=str(request.authorize_url) if request.authorize_url else None,
+            token_url=str(request.token_url) if request.token_url else None,
+            client_id=request.client_id,
+            redirect_uri=str(request.redirect_uri) if request.redirect_uri else None,
             code_challenge=request.code_challenge,
             code_challenge_method=request.code_challenge_method,
         )

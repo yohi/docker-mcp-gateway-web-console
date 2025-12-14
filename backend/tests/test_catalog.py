@@ -179,12 +179,9 @@ class TestCatalogService:
             "https://api.github.com/repos/docker/mcp-registry/contents/servers"
         )
 
-        assert len(items) == 1
-        item = items[0]
-        assert item.id == "fetch"
-        assert item.name == "fetch"
-        assert "docker/mcp-registry: servers/fetch" == item.description
-        assert item.vendor == "docker"
+        # server.yaml を取得できない場合は docker_image が不明なため除外される
+        assert len(items) == 0
+        assert "Dockerイメージが未定義" in (catalog_service.warning or "")
 
     @pytest.mark.asyncio
     async def test_fetch_from_url_github_server_yaml(self, catalog_service, monkeypatch):

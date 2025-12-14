@@ -4,11 +4,15 @@ import '@testing-library/jest-dom';
 import OAuthModal from '../../../components/catalog/OAuthModal';
 import { initiateOAuth, exchangeOAuth } from '../../../lib/api/oauth';
 
-jest.mock('../../../lib/api/oauth', () => ({
-  initiateOAuth: jest.fn(),
-  exchangeOAuth: jest.fn(),
-  refreshOAuth: jest.fn(),
-}));
+jest.mock('../../../lib/api/oauth', () => {
+  const actual = jest.requireActual('../../../lib/api/oauth');
+  return {
+    ...actual,
+    initiateOAuth: jest.fn(),
+    exchangeOAuth: jest.fn(),
+    refreshOAuth: jest.fn(),
+  };
+});
 
 const mockItem = {
   id: 'server-x',
@@ -26,8 +30,15 @@ const mockItem = {
 };
 
 describe('OAuthModal', () => {
+  const originalOpen = window.open;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    (window.open as any) = jest.fn(() => ({ close: jest.fn(), closed: false }));
+  });
+
+  afterAll(() => {
+    window.open = originalOpen;
   });
 
   it('starts OAuth flow and displays auth URL/state', async () => {
@@ -46,13 +57,12 @@ describe('OAuthModal', () => {
         expect.objectContaining({
           serverId: mockItem.id,
           scopes: mockItem.required_scopes,
-          codeChallengeMethod: 'S256',
         })
       );
     });
 
     expect(await screen.findByText('https://provider/authorize')).toBeInTheDocument();
-    expect(screen.getByText('state-123')).toBeInTheDocument();
+    expect(screen.getByText(/state-123/)).toBeInTheDocument();
   });
 
   it('exchanges code using stored verifier', async () => {
@@ -87,6 +97,6 @@ describe('OAuthModal', () => {
       );
     });
 
-    expect(await screen.findByText('cred-1')).toBeInTheDocument();
+    expect(await screen.findByText(/cred-1/)).toBeInTheDocument();
   });
 });

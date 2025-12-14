@@ -26,6 +26,22 @@ class CatalogItem(BaseModel):
         default_factory=list,
         description="List of environment variable names that require secrets"
     )
+    oauth_authorize_url: str | None = Field(
+        default=None,
+        description="OAuth authorize endpoint URL (server-specific override)",
+    )
+    oauth_token_url: str | None = Field(
+        default=None,
+        description="OAuth token endpoint URL (server-specific override)",
+    )
+    oauth_client_id: str | None = Field(
+        default=None,
+        description="OAuth client_id (server-specific override)",
+    )
+    oauth_redirect_uri: str | None = Field(
+        default=None,
+        description="OAuth redirect_uri (server-specific override)",
+    )
 
 
 class Catalog(BaseModel):

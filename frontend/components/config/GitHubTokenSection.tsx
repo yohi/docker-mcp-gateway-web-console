@@ -149,8 +149,8 @@ export default function GitHubTokenSection() {
         <button
           type="button"
           onClick={handleSearch}
-          disabled={searching}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-60"
+          disabled={searching || query.trim() === ''}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {searching ? '検索中...' : 'Bitwardenを検索'}
         </button>
@@ -208,4 +208,3 @@ export default function GitHubTokenSection() {
     </div>
   );
 }
-

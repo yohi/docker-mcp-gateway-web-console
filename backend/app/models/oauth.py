@@ -3,14 +3,30 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 
 
 class OAuthInitiateRequest(BaseModel):
-    """認可開始リクエスト。"""
+    """認可開始リクエスト。
+
+    Note: authorize_url, token_url, redirect_uri は HttpUrl 型でバリデーションされます。
+    不正なURL形式の場合は422エラーを返します。HTTP/HTTPSスキームのみ許可されます。
+    """
 
     server_id: str = Field(..., description="対象サーバーID")
     scopes: List[str] = Field(default_factory=list, description="要求スコープ")
+    authorize_url: Optional[HttpUrl] = Field(
+        default=None, description="OAuth authorize endpoint URL (override, HTTP/HTTPS required)"
+    )
+    token_url: Optional[HttpUrl] = Field(
+        default=None, description="OAuth token endpoint URL (override, HTTP/HTTPS required)"
+    )
+    client_id: Optional[str] = Field(
+        default=None, description="OAuth client_id (override)"
+    )
+    redirect_uri: Optional[HttpUrl] = Field(
+        default=None, description="OAuth redirect_uri (override, HTTP/HTTPS required)"
+    )
     code_challenge: Optional[str] = Field(
         default=None,
         description="クライアント生成の PKCE code_challenge",

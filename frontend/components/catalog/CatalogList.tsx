@@ -20,7 +20,7 @@ interface CatalogListProps {
 }
 
 export default function CatalogList({ catalogSource, warning, onInstall, onSelect }: CatalogListProps) {
-  const { containers } = useContainers(0); // no polling
+  const { containers, refresh: refreshContainers, isLoading: isContainersLoading } = useContainers(0); // no polling
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategory] = useState('');
   const [page, setPage] = useState(1);
@@ -311,13 +311,29 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
         viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {servers.map((item) => (
-              <CatalogCard key={item.id} item={item} onInstall={onInstall} onSelect={onSelect} />
+              <CatalogCard
+                key={item.id}
+                item={item}
+                containers={containers}
+                isContainersLoading={isContainersLoading}
+                onContainersRefresh={refreshContainers}
+                onInstall={onInstall}
+                onSelect={onSelect}
+              />
             ))}
           </div>
         ) : (
           <div className="space-y-3">
             {servers.map((item) => (
-              <CatalogRow key={item.id} item={item} onInstall={onInstall} onSelect={onSelect} />
+              <CatalogRow
+                key={item.id}
+                item={item}
+                containers={containers}
+                isContainersLoading={isContainersLoading}
+                onContainersRefresh={refreshContainers}
+                onInstall={onInstall}
+                onSelect={onSelect}
+              />
             ))}
           </div>
         )

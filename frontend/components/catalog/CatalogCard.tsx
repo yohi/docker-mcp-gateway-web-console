@@ -2,28 +2,30 @@
 
 import { KeyboardEvent, useMemo, useState, type MouseEvent } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
-import { useContainers } from '@/hooks/useContainers';
+import type { ContainerInfo } from '@/lib/types/containers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
 
 interface CatalogCardProps {
     item: CatalogItem;
+    containers: ContainerInfo[];
+    isContainersLoading: boolean;
+    onContainersRefresh: () => void;
     onInstall: (item: CatalogItem) => void;
     onSelect?: (item: CatalogItem) => void;
 }
 
-export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardProps) {
-    const { containers, isLoading, refresh } = useContainers();
+export default function CatalogCard({ item, containers, isContainersLoading, onContainersRefresh, onInstall, onSelect }: CatalogCardProps) {
     const [isDeleting, setIsDeleting] = useState(false);
     const [deleteError, setDeleteError] = useState<string | null>(null);
     const scopes = item.required_scopes || [];
     const allowStatus = item.allowlist_status;
 
     const matchedContainer = useMemo(() => {
-        if (isLoading) return 'loading';
+        if (isContainersLoading) return 'loading';
         const container = containers.find((c) => matchCatalogItemContainer(item, c));
         return container || null;
-    }, [containers, isLoading, item.docker_image, item.name]);
+    }, [containers, isContainersLoading, item.docker_image, item.name]);
 
     const status =
         matchedContainer === 'loading'
@@ -50,7 +52,7 @@ export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardPr
                 matchedContainer.id,
                 matchedContainer.status === 'running'
             );
-            await refresh();
+            onContainersRefresh();
         } catch (err) {
             const message =
                 err instanceof Error
@@ -172,16 +174,18 @@ export default function CatalogCard({ item, onInstall, onSelect }: CatalogCardPr
                         実行中
                     </div>
                 ) : status === 'installed' ? (
-                    <button
-                        onClick={handleUninstall}
-                        disabled={isDeleting}
-                        className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
-                    >
-                        {isDeleting ? '削除中...' : 'アンインストール'}
-                    </button>
-                    {deleteError && (
-                        <p className="mt-2 text-sm text-red-600">{deleteError}</p>
-                    )}
+                    <>
+                        <button
+                            onClick={handleUninstall}
+                            disabled={isDeleting}
+                            className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
+                        >
+                            {isDeleting ? '削除中...' : 'アンインストール'}
+                        </button>
+                        {deleteError && (
+                            <p className="mt-2 text-sm text-red-600">{deleteError}</p>
+                        )}
+                    </>
                 ) : (
                     <button
                         onClick={(event) => {

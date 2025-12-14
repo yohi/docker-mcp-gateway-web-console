@@ -6,14 +6,19 @@ import ProtectedRoute from '../../components/auth/ProtectedRoute';
 import { MainLayout } from '../../components/layout';
 import ContainerList from '../../components/containers/ContainerList';
 import ContainerConfigurator from '../../components/containers/ContainerConfigurator';
+import ContainerEditModal from '../../components/containers/ContainerEditModal';
 import LogViewer from '../../components/containers/LogViewer';
 import { useSession } from '../../contexts/SessionContext';
 import { fetchContainers } from '../../lib/api/containers';
+import { useRouter } from 'next/navigation';
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { session } = useSession();
   const [showConfigurator, setShowConfigurator] = useState(false);
+  const [editingContainer, setEditingContainer] = useState<string | null>(null);
   const [viewingLogsFor, setViewingLogsFor] = useState<string | null>(null);
+  const [showAllContainers, setShowAllContainers] = useState(false);
 
   // Fetch containers with SWR for automatic revalidation
   const { data, error, mutate } = useSWR(
@@ -26,6 +31,9 @@ export default function DashboardPage() {
   );
 
   const containers = data?.containers || [];
+  const filteredContainers = showAllContainers
+    ? containers
+    : containers.filter((c) => Boolean(c.labels?.['mcp.original_name']));
   const isLoading = !data && !error;
 
   const handleRefresh = () => {
@@ -87,10 +95,35 @@ export default function DashboardPage() {
                 コンテナ一覧
                 {!isLoading && (
                   <span className="ml-3 text-base font-normal text-gray-600">
-                    ({containers.length}個)
+                    ({filteredContainers.length}個)
                   </span>
                 )}
               </h2>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">表示:</span>
+                <button
+                  type="button"
+                  onClick={() => setShowAllContainers(false)}
+                  className={`px-3 py-1 text-sm rounded-md border ${
+                    !showAllContainers
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  MCPのみ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAllContainers(true)}
+                  className={`px-3 py-1 text-sm rounded-md border ${
+                    showAllContainers
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  すべて
+                </button>
+              </div>
             </div>
 
             {isLoading ? (
@@ -101,14 +134,18 @@ export default function DashboardPage() {
                 </div>
               </div>
             ) : (
-              <ContainerList
-                containers={containers}
-                warning={(data as any)?.warning}
-                onRefresh={handleRefresh}
-                onViewLogs={setViewingLogsFor}
-              />
-            )}
-          </div>
+            <ContainerList
+              containers={filteredContainers}
+              warning={(data as any)?.warning}
+              onRefresh={handleRefresh}
+              onViewLogs={setViewingLogsFor}
+              onConfigure={(container) => {
+                setViewingLogsFor(null);
+                setEditingContainer(container.id);
+              }}
+            />
+          )}
+        </div>
         </div>
 
         {/* Modals */}
@@ -118,6 +155,19 @@ export default function DashboardPage() {
             onCancel={() => setShowConfigurator(false)}
           />
         )}
+
+        {(() => {
+          if (!editingContainer) return null;
+          const found = containers.find((c) => c.id === editingContainer);
+          if (!found) return null;
+          return (
+            <ContainerEditModal
+              container={found}
+              onClose={() => setEditingContainer(null)}
+              onUpdated={handleRefresh}
+            />
+          );
+        })()}
 
         {viewingLogsFor && (
           <LogViewer

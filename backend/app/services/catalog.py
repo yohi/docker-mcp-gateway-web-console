@@ -63,6 +63,29 @@ class CatalogService:
             "catalog_warning", default=None
         )
 
+    def _append_warning(self, message: str) -> None:
+        """警告メッセージを追記する（複数要因がある場合に備える）。"""
+        msg = message.strip()
+        if not msg:
+            return
+        current = (self._warning_var.get() or "").strip()
+        if not current:
+            self._warning_var.set(msg)
+            return
+        if msg in current:
+            return
+        self._warning_var.set(f"{current}\n{msg}")
+
+    def _filter_items_missing_image(self, items: List[CatalogItem]) -> List[CatalogItem]:
+        """docker_image が未定義(空/空白)の項目を除外し、必要に応じて警告を設定する。"""
+        filtered = [item for item in items if (item.docker_image or "").strip()]
+        removed = len(items) - len(filtered)
+        if removed > 0:
+            self._append_warning(
+                f"Dockerイメージが未定義のカタログ項目 {removed} 件を表示から除外しました。"
+            )
+        return filtered
+
     @staticmethod
     def _is_secret_env(key: str) -> bool:
         """環境変数名からシークレットかどうかを推測する。"""
@@ -191,7 +214,7 @@ class CatalogService:
                                 converted.append(self._convert_github_content_item(item))
                             else:
                                 converted.append(result)
-                        return converted
+                        return self._filter_items_missing_image(converted)
 
                     # New Registry format (list of RegistryItem)
                     items: List[CatalogItem] = []
@@ -213,20 +236,25 @@ class CatalogService:
                                 docker_image=reg_item.image,
                                 default_env={},
                                 required_envs=required_envs,
-                                required_secrets=required_secrets
+                                required_secrets=required_secrets,
+                                oauth_authorize_url=getattr(reg_item, "oauth_authorize_url", None),
+                                oauth_token_url=getattr(reg_item, "oauth_token_url", None),
+                                oauth_client_id=getattr(reg_item, "oauth_client_id", None),
+                                oauth_redirect_uri=getattr(reg_item, "oauth_redirect_uri", None),
                             ))
                         except Exception as e:
                             logger.warning(f"Skipping invalid registry item: {e}")
-                    return items
+                    return self._filter_items_missing_image(items)
                 else:
                     # Attempt to parse Hub explore.data structure
                     servers = self._extract_servers(data)
                     if servers is not None:
-                        return [self._convert_explore_server(item) for item in servers if item]
+                        converted = [self._convert_explore_server(item) for item in servers if item]
+                        return self._filter_items_missing_image(converted)
 
                     # Legacy or Catalog format
                     catalog = Catalog(**data)
-                    return catalog.servers
+                    return self._filter_items_missing_image(catalog.servers)
 
         except httpx.HTTPStatusError as e:
             raise CatalogError(
@@ -342,6 +370,13 @@ class CatalogService:
                 )
                 category = data.get("meta", {}).get("category") or "general"
                 docker_image = data.get("image") or ""
+                oauth = data.get("oauth") or data.get("auth", {}).get("oauth") or data.get("meta", {}).get("oauth") or {}
+                if not isinstance(oauth, dict):
+                    oauth = {}
+                oauth_authorize_url = oauth.get("authorize_url") or oauth.get("authorization_url") or oauth.get("authorizeUrl")
+                oauth_token_url = oauth.get("token_url") or oauth.get("tokenUrl")
+                oauth_client_id = oauth.get("client_id") or oauth.get("clientId")
+                oauth_redirect_uri = oauth.get("redirect_uri") or oauth.get("redirectUri")
                 icon_url = (
                     data.get("about", {}).get("icon")
                     or data.get("meta", {}).get("icon")
@@ -366,6 +401,10 @@ class CatalogService:
                     default_env={},
                     required_envs=required_envs,
                     required_secrets=required_secrets,
+                    oauth_authorize_url=oauth_authorize_url,
+                    oauth_token_url=oauth_token_url,
+                    oauth_client_id=oauth_client_id,
+                    oauth_redirect_uri=oauth_redirect_uri,
                 )
             except Exception as e:
                 last_error = e
@@ -482,6 +521,14 @@ class CatalogService:
                 env for env in required_envs if self._is_secret_env(env)
             ]
 
+            oauth = server_data.get("oauth") or {}
+            if not isinstance(oauth, dict):
+                oauth = {}
+            oauth_authorize_url = oauth.get("authorize_url") or oauth.get("authorization_url") or oauth.get("authorizeUrl")
+            oauth_token_url = oauth.get("token_url") or oauth.get("tokenUrl")
+            oauth_client_id = oauth.get("client_id") or oauth.get("clientId")
+            oauth_redirect_uri = oauth.get("redirect_uri") or oauth.get("redirectUri")
+
             return CatalogItem(
                 id=name,
                 name=name,
@@ -493,6 +540,10 @@ class CatalogService:
                 default_env=default_env,
                 required_envs=required_envs,
                 required_secrets=required_secrets,
+                oauth_authorize_url=oauth_authorize_url,
+                oauth_token_url=oauth_token_url,
+                oauth_client_id=oauth_client_id,
+                oauth_redirect_uri=oauth_redirect_uri,
             )
 
         def _slug(text: str) -> str:
@@ -530,6 +581,10 @@ class CatalogService:
             default_env={},
             required_envs=required_envs,
             required_secrets=required_secrets,
+            oauth_authorize_url=item.get("oauth_authorize_url"),
+            oauth_token_url=item.get("oauth_token_url"),
+            oauth_client_id=item.get("oauth_client_id"),
+            oauth_redirect_uri=item.get("oauth_redirect_uri"),
         )
 
     async def get_cached_catalog(self, source_url: str) -> Optional[List[CatalogItem]]:
@@ -554,7 +609,10 @@ class CatalogService:
             return None
 
         logger.debug(f"Cache hit for {source_url}")
-        return catalog_items
+        filtered = self._filter_items_missing_image(catalog_items)
+        if len(filtered) != len(catalog_items):
+            self._cache[source_url] = (filtered, expiry)
+        return filtered
 
     async def update_cache(self, source_url: str, items: List[CatalogItem]) -> None:
         """

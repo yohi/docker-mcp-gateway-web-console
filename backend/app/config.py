@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     catalog_github_fetch_retry_base_delay_seconds: float = 0.5
     # 公式MCPレジストリ (github.com/docker/mcp-registry) を既定とする
     catalog_default_url: str = "https://api.github.com/repos/docker/mcp-registry/contents/servers"
-    # GitHub API のレート制限回避用トークン（任意）
+    # GitHub API のレート制限回避用トークン(任意)
     github_token: str = ""
 
     # CORS Configuration
@@ -52,9 +52,18 @@ class Settings(BaseSettings):
     oauth_authorize_url: str = "https://auth.example.com/authorize"
     oauth_token_url: str = "https://auth.example.com/token"
     oauth_client_id: str = "mcp-console"
+    oauth_client_secret: str = Field(
+        default="", validation_alias="OAUTH_CLIENT_SECRET"
+    )
     oauth_redirect_uri: str = "http://localhost:8000/api/catalog/oauth/callback"
     oauth_request_timeout_seconds: int = 10
-    # アクセス/リフレッシュトークンの暗号化キー（Fernet）。必ず環境変数 OAUTH_TOKEN_ENCRYPTION_KEY で本番用のキーを指定すること。
+    # サーバーごとに OAuth エンドポイント等を上書きできるか(カタログ/クライアント由来の値を使用するため慎重に運用する)
+    oauth_allow_override: bool = Field(default=False, validation_alias="OAUTH_ALLOW_OVERRIDE")
+    # OAuth URL の許可ドメインリスト(カンマ区切り)。空の場合は GitHub のみ許可。
+    oauth_allowed_domains: str = Field(
+        default="github.com", validation_alias="OAUTH_ALLOWED_DOMAINS"
+    )
+    # アクセス/リフレッシュトークンの暗号化キー(Fernet)。必ず環境変数 OAUTH_TOKEN_ENCRYPTION_KEY で本番用のキーを指定すること。
     oauth_token_encryption_key: str = Field(
         default=OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER,
         validation_alias="OAUTH_TOKEN_ENCRYPTION_KEY",
@@ -72,7 +81,7 @@ class Settings(BaseSettings):
     # Security: Only log request bodies in debug/non-production environments
     # to prevent logging sensitive data (passwords, API keys, PII)
     log_request_body: bool = False
-    # CLI 経由のパスワード引数を許可するか（デフォルト: 無効）
+    # CLI 経由のパスワード引数を許可するか(デフォルト: 無効)
     allow_cli_password: bool = Field(
         default=False, validation_alias="AUTH_ALLOW_CLI_PASSWORD"
     )
@@ -81,6 +90,11 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
         return [origin.strip() for origin in self.cors_origins.split(",")]
+
+    @property
+    def oauth_allowed_domains_list(self) -> list[str]:
+        """Parse OAuth allowed domains from comma-separated string."""
+        return [domain.strip().lower() for domain in self.oauth_allowed_domains.split(",") if domain.strip()]
 
     def model_post_init(self, __context: object) -> None:
         """OAuth トークン暗号化キーを env > ファイル > 生成の順で取得し、妥当性を検証する。"""
@@ -116,16 +130,24 @@ class Settings(BaseSettings):
         try:
             key_path.parent.mkdir(parents=True, exist_ok=True)
             new_key = Fernet.generate_key().decode("utf-8")
-            key_path.write_text(new_key, encoding="utf-8")
-            key_path.chmod(0o600)
+            try:
+                key_path.write_text(new_key, encoding="utf-8")
+                key_path.chmod(0o600)
+                logger.warning(
+                    "環境変数 OAUTH_TOKEN_ENCRYPTION_KEY が未設定のため、新規キーを生成し %s に保存しました。"
+                    " 運用環境では環境変数またはシークレットでの供給を推奨します。",
+                    key_path,
+                )
+            except PermissionError:
+                # ディスク書き込み不可の場合はメモリ上でのみ使用し、再起動時に再生成される
+                logger.warning(
+                    "暗号鍵ファイル %s への書き込み権限がありません。生成したキーをメモリ上でのみ使用します。"
+                    " 永続化したい場合はディレクトリの権限を修正してください。",
+                    key_path,
+                )
             self.oauth_token_encryption_key = new_key
-            logger.warning(
-                "環境変数 OAUTH_TOKEN_ENCRYPTION_KEY が未設定のため、新規キーを生成し %s に保存しました。"
-                " 運用環境では環境変数またはシークレットでの供給を推奨します。",
-                key_path,
-            )
         except Exception as exc:  # noqa: BLE001
-            logger.error("暗号鍵ファイル %s の生成・保存に失敗しました。", key_path)
+            logger.error("暗号鍵ファイル %s の生成に失敗しました。", key_path)
             raise exc
 
 
