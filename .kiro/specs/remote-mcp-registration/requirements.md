@@ -79,6 +79,10 @@ Docker MCP Toolkit におけるリモート MCP サーバー統合機能の実�
 1. The Backend Service shall 認証情報（アクセストークン等）を平文のまま永続化しない
 2. When 認証情報を永続化するとき, the Backend Service shall OS ネイティブのセキュアストアに保管する
 3. If OS ネイティブのセキュアストアが利用できないとき, then the Backend Service shall 暗号化された形でのみ永続化する
+   - 暗号化方式: AES-256-GCM
+   - マスターキー: アプリケーション起動時に環境変数 CREDENTIAL_ENCRYPTION_KEY から読み込む
+   - 利用不可判定: (1) ライブラリ初期化失敗, (2) 権限エラー, (3) プラットフォーム非対応
+   - 複数マシン同期: マスターキーを共有環境から取得することで対応
 4. When ユーザーが認証情報の削除を要求したとき, the Backend Service shall 当該認証情報を永続ストアから削除する
 5. While 認証情報が存在する間, the Web Console shall 当該情報の有無と紐づくサーバーをユーザーが確認できるように表示する
 6. The Backend Service shall ログおよびエラー応答に認証情報を含めない
