@@ -24,7 +24,7 @@
 - `app/services/`: コアロジック（Docker 操作、秘密管理、カタログ取得、GitHub トークン管理、OAuth フロー、セッション実行と mTLS バンドル生成、署名検証ポリシー適用、外部/E2B ゲートウェイ許可リストとヘルスチェック、監査メトリクス、state ストア）
 - `app/models/`: Pydantic モデル（設定、カタログ、GitHub トークン、署名ポリシー、状態記録）
 - `app/schemas/`: カタログ関連スキーマ
-- `data/`: SQLite `state.db`（セッション・ゲートウェイ・資格情報・トークン）と証明書生成先ディレクトリ
+- `data/`: SQLite `state.db`（セッション・ゲートウェイ・資格情報・トークン）と証明書生成先ディレクトリ。**デフォルトで正規の保存場所**（STATE_DB_PATH 環境変数で上書き可能）
 - `tests/`: Pytest ベースの検証（API/プロパティ/署名/ゲートウェイ/状態ストア）
 
 ### Docs / Ops
@@ -33,7 +33,7 @@
 - `.kiro/specs/`: 要件・設計・タスク
 - `.kiro/steering/`: ステアリング (本ファイル群)
 - `docker-compose*.yml`, `.env.example`: 起動テンプレートと環境例
-- `/data/`: ルート直下の state.db（開発実行時に生成されることがある）
+- `/data/`: ルート直下の state.db（開発時やコンテナセットアップで一時的に生成される可能性があるが、本番では使用しない。backend/data/ が正規パス）
 
 ## 命名規約
 
