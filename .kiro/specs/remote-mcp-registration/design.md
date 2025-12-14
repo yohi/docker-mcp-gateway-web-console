@@ -169,13 +169,13 @@ sequenceDiagram
 | Intent | リモート MCP サーバーの登録・接続・状態管理を担当 |
 | Requirements | 2.1–2.6, 6.1–6.5, 10.1–10.5 |
 
-### Responsibilities & Constraints
+##### Responsibilities & Constraints
 - リモートサーバー定義の CRUD 操作
 - MCP Python SDK を用いた SSE 接続の確立と管理
 - 認証状態に基づく接続制御（未認証サーバーへの接続拒否）
 - ヘルスチェック (MCP ping) の実行
 
-### Dependencies
+##### Dependencies
 - Inbound: API routes — リモートサーバー操作リクエスト (P0)
 - Outbound: StateStore — `remote_servers` テーブルへの永続化 (P0)
 - Outbound: OAuthService — credential 取得・検証 (P0)
@@ -259,7 +259,7 @@ class RemoteMcpServiceInterface:
 - **Persistence**: SQLite via StateStore
 - **Concurrency strategy**: SQLite row-level locking; 楽観的ロックは不要（低頻度操作）
 
-### Implementation Notes
+##### Implementation Notes
 - **Integration**: MCP SDK の `sse_client()` をラップし、接続タイムアウト (30s) を設定
 - **Validation**: endpoint は HTTPS 必須 (`_normalize_oauth_url` パターンを流用)
 - **Risks**: 長時間 SSE 接続によるリソース枯渇 → アイドル検出で自動切断
@@ -273,11 +273,11 @@ class RemoteMcpServiceInterface:
 | Intent | state の SQLite 永続化対応 |
 | Requirements | 3.2–3.7, 4.1–4.3 |
 
-### Responsibilities & Constraints
+##### Responsibilities & Constraints
 - `oauth_states` テーブルへの state 保存・検証・削除
 - TTL (10分) 超過 state の自動無効化
 
-### Dependencies
+##### Dependencies
 - Outbound: StateStore — `oauth_states` テーブル (P0)
 
 **Contracts**: State [x]
@@ -287,7 +287,7 @@ class RemoteMcpServiceInterface:
 - **Persistence**: SQLite via StateStore
 - **Concurrency strategy**: state 検証後の即時削除で再利用防止
 
-### Implementation Notes
+##### Implementation Notes
 - **Migration**: 既存メモリ管理 (`_state_store_mem`) を維持しつつ、永続化を並行稼働させ、段階的に移行
 
 ---
@@ -299,11 +299,11 @@ class RemoteMcpServiceInterface:
 | Intent | リモートサーバー (server_type=remote) 対応 |
 | Requirements | 1.1–1.5 |
 
-### Responsibilities & Constraints
+##### Responsibilities & Constraints
 - `_filter_items_missing_image` を「docker_image OR remote_endpoint が存在」に変更
 - `CatalogItem` に `server_type`, `remote_endpoint` フィールド追加
 
-### Implementation Notes
+##### Implementation Notes
 - **Validation**: `remote_endpoint` は URL 形式かつ HTTPS 必須
 
 ---
@@ -375,7 +375,7 @@ class RemoteMcpServiceInterface:
 | Intent | リモートサーバー一覧表示とフィルタ |
 | Requirements | 1.1–1.2, 7.1 |
 
-### Implementation Notes
+##### Implementation Notes
 - SWR でサーバー一覧を取得 (`/api/remote-servers`)
 - status によるバッジ表示（未登録/要認証/認証済み/エラー）
 
@@ -386,7 +386,7 @@ class RemoteMcpServiceInterface:
 | Intent | サーバー詳細・認証・接続操作 UI |
 | Requirements | 1.3, 2.1–2.6, 3.1, 3.8, 7.2–7.5 |
 
-### Implementation Notes
+##### Implementation Notes
 - 「認証開始」ボタンで OAuth フロー開始
 - 「接続テスト」ボタンで接続テスト API 呼び出し
 - 進行中状態のスピナー表示
