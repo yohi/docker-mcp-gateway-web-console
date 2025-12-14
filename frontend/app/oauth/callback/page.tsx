@@ -55,15 +55,34 @@ function OAuthCallbackContent() {
     }
 
     const run = async () => {
-      const stored = safeParseStored(localStorage.getItem(storageKey));
+      // localStorageからPKCE情報を読み込み（ストレージ例外を処理）
+      let storedValue: string | null = null;
+      try {
+        storedValue = localStorage.getItem(storageKey);
+      } catch (err) {
+        console.error('localStorage read error:', err);
+        setStatus('error');
+        setError('ブラウザのストレージにアクセスできません。プライベートモードやストレージ制限を確認してください。');
+        return;
+      }
+
+      const stored = safeParseStored(storedValue);
       if (!stored) {
         setStatus('error');
         setError('認可状態が見つかりません（stateが失効/不一致の可能性があります）。最初からやり直してください。');
         return;
       }
 
+      // TTLチェックと期限切れ時の削除（ストレージ例外を処理）
       if (Date.now() - stored.createdAt > STORAGE_TTL_MS) {
-        localStorage.removeItem(storageKey);
+        try {
+          localStorage.removeItem(storageKey);
+        } catch (err) {
+          console.error('localStorage removeItem error (TTL exceeded):', err);
+          setStatus('error');
+          setError('認可状態が期限切れです。ストレージのクリーンアップに失敗しましたが、最初からやり直してください。');
+          return;
+        }
         setStatus('error');
         setError('認可状態が期限切れです。最初からやり直してください。');
         return;
@@ -76,7 +95,15 @@ function OAuthCallbackContent() {
           serverId: stored.serverId,
           codeVerifier: stored.codeVerifier,
         });
-        localStorage.removeItem(storageKey);
+
+        // トークン交換成功後のクリーンアップ（失敗してもエラーにはしない）
+        try {
+          localStorage.removeItem(storageKey);
+        } catch (err) {
+          console.error('localStorage removeItem error (after success):', err);
+          // 認証は成功しているため、削除失敗は無視
+        }
+
         setResult(exchange);
         setStatus('success');
 

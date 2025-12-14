@@ -56,8 +56,9 @@ def _is_private_or_local_ip(hostname: str) -> bool:
 
         return False
     except (socket.gaierror, ValueError):
-        # DNS解決失敗またはIPアドレス変換失敗の場合は安全側に倒す
-        return False
+        # DNS解決失敗またはIPアドレス変換失敗の場合は安全側に倒す（拒否）
+        # 攻撃者がDNSを制御してSSRFをバイパスすることを防ぐため、fail-closedとしてTrueを返す
+        return True
 
 
 def _normalize_oauth_url(value: str, *, field_name: str) -> str:

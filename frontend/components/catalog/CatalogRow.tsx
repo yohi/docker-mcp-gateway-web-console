@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from 'react';
 import type { CatalogItem } from '@/lib/types/catalog';
-import type { Container } from '@/lib/types/container';
+import type { ContainerInfo } from '@/lib/types/containers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
 import { useToast } from '@/contexts/ToastContext';
 
 type Props = {
   item: CatalogItem;
-  containers: Container[];
+  containers: ContainerInfo[];
   isContainersLoading: boolean;
   onContainersRefresh: () => void;
   onInstall: (item: CatalogItem) => void;

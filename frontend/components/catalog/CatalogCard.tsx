@@ -2,13 +2,13 @@
 
 import { KeyboardEvent, useMemo, useState, type MouseEvent } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
-import type { Container } from '@/lib/types/container';
+import type { ContainerInfo } from '@/lib/types/containers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
 
 interface CatalogCardProps {
     item: CatalogItem;
-    containers: Container[];
+    containers: ContainerInfo[];
     isContainersLoading: boolean;
     onContainersRefresh: () => void;
     onInstall: (item: CatalogItem) => void;
