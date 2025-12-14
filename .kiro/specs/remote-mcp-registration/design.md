@@ -939,4 +939,105 @@ class StateStore:
 **Foreign Key Constraint Migration Notes**:
 - 既存の `credentials` テーブルに影響なし（新規テーブル `remote_servers` のみが参照）
 - SQLite は外部キー制約の事後追加が困難なため、初期スキーマ定義時に含める必要がある
-- 既存 DB がある場合、`remote_servers` テーブルを DROP して再作成（データ損失許容な初期フェーズのみ）
+
+**Destructive Migration Policy**:
+
+*Phase-Environment Mapping*:
+- **Phase 1 (開発)**: Development environment のみ
+  - 環境: `dev`, `local`, Docker Compose ローカル環境
+  - 条件: `ALLOW_DESTRUCTIVE_MIGRATION=true` 設定時のみ破壊的移行を許可
+  - カットオフ: Phase 2 移行開始まで（staging デプロイ前）
+- **Phase 2-3 (ステージング・カナリア)**: `staging`, `canary` 環境
+  - 条件: **破壊的移行は禁止**。安全な移行戦略を必須とする
+  - カットオフ: Phase 4 移行開始まで（本番デプロイ前）
+- **Phase 4-5 (本番)**: Production environment
+  - 条件: **破壊的移行は厳格に禁止**。`ALLOW_DESTRUCTIVE_MIGRATION=false` (デフォルト) を強制
+  - カットオフ: なし（永続的に安全な移行のみ許可）
+
+*Environment Gating Policy*:
+- **環境変数**: `ALLOW_DESTRUCTIVE_MIGRATION` (デフォルト: `false`)
+  - `true`: 開発環境でのみ設定可。`remote_servers` テーブルの DROP/再作成を許可
+  - `false`: ステージング・本番環境での必須設定。破壊的操作を拒否し、安全な移行戦略を要求
+- **実装**: マイグレーションスクリプト実行時に環境変数をチェックし、`false` 時は DROP 操作をスキップ
+- **監査**: `ALLOW_DESTRUCTIVE_MIGRATION=true` での実行は監査ログに記録
+
+*Safe Production Migration Strategy*:
+
+1. **事前バックアップ**:
+   ```bash
+   # SQLite DB 全体をバックアップ
+   cp state.db state.db.backup-$(date +%Y%m%d-%H%M%S)
+
+   # remote_servers テーブルのみエクスポート (存在する場合)
+   sqlite3 state.db ".dump remote_servers" > remote_servers_backup.sql
+   ```
+
+2. **オンライン移行戦略** (テーブル再作成が必要な場合):
+   ```sql
+   -- Step 1: 新しいスキーマで一時テーブルを作成
+   CREATE TABLE IF NOT EXISTS remote_servers_new (
+       server_id TEXT PRIMARY KEY,
+       catalog_item_id TEXT NOT NULL,
+       endpoint TEXT NOT NULL,
+       credential_key TEXT,
+       status TEXT NOT NULL DEFAULT 'REGISTERED',
+       created_at TEXT NOT NULL,
+   updated_at TEXT NOT NULL,
+       FOREIGN KEY (credential_key) REFERENCES credentials(credential_key) ON DELETE SET NULL
+   );
+
+   -- Step 2: 既存データをコピー (スキーマが互換性ある場合)
+   INSERT INTO remote_servers_new
+   SELECT server_id, catalog_item_id, endpoint, credential_key, status, created_at, updated_at
+   FROM remote_servers;
+
+   -- Step 3: 旧テーブルを削除し、新テーブルをリネーム
+   DROP TABLE remote_servers;
+   ALTER TABLE remote_servers_new RENAME TO remote_servers;
+
+   -- Step 4: インデックスを再作成
+   CREATE INDEX IF NOT EXISTS idx_remote_servers_catalog_item_id ON remote_servers(catalog_item_id);
+   ```
+
+3. **制約追加の代替アプローチ** (ALTER が使えない場合):
+   - 上記の「create-new-table-and-copy-with-constraints」パターンを使用
+   - アプリケーションレベルでの外部キー検証を併用（移行期間中）
+
+4. **ロールバック計画**:
+   ```bash
+   # マイグレーション失敗時: バックアップから復元
+   cp state.db.backup-YYYYMMDD-HHMMSS state.db
+
+   # 部分的ロールバック: エクスポートしたデータを再インポート
+   sqlite3 state.db < remote_servers_backup.sql
+   ```
+
+*Existing Pattern Integration*:
+- **IF NOT EXISTS パターン**: 新規テーブル作成時は既に使用（Line 937 参照）
+- **PRAGMA foreign_keys**: 外部キー制約を有効化するため、接続時に `PRAGMA foreign_keys = ON;` を実行
+  - 既存の StateStore 初期化処理に統合済み（想定）
+- **トランザクション管理**: すべての移行操作は単一トランザクション内で実行し、失敗時は自動ロールバック
+
+*Operational Rollout Checklist*:
+
+**Phase 1 (Development)**:
+- [ ] `ALLOW_DESTRUCTIVE_MIGRATION=true` を環境変数に設定
+- [ ] ローカル DB をバックアップ
+- [ ] マイグレーションスクリプトを実行
+- [ ] 外部キー制約の動作を検証（不正な `credential_key` の挿入テスト）
+
+**Phase 2-3 (Staging/Canary)**:
+- [ ] `ALLOW_DESTRUCTIVE_MIGRATION=false` を確認（デフォルト）
+- [ ] 本番同等の DB データを staging にコピー
+- [ ] 安全な移行戦略（上記 Step 1-4）を実行
+- [ ] ロールバック手順をドライランで検証
+- [ ] 監査ログと外部キー制約を検証
+
+**Phase 4-5 (Production)**:
+- [ ] `ALLOW_DESTRUCTIVE_MIGRATION=false` を厳格に強制
+- [ ] 本番 DB の完全バックアップを取得（オフサイトストレージに保存）
+- [ ] メンテナンスウィンドウを設定（低トラフィック時間帯）
+- [ ] 安全な移行戦略を実行（トランザクション内）
+- [ ] 移行後の整合性チェック（外部キー制約、インデックス、データ件数）
+- [ ] ロールバックプランを即座に実行可能な状態で待機
+- [ ] 監視ダッシュボードでエラー率とレスポンスタイムを監視（移行後24時間）
