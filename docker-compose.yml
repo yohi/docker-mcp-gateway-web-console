@@ -47,6 +47,13 @@ services:
       - SESSION_TIMEOUT_MINUTES=30
       - CATALOG_CACHE_TTL_SECONDS=3600
       - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+      - OAUTH_AUTHORIZE_URL=${OAUTH_AUTHORIZE_URL:-https://auth.example.com/authorize}
+      - OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-https://auth.example.com/token}
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-mcp-console}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET:-}
+      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost:8000/api/catalog/oauth/callback}
+      - OAUTH_ALLOW_OVERRIDE=${OAUTH_ALLOW_OVERRIDE:-true}
+      - OAUTH_TOKEN_ENCRYPTION_KEY=${OAUTH_TOKEN_ENCRYPTION_KEY:-}
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
       - HOME=/root

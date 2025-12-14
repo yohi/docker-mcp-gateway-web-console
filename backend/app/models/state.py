@@ -19,6 +19,8 @@ class CredentialRecord(BaseModel):
     scopes: List[str]
     expires_at: datetime
     server_id: str
+    oauth_token_url: Optional[str] = None
+    oauth_client_id: Optional[str] = None
     created_by: str
     created_at: datetime = Field(default_factory=_now_utc)
 

@@ -52,8 +52,13 @@ class Settings(BaseSettings):
     oauth_authorize_url: str = "https://auth.example.com/authorize"
     oauth_token_url: str = "https://auth.example.com/token"
     oauth_client_id: str = "mcp-console"
+    oauth_client_secret: str = Field(
+        default="", validation_alias="OAUTH_CLIENT_SECRET"
+    )
     oauth_redirect_uri: str = "http://localhost:8000/api/catalog/oauth/callback"
     oauth_request_timeout_seconds: int = 10
+    # サーバーごとに OAuth エンドポイント等を上書きできるか（カタログ/クライアント由来の値を使用するため慎重に運用する）
+    oauth_allow_override: bool = Field(default=False, validation_alias="OAUTH_ALLOW_OVERRIDE")
     # アクセス/リフレッシュトークンの暗号化キー（Fernet）。必ず環境変数 OAUTH_TOKEN_ENCRYPTION_KEY で本番用のキーを指定すること。
     oauth_token_encryption_key: str = Field(
         default=OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER,

@@ -59,6 +59,8 @@ class StateStore:
                     scopes TEXT NOT NULL,
                     expires_at TEXT NOT NULL,
                     server_id TEXT NOT NULL,
+                    oauth_token_url TEXT,
+                    oauth_client_id TEXT,
                     created_by TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
@@ -132,7 +134,31 @@ class StateStore:
                 );
                 """
             )
+            self._migrate_columns(conn)
             conn.commit()
+
+    def _migrate_columns(self, conn: sqlite3.Connection) -> None:
+        """既存DBに対して不足カラムを追加する（軽量マイグレーション）。"""
+        try:
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(credentials)").fetchall()
+            }
+        except Exception:
+            logger.debug("PRAGMA table_info failed; skipping migrations", exc_info=True)
+            return
+
+        statements: list[str] = []
+        if "oauth_token_url" not in columns:
+            statements.append("ALTER TABLE credentials ADD COLUMN oauth_token_url TEXT")
+        if "oauth_client_id" not in columns:
+            statements.append("ALTER TABLE credentials ADD COLUMN oauth_client_id TEXT")
+
+        for stmt in statements:
+            try:
+                conn.execute(stmt)
+            except Exception:
+                logger.debug("Migration failed: %s", stmt, exc_info=True)
 
     def list_tables(self) -> List[str]:
         """テーブル一覧を返す（テスト用ヘルパー）。"""
@@ -150,8 +176,8 @@ class StateStore:
                 """
                 INSERT OR REPLACE INTO credentials (
                     credential_key, token_ref, scopes, expires_at,
-                    server_id, created_by, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    server_id, oauth_token_url, oauth_client_id, created_by, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.credential_key,
@@ -159,6 +185,8 @@ class StateStore:
                     json.dumps(record.scopes),
                     _to_iso(record.expires_at),
                     record.server_id,
+                    record.oauth_token_url,
+                    record.oauth_client_id,
                     record.created_by,
                     _to_iso(record.created_at),
                 ),
@@ -180,6 +208,8 @@ class StateStore:
             scopes=json.loads(row["scopes"]),
             expires_at=_from_iso(row["expires_at"]),
             server_id=row["server_id"],
+            oauth_token_url=row["oauth_token_url"] if "oauth_token_url" in row.keys() else None,
+            oauth_client_id=row["oauth_client_id"] if "oauth_client_id" in row.keys() else None,
             created_by=row["created_by"],
             created_at=_from_iso(row["created_at"]),
         )
@@ -195,6 +225,8 @@ class StateStore:
                 scopes=json.loads(row["scopes"]),
                 expires_at=_from_iso(row["expires_at"]),
                 server_id=row["server_id"],
+                oauth_token_url=row["oauth_token_url"] if "oauth_token_url" in row.keys() else None,
+                oauth_client_id=row["oauth_client_id"] if "oauth_client_id" in row.keys() else None,
                 created_by=row["created_by"],
                 created_at=_from_iso(row["created_at"]),
             )

@@ -6,6 +6,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 export interface OAuthInitiatePayload {
   serverId: string;
   scopes: string[];
+  authorizeUrl?: string;
+  tokenUrl?: string;
+  clientId?: string;
+  redirectUri?: string;
   codeChallenge?: string;
   codeChallengeMethod?: string;
 }
@@ -59,6 +63,10 @@ export async function initiateOAuth(payload: OAuthInitiatePayload): Promise<OAut
     body: JSON.stringify({
       server_id: payload.serverId,
       scopes: payload.scopes,
+      authorize_url: payload.authorizeUrl,
+      token_url: payload.tokenUrl,
+      client_id: payload.clientId,
+      redirect_uri: payload.redirectUri,
       code_challenge: payload.codeChallenge,
       code_challenge_method: payload.codeChallengeMethod ?? 'S256',
     }),

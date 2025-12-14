@@ -10,6 +10,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 from urllib.parse import urlencode
 
 import httpx
@@ -30,6 +31,47 @@ class OAuthState:
     code_challenge: Optional[str]
     code_challenge_method: Optional[str]
     scopes: List[str]
+    authorize_url: str
+    token_url: str
+    client_id: str
+    redirect_uri: str
+
+
+def _normalize_oauth_url(value: str, *, field_name: str) -> str:
+    url = (value or "").strip()
+    if not url:
+        raise OAuthError(f"{field_name} が未設定です")
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise OAuthError(f"{field_name} が不正です: {url}")
+    return url
+
+
+GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
+GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
+
+
+def _strip_trailing_slash(url: str) -> str:
+    return url[:-1] if url.endswith("/") else url
+
+
+def _is_github_oauth_endpoints(authorize_url: str, token_url: str) -> bool:
+    return _strip_trailing_slash(authorize_url) == GITHUB_AUTHORIZE_URL and _strip_trailing_slash(
+        token_url
+    ) == GITHUB_TOKEN_URL
+
+
+def _origin(url: str) -> str:
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _is_allowed_redirect_uri(redirect_uri: str) -> bool:
+    try:
+        origin = _origin(redirect_uri)
+    except Exception:
+        return False
+    return origin in settings.cors_origins_list
 
 
 class TokenCipher:
@@ -169,6 +211,7 @@ class OAuthService:
         self._refresh_threshold = timedelta(minutes=15)
         self._scope_policy = ScopePolicyService(permitted_scopes or [])
         self._credential_creator = credential_creator
+        self._client_secret = settings.oauth_client_secret.strip() or None
         encryption_key = settings.oauth_token_encryption_key
         if (
             not encryption_key
@@ -257,12 +300,59 @@ class OAuthService:
         self,
         server_id: str,
         scopes: List[str],
+        authorize_url: Optional[str] = None,
+        token_url: Optional[str] = None,
+        client_id: Optional[str] = None,
+        redirect_uri: Optional[str] = None,
         code_challenge: Optional[str] = None,
         code_challenge_method: str = "S256",
     ) -> dict:
         """state を生成し、クライアント指定の code_challenge で認可 URL を返す。"""
-        if not settings.oauth_authorize_url or not settings.oauth_client_id:
-            raise OAuthError("OAuth 設定が不足しています")
+        use_authorize_url = authorize_url or settings.oauth_authorize_url
+        use_token_url = token_url or settings.oauth_token_url
+        use_client_id = client_id or settings.oauth_client_id
+        use_redirect_uri = redirect_uri or settings.oauth_redirect_uri
+
+        overrides_requested = any(
+            v is not None for v in (authorize_url, token_url, client_id, redirect_uri)
+        )
+        if overrides_requested and not settings.oauth_allow_override:
+            # 既定では上書き禁止。ただしフロント側のリダイレクト(/oauth/callback)対応や GitHub OAuth など、
+            # 安全と判断できる限定ケースのみ許可する。
+            if client_id is not None:
+                raise OAuthError(
+                    "OAuth client_id の上書きが無効です。環境変数 OAUTH_ALLOW_OVERRIDE=true を設定してください。"
+                )
+
+            if authorize_url is not None or token_url is not None:
+                if authorize_url is None or token_url is None:
+                    raise OAuthError(
+                        "OAuth authorize_url/token_url はセットで指定してください。"
+                    )
+                normalized_authorize = _normalize_oauth_url(authorize_url, field_name="authorize_url")
+                normalized_token = _normalize_oauth_url(token_url, field_name="token_url")
+                if not _is_github_oauth_endpoints(normalized_authorize, normalized_token):
+                    raise OAuthError(
+                        "OAuth エンドポイントの上書きが無効です。環境変数 OAUTH_ALLOW_OVERRIDE=true を設定してください。"
+                    )
+                use_authorize_url = normalized_authorize
+                use_token_url = normalized_token
+
+            if redirect_uri is not None:
+                normalized_redirect = _normalize_oauth_url(redirect_uri, field_name="redirect_uri")
+                if not _is_allowed_redirect_uri(normalized_redirect):
+                    raise OAuthError(
+                        "OAuth redirect_uri が許可されていません。CORS_ORIGINS にフロントのOriginを追加するか、"
+                        "環境変数 OAUTH_ALLOW_OVERRIDE=true を設定してください。"
+                    )
+                use_redirect_uri = normalized_redirect
+
+        use_authorize_url = _normalize_oauth_url(use_authorize_url, field_name="authorize_url")
+        use_token_url = _normalize_oauth_url(use_token_url, field_name="token_url")
+        use_client_id = (use_client_id or "").strip()
+        if not use_client_id:
+            raise OAuthError("client_id が未設定です")
+        use_redirect_uri = _normalize_oauth_url(use_redirect_uri, field_name="redirect_uri")
 
         missing = self._scope_policy.validate(scopes)
         state = secrets.token_urlsafe(32)
@@ -280,8 +370,8 @@ class OAuthService:
         scope_value = " ".join(scopes) if scopes else ""
         query = {
             "response_type": "code",
-            "client_id": settings.oauth_client_id,
-            "redirect_uri": settings.oauth_redirect_uri,
+            "client_id": use_client_id,
+            "redirect_uri": use_redirect_uri,
             "state": state,
             "scope": scope_value,
         }
@@ -289,13 +379,17 @@ class OAuthService:
             query["code_challenge"] = code_challenge
             query["code_challenge_method"] = code_challenge_method
 
-        auth_url = f"{settings.oauth_authorize_url}?{urlencode(query)}"
+        auth_url = f"{use_authorize_url}?{urlencode(query)}"
 
         self._state_store_mem[state] = OAuthState(
             server_id=server_id,
             code_challenge=code_challenge,
             code_challenge_method=code_challenge_method if code_challenge else None,
             scopes=scopes,
+            authorize_url=use_authorize_url,
+            token_url=use_token_url,
+            client_id=use_client_id,
+            redirect_uri=use_redirect_uri,
         )
 
         logger.info("OAuth 認可開始: server_id=%s state=%s", server_id, state)
@@ -336,8 +430,6 @@ class OAuthService:
         code_verifier: Optional[str] = None,
     ) -> dict:
         """認可コードをトークンに交換する。"""
-        if not settings.oauth_token_url:
-            raise OAuthError("OAuth トークンエンドポイントが設定されていません")
         if state not in self._state_store_mem:
             raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
 
@@ -361,16 +453,18 @@ class OAuthService:
         request_data = {
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": settings.oauth_redirect_uri,
-            "client_id": settings.oauth_client_id,
+            "redirect_uri": oauth_state.redirect_uri,
+            "client_id": oauth_state.client_id,
         }
+        if self._client_secret:
+            request_data["client_secret"] = self._client_secret
         if code_verifier:
             request_data["code_verifier"] = code_verifier
 
         last_error: Optional[Exception] = None
         for attempt, delay in enumerate(self._backoff_schedule, start=1):
             try:
-                response = await self._send_token_request(request_data)
+                response = await self._send_token_request(oauth_state.token_url, request_data)
                 if 400 <= response.status_code < 500:
                     raise OAuthProviderError("プロバイダから無効な応答が返されました。再認可してください。")
                 if response.status_code >= 500:
@@ -384,6 +478,8 @@ class OAuthService:
                     scopes=scope_list,
                     payload=payload,
                     correlation_id=state,
+                    oauth_token_url=oauth_state.token_url,
+                    oauth_client_id=oauth_state.client_id,
                 )
                 return {
                     "status": "authorized",
@@ -435,15 +531,26 @@ class OAuthService:
             self._delete_credential(credential_key)
             raise OAuthInvalidGrantError("保存済みトークンが無効になりました。再認可してください。")
 
+        token_url = record.oauth_token_url or settings.oauth_token_url
+        if not token_url:
+            self._delete_credential(credential_key)
+            raise OAuthError("OAuth トークンエンドポイントが設定されていません")
+        client_id = record.oauth_client_id or settings.oauth_client_id
+        if not client_id:
+            self._delete_credential(credential_key)
+            raise OAuthError("OAuth client_id が設定されていません")
+
         request_data = {
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
-            "client_id": settings.oauth_client_id,
+            "client_id": client_id,
         }
+        if self._client_secret:
+            request_data["client_secret"] = self._client_secret
         last_error: Optional[Exception] = None
         for attempt, delay in enumerate(self._refresh_backoff_schedule, start=1):
             try:
-                response = await self._send_token_request(request_data)
+                response = await self._send_token_request(token_url, request_data)
                 if 400 <= response.status_code < 500:
                     self._delete_credential(credential_key)
                     raise OAuthInvalidGrantError("保存済みトークンが無効になりました。再認可してください。")
@@ -454,7 +561,11 @@ class OAuthService:
                 scope_value = payload.get("scope") or " ".join(record.scopes)
                 scopes = scope_value.split() if isinstance(scope_value, str) else record.scopes
                 credential = self._save_tokens(
-                    server_id=record.server_id, scopes=scopes, payload=payload
+                    server_id=record.server_id,
+                    scopes=scopes,
+                    payload=payload,
+                    oauth_token_url=token_url,
+                    oauth_client_id=client_id,
                 )
                 self._delete_credential(credential_key)
                 self._record_audit(
@@ -499,6 +610,8 @@ class OAuthService:
         scopes: List[str],
         payload: Dict[str, object],
         correlation_id: Optional[str] = None,
+        oauth_token_url: Optional[str] = None,
+        oauth_client_id: Optional[str] = None,
     ) -> Dict[str, object]:
         """トークンを保存し credential_key を返す。"""
         expires_in = self._parse_expires_in(payload.get("expires_in"))
@@ -517,6 +630,8 @@ class OAuthService:
             scopes=scopes,
             expires_at=expires_at,
             server_id=server_id,
+            oauth_token_url=oauth_token_url,
+            oauth_client_id=oauth_client_id,
             created_by=self._credential_creator,
         )
         self._state_store.save_credential(record)
@@ -561,11 +676,14 @@ class OAuthService:
         digest = hashlib.sha256(pkce_verifier.encode("utf-8")).digest()
         return base64.urlsafe_b64encode(digest).decode("utf-8").rstrip("=")
 
-    async def _send_token_request(self, data: dict) -> httpx.Response:
+    async def _send_token_request(self, token_url: str, data: dict) -> httpx.Response:
         """トークンエンドポイントへリクエストする。"""
         async with httpx.AsyncClient(timeout=settings.oauth_request_timeout_seconds) as client:
             return await client.post(
-                settings.oauth_token_url,
+                token_url,
                 data=data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Accept": "application/json, application/x-www-form-urlencoded;q=0.9, */*;q=0.1",
+                },
             )

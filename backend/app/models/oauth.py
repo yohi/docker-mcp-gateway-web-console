@@ -11,6 +11,18 @@ class OAuthInitiateRequest(BaseModel):
 
     server_id: str = Field(..., description="対象サーバーID")
     scopes: List[str] = Field(default_factory=list, description="要求スコープ")
+    authorize_url: Optional[str] = Field(
+        default=None, description="OAuth authorize endpoint URL (override)"
+    )
+    token_url: Optional[str] = Field(
+        default=None, description="OAuth token endpoint URL (override)"
+    )
+    client_id: Optional[str] = Field(
+        default=None, description="OAuth client_id (override)"
+    )
+    redirect_uri: Optional[str] = Field(
+        default=None, description="OAuth redirect_uri (override)"
+    )
     code_challenge: Optional[str] = Field(
         default=None,
         description="クライアント生成の PKCE code_challenge",

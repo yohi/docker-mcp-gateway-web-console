@@ -31,9 +31,29 @@ function sanitizeContainerName(name: string): string {
  * @returns Partial container configuration
  */
 export function mapCatalogItemToConfig(item: CatalogItem): Partial<ContainerConfig> {
+  const labels: Record<string, string> = {
+    'mcp.server_id': item.id,
+  };
+  if (item.required_scopes && item.required_scopes.length > 0) {
+    labels['mcp.required_scopes'] = item.required_scopes.join(', ');
+  }
+  if (item.oauth_authorize_url) {
+    labels['mcp.oauth_authorize_url'] = item.oauth_authorize_url;
+  }
+  if (item.oauth_token_url) {
+    labels['mcp.oauth_token_url'] = item.oauth_token_url;
+  }
+  if (item.oauth_client_id) {
+    labels['mcp.oauth_client_id'] = item.oauth_client_id;
+  }
+  if (item.oauth_redirect_uri) {
+    labels['mcp.oauth_redirect_uri'] = item.oauth_redirect_uri;
+  }
+
   return {
     name: sanitizeContainerName(item.id),
     image: item.docker_image,
     env: item.default_env,
+    labels,
   };
 }

@@ -27,6 +27,24 @@ type CodeChallengeResult = {
   method: 'S256' | 'plain';
 };
 
+function isGitHubServerId(serverId: string): boolean {
+  const value = (serverId || '').trim().toLowerCase();
+  if (!value) return false;
+  if (value.startsWith('https://github.com/')) return true;
+  if (value.startsWith('http://github.com/')) return true;
+  return value.includes('github.com/');
+}
+
+function inferGitHubOAuthEndpoints(
+  serverId: string
+): { authorizeUrl: string; tokenUrl: string } | null {
+  if (!isGitHubServerId(serverId)) return null;
+  return {
+    authorizeUrl: 'https://github.com/login/oauth/authorize',
+    tokenUrl: 'https://github.com/login/oauth/access_token',
+  };
+}
+
 const base64UrlEncode = (buffer: ArrayBuffer) => {
   const bytes = new Uint8Array(buffer);
   let base64: string;
@@ -71,6 +89,7 @@ export default function OAuthModal({ isOpen, item, onClose }: OAuthModalProps) {
   const [result, setResult] = useState<OAuthExchangeResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const popupRef = useRef<Window | null>(null);
 
   const scopes = useMemo(() => (item ? collectScopes(item) : []), [item]);
 
@@ -105,7 +124,48 @@ export default function OAuthModal({ isOpen, item, onClose }: OAuthModalProps) {
     }
   }, [isOpen, item?.id]);
 
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (typeof window === 'undefined') return;
+      if (!isOpen) return;
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as any;
+      if (!data || data.type !== 'oauth:complete') return;
+      if (!authState || data.state !== authState.state) return;
+      setResult(data.result as OAuthExchangeResult);
+      setError(null);
+      try {
+        popupRef.current?.close();
+      } catch {
+        // noop
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [authState, isOpen]);
+
   if (!isOpen || !item) return null;
+
+  const storePkce = (state: string, codeVerifier: string) => {
+    try {
+      // popup/window 間で共有するため localStorage を使用する
+      localStorage.setItem(
+        `oauth:pkce:${state}`,
+        JSON.stringify({ codeVerifier, serverId: item.id, createdAt: Date.now() })
+      );
+    } catch {
+      // noop
+    }
+  };
+
+  const openAuthWindow = (url: string) => {
+    // ポップアップがブロックされた場合は同一タブで遷移する
+    const popup = window.open(url, 'oauth', 'width=520,height=720');
+    popupRef.current = popup;
+    if (!popup) {
+      window.location.assign(url);
+    }
+  };
 
   const startAuth = async () => {
     try {
@@ -114,9 +174,21 @@ export default function OAuthModal({ isOpen, item, onClose }: OAuthModalProps) {
       const codeVerifier = createCodeVerifier();
       const { challenge, method } = await toCodeChallenge(codeVerifier);
 
+      const redirectUri =
+        item.oauth_redirect_uri ||
+        (typeof window !== 'undefined' ? `${window.location.origin}/oauth/callback` : undefined);
+
+      const inferred = inferGitHubOAuthEndpoints(item.id);
+      const authorizeUrl = item.oauth_authorize_url ?? inferred?.authorizeUrl;
+      const tokenUrl = item.oauth_token_url ?? inferred?.tokenUrl;
+
       const response = await initiateOAuth({
         serverId: item.id,
         scopes,
+        authorizeUrl,
+        tokenUrl,
+        clientId: item.oauth_client_id,
+        redirectUri,
         codeChallenge: challenge,
         codeChallengeMethod: method,
       });
@@ -130,6 +202,8 @@ export default function OAuthModal({ isOpen, item, onClose }: OAuthModalProps) {
       setAuthState(nextAuth);
       setStateInput(response.state);
       setResult(null);
+      storePkce(response.state, codeVerifier);
+      openAuthWindow(response.auth_url);
     } catch (err) {
       setError(err instanceof Error ? err.message : '認可の開始に失敗しました');
     } finally {

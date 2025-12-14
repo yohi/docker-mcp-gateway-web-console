@@ -12,6 +12,10 @@ export interface CatalogItem {
   required_envs: string[];
   required_secrets: string[];
   required_scopes?: string[];
+  oauth_authorize_url?: string;
+  oauth_token_url?: string;
+  oauth_client_id?: string;
+  oauth_redirect_uri?: string;
   jwks_url?: string;
   verify_signatures?: boolean;
   permit_unsigned?: string[];

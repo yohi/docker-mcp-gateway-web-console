@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ContainerConfig } from '../../lib/types/containers';
 import { createContainer } from '../../lib/api/containers';
 
@@ -13,6 +13,7 @@ interface ContainerConfiguratorProps {
   isSubmitting?: boolean;
   title?: string;
   description?: string;
+  children?: ReactNode;
 }
 
 export default function ContainerConfigurator({
@@ -24,6 +25,7 @@ export default function ContainerConfigurator({
   isSubmitting,
   title,
   description,
+  children,
 }: ContainerConfiguratorProps) {
   const [config, setConfig] = useState<ContainerConfig>({
     name: initialConfig?.name || '',
@@ -358,6 +360,8 @@ export default function ContainerConfigurator({
                 </button>
               </div>
             </div>
+
+            {children}
           </div>
 
           {/* Footer */}
