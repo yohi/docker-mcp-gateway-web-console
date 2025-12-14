@@ -103,12 +103,13 @@ sequenceDiagram
     participant OAuth as OAuth Provider
     participant DB as StateStore
 
-    User->>UI: 認証開始をクリック
+    User->>UI: 認証開始をクリック（サーバー詳細画面）
     UI->>UI: code_verifier 生成 (ランダム文字列)
     UI->>UI: code_challenge = BASE64URL(SHA256(code_verifier)) 計算
-    UI->>API: POST /api/oauth/start {code_challenge}
+    UI->>API: POST /api/oauth/start {server_id, code_challenge}
+    API->>API: server_id 検証・OAuth設定取得
     API->>API: state 生成
-    API->>DB: oauth_states に (state, code_challenge, expires_at) 保存
+    API->>DB: oauth_states に (state, server_id, code_challenge, expires_at, OAuth設定) 保存
     API-->>UI: auth_url, state 返却
     UI->>User: 認可ページへリダイレクト (code_challenge 含む)
     User->>OAuth: 認可を許可
@@ -124,8 +125,12 @@ sequenceDiagram
 ```
 
 **Key Decisions**:
+- **サーバー識別**: OAuth フロー開始時に `server_id` を指定し、どのリモートサーバーに対する認証かを明確化
+  - **前提**: リモートサーバーは事前に `RemoteMcpService.register_server()` で登録済み（`server_id` が存在）
+  - **UX フロー**: ユーザーはサーバー詳細画面で「認証開始」ボタンをクリック → UI が該当サーバーの `server_id` を `/api/oauth/start` に送信
+  - **Backend 処理**: `server_id` から OAuth 設定（authorize_url, token_url, client_id, scopes）を取得し、`oauth_states` に紐付けて保存
 - **PKCE フロー**: クライアント (Web Console) が `code_verifier` を生成し、`code_challenge` を計算して API に渡す
-- **Backend 保存**: API は `state` と `code_challenge` のみを SQLite に TTL (10分) 付きで永続化し、単一使用を保証
+- **Backend 保存**: API は `state`, `server_id`, `code_challenge`, OAuth設定を SQLite に TTL (10分) 付きで永続化し、単一使用を保証
 - **Verifier 保持**: `code_verifier` はクライアント側でセッションストレージに短命保持し、callback 後に削除（永続化しない）
 - **検証フロー**: OAuth Provider が `code_verifier` を受け取り、保存された `code_challenge` と照合してトークンを発行
 
@@ -201,6 +206,7 @@ sequenceDiagram
 ```python
 from typing import List, Optional
 from datetime import datetime
+from enum import Enum
 from pydantic import BaseModel
 
 class RemoteServerStatus(str, Enum):
@@ -323,8 +329,16 @@ class RemoteMcpServiceInterface:
 - **Persistence**: SQLite via StateStore
 - **Concurrency strategy**: state 検証後の即時削除で再利用防止
 - **PKCE データフロー**:
-  - `/api/oauth/start` 受信時: クライアントから code_challenge を受け取り、state と共に保存
-  - `/api/oauth/callback` 受信時: クライアントから code_verifier を受け取り、保存された code_challenge との整合性を確認後、OAuth Provider へ渡す
+  - `/api/oauth/start` 受信時:
+    1. クライアントから `server_id` と `code_challenge` を受け取る
+    2. `server_id` から OAuth 設定（authorize_url, token_url, client_id, scopes）を RemoteMcpService 経由で取得
+    3. `state` を生成し、`server_id`, `code_challenge`, OAuth設定を `oauth_states` テーブルに保存
+  - `/api/oauth/callback` 受信時:
+    1. クライアントから `code`, `state`, `code_verifier` を受け取る
+    2. `state` で `oauth_states` レコードを検索し、`server_id` と `code_challenge` を取得
+    3. `code_verifier` と保存された `code_challenge` の整合性を確認
+    4. OAuth Provider へトークン交換リクエスト（`code`, `code_verifier` を送信）
+    5. 取得したトークンを `server_id` に紐付けて `credentials` テーブルに保存
   - **重要**: code_verifier は Backend で永続化せず、クライアント側でセッションストレージに短命保持
 
 ##### Implementation Notes
@@ -428,8 +442,57 @@ class RemoteMcpServiceInterface:
 | POST | /api/remote-servers/{id}/enable | — | RemoteServerRecord | 404, 500 |
 | POST | /api/remote-servers/{id}/disable | — | RemoteServerRecord | 404, 500 |
 | DELETE | /api/remote-servers/{id} | { delete_credentials? } | — | 404, 500 |
-| POST | /api/remote-servers/{id}/connect | — | { capabilities } | 401, 404, 502, 500 |
+| POST | /api/remote-servers/{id}/connect | — | { capabilities } | 400 (allowlist), 401 (auth token), 404, 502, 500 |
 | POST | /api/remote-servers/{id}/test | — | { reachable, authenticated } | 404, 500 |
+
+#### OAuth API
+
+| Method | Endpoint | Request | Response | Errors |
+|--------|----------|---------|----------|--------|
+| POST | /api/oauth/start | { server_id, code_challenge } | { auth_url, state } | 400, 404, 500 |
+| POST | /api/oauth/callback | { code, state, code_verifier } | { success: true } | 400, 401, 500 |
+
+**POST /api/oauth/start**:
+- **Request Body**:
+  ```json
+  {
+    "server_id": "remote-server-123",
+    "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+    "code_challenge_method": "S256"  // Optional, defaults to "S256"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "auth_url": "https://oauth.example.com/authorize?client_id=...&state=...&code_challenge=...",
+    "state": "random-state-string"
+  }
+  ```
+- **Errors**:
+  - 400: server_id が無効、code_challenge が不正
+  - 404: server_id が存在しない
+  - 500: 内部エラー
+
+**POST /api/oauth/callback**:
+- **Request Body**:
+  ```json
+  {
+    "code": "authorization-code-from-provider",
+    "state": "random-state-string",
+    "code_verifier": "original-code-verifier"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "server_id": "remote-server-123"
+  }
+  ```
+- **Errors**:
+  - 400: state が無効、code_verifier が不正
+  - 401: OAuth Provider がトークン交換を拒否
+  - 500: 内部エラー
 
 ---
 
@@ -454,7 +517,15 @@ class RemoteMcpServiceInterface:
 | Requirements | 1.3, 2.1–2.6, 3.1, 3.8, 7.2–7.5 |
 
 ##### Implementation Notes
-- 「認証開始」ボタンで OAuth フロー開始
+- **「認証開始」ボタン**:
+  1. クライアント側で `code_verifier` を生成し、`code_challenge` を計算
+  2. 現在表示中のサーバーの `server_id` と `code_challenge` を `/api/oauth/start` に送信
+  3. 取得した `auth_url` へリダイレクト、`state` をセッションストレージに保存
+  4. `code_verifier` もセッションストレージに短命保持（callback 時に使用）
+- **OAuth コールバック処理**:
+  1. URL クエリパラメータから `code` と `state` を取得
+  2. セッションストレージから `code_verifier` を取得
+  3. `/api/oauth/callback` に送信し、認証完了
 - 「接続テスト」ボタンで接続テスト API 呼び出し
 - 進行中状態のスピナー表示
 
@@ -520,8 +591,8 @@ class CatalogItem(BaseModel):
 
 ### Error Categories and Responses
 - **User Errors (4xx)**:
-  - 400 (不正リクエスト): 不許可エンドポイント、無効なパラメータ
-  - 401 (未認証): OAuth 認証が必要
+  - 400 (不正リクエスト): 不許可エンドポイント (allowlist violation)、無効なパラメータ
+  - 401 (未認証): 認証トークンが欠落・期限切れ・未保存、または OAuth Provider がトークン発行を拒否
   - 404 (サーバー未登録): 指定された server_id が存在しない
   - 409 (重複登録): 同じカタログアイテムが既に登録済み
   - 429 (Too Many Requests): 同時接続数上限超過
@@ -559,19 +630,28 @@ class CatalogItem(BaseModel):
 
 ### Unit Tests
 - `StateStore.is_endpoint_allowed` — 許可リスト検証ロジック
-  - 完全一致マッチング（`api.example.com` → `https://api.example.com/sse`）
-  - ポート番号マッチング（`api.example.com:8443` → `https://api.example.com:8443/sse`）
-  - ワイルドカードマッチング（`*.example.com` → `https://api.example.com/sse`, `https://v2.api.example.com/sse`）
-  - ワイルドカード非マッチ（`*.example.com` ≠ `https://example.com/sse`）
-  - ポート不一致拒否（`api.example.com:8443` ≠ `https://api.example.com:8080/sse`）
-  - 空リストは deny-all（`REMOTE_MCP_ALLOWED_DOMAINS=""` → すべて False）
+  - **完全一致マッチング**:
+    - `api.example.com` → `https://api.example.com/sse` (port 443) ✓ 許可
+    - `api.example.com` → `https://api.example.com:8443/sse` (port 8443) ✗ 拒否（デフォルトポート443のみ許可）
+  - **ポート番号明示マッチング**:
+    - `api.example.com:8443` → `https://api.example.com:8443/sse` ✓ 許可
+    - `api.example.com:8443` → `https://api.example.com:8080/sse` ✗ 拒否（ポート不一致）
+  - **ワイルドカードマッチング**:
+    - `*.example.com` → `https://api.example.com/sse` (port 443) ✓ 許可
+    - `*.example.com` → `https://v2.api.example.com/sse` (port 443) ✓ 許可
+    - `*.example.com` → `https://example.com/sse` ✗ 拒否（ワイルドカード非マッチ）
+  - **IPv6 拒否**: `https://[2001:db8::1]/sse` ✗ 拒否（IPv6 非サポート）
+  - **空リストは deny-all**: `REMOTE_MCP_ALLOWED_DOMAINS=""` → すべて False
 - `RemoteMcpService.register_server` — 正常登録・重複拒否・allowlist 検証
   - 許可エンドポイントの登録成功
   - 不許可エンドポイントの登録失敗（HTTP 400 + 監査ログ）
 - `RemoteMcpService.connect` — credential 復号・SSE 接続モック・allowlist 検証
   - 許可エンドポイントへの接続成功
   - 不許可エンドポイントへの接続失敗（HTTP 400 + 監査ログ）
-- `OAuthService._persist_state` / `_validate_state` — TTL 検証
+- `OAuthService._persist_state` / `_validate_state` — TTL 検証と server_id 紐付け
+  - `_persist_state` に server_id を渡し、oauth_states に正しく保存されることを確認
+  - `_validate_state` で state から server_id を取得できることを確認
+  - 存在しない server_id での OAuth 開始は HTTP 404 を返却
 - `CatalogService._filter_items` — remote_endpoint 対応と URL 検証
   - `docker_image` 優先ロジック（両方存在時）
   - `remote_endpoint` 単独時の `is_remote=True` 設定
@@ -580,7 +660,12 @@ class CatalogItem(BaseModel):
   - 不正な URL 形式のアイテム除外
 
 ### Integration Tests
-- OAuth フロー全体 (start → callback → token 保存)
+- **OAuth フロー全体**:
+  1. リモートサーバーを登録（POST /api/remote-servers）→ server_id 取得
+  2. OAuth 開始（POST /api/oauth/start {server_id, code_challenge}）→ auth_url, state 取得
+  3. OAuth Provider からコールバック（モック）
+  4. OAuth コールバック処理（POST /api/oauth/callback {code, state, code_verifier}）→ トークン取得・保存確認
+  5. server_id に紐付いた credential が正しく保存されていることを検証
 - リモートサーバー登録 → 認証 → 接続テスト
 - カタログ取得 → リモートサーバーフィルタリング
 - **Allowlist 統合テスト**:
@@ -623,13 +708,19 @@ OAuth エンドポイント制限（既存機能、詳細は既存ドキュメ�
 ##### Format and Syntax
 - **形式**: カンマ区切りリスト（空白は trimmed）
 - **エントリ**: ホスト名 + オプションのポート番号
-  - 例: `api.example.com`, `api.example.com:8443`, `mcp.service.local:9000`
+  - IPv4/ホスト名: `api.example.com`, `api.example.com:8443`, `127.0.0.1:9000`
+  - **IPv6**: **サポートしない**（将来のバージョンで検討）
+    - 理由: IPv6 リテラル（`[2001:db8::1]:8080`）のパースが複雑で、実装ミスによるセキュリティホールのリスクが高い
+    - 回避策: IPv6 が必要な場合は DNS 名を使用（例: `ipv6.api.example.com`）
 - **ワイルドカード**: サブドメインマッチング用のプレフィックスワイルドカード（`*.example.com`）のみサポート
   - `*.example.com` は `api.example.com`, `v2.api.example.com` にマッチ
   - `example.com` 自体にはマッチしない（明示的に `example.com,*.example.com` と指定）
   - **制限事項**: フルパスワイルドカード（`api.example.com/*`）やプロトコルワイルドカード（`http*://`）は不可
-- **ポート番号**: 指定されたエントリはポート番号も厳密にマッチ必須
-  - `api.example.com:8443` は `api.example.com:8080` にマッチしない
+- **ポート番号セマンティクス**:
+  - **ポート指定あり** (`api.example.com:8443`): 指定ポートに厳密マッチ（8443 のみ許可、8080 は拒否）
+  - **ポート指定なし** (`api.example.com`): **デフォルトポートのみ許可**（HTTPS=443, HTTP=80）
+    - セキュリティ理由: "ポートなし = 全ポート許可" は過剰に寛容で危険
+    - **重要**: 非標準ポート（8443, 8080 等）を許可する場合は明示的に指定必須（例: `api.example.com:8443`）
 
 ##### Default Value
 - **デフォルト**: 空文字列（deny-all）— すべてのリモートサーバー接続を拒否
@@ -638,17 +729,24 @@ OAuth エンドポイント制限（既存機能、詳細は既存ドキュメ�
 
 ##### Configuration Examples
 ```bash
-# 開発環境
+# 開発環境（デフォルトポート 80/443 のみ）
 REMOTE_MCP_ALLOWED_DOMAINS="localhost,127.0.0.1,*.local"
 ALLOW_INSECURE_ENDPOINT=true
 
-# ステージング環境
+# 開発環境（非標準ポート 8080 も許可）
+REMOTE_MCP_ALLOWED_DOMAINS="localhost:8080,127.0.0.1:8080,*.local"
+ALLOW_INSECURE_ENDPOINT=true
+
+# ステージング環境（デフォルトポート 443 のみ）
 REMOTE_MCP_ALLOWED_DOMAINS="api.staging.example.com,*.staging-partners.com"
 ALLOW_INSECURE_ENDPOINT=false
 
-# 本番環境
+# 本番環境（デフォルトポート 443 と非標準ポート 8443 を明示的に許可）
 REMOTE_MCP_ALLOWED_DOMAINS="api.production.com,api-v2.production.com:8443,*.trusted-partner.com"
 ALLOW_INSECURE_ENDPOINT=false
+
+# 重要: api.production.com は port 443 のみ許可、8443 は拒否
+# 重要: api-v2.production.com:8443 は port 8443 のみ許可、443 は拒否
 ```
 
 ##### Reload Behavior
@@ -679,11 +777,21 @@ def is_endpoint_allowed(url: str) -> bool:
 
     Returns:
         True if allowed, False otherwise
+
+    Note:
+        - IPv6 リテラルは現在サポートしない（parsed.hostname が IPv6 の場合は拒否）
+        - ポート指定なしのエントリはデフォルトポート（HTTPS=443, HTTP=80）のみ許可
     """
     # 1. URL パース
     parsed = urllib.parse.urlparse(url)
     host = parsed.hostname  # "api.example.com"
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
+
+    # 1a. IPv6 アドレスは拒否（セキュリティ理由：パース複雑性）
+    if host and ':' in host:
+        # IPv6 の可能性（urllib.parse.urlparse は IPv6 を hostname として返す）
+        # 厳密には ipaddress.IPv6Address でチェックすべきだが、簡易的に ':' を検出
+        return False
 
     # 2. 許可リストを取得（環境変数からカンマ区切りでパース）
     allowlist = os.getenv("REMOTE_MCP_ALLOWED_DOMAINS", "").split(",")
@@ -696,6 +804,8 @@ def is_endpoint_allowed(url: str) -> bool:
     # 4. 各エントリとマッチング
     for entry in allowlist:
         # ポート番号を分離
+        # IMPORTANT: rsplit(":", 1) は単純だが IPv6 には非対応
+        # 本実装では IPv6 を明示的に拒否しているため問題なし
         if ":" in entry:
             entry_host, entry_port_str = entry.rsplit(":", 1)
             try:
@@ -704,19 +814,20 @@ def is_endpoint_allowed(url: str) -> bool:
                 continue  # 不正なポート番号は無視
         else:
             entry_host = entry
-            entry_port = None  # ポート指定なし（全ポート許可）
+            # ポート指定なし = デフォルトポート（443 or 80）のみ許可
+            entry_port = 443 if parsed.scheme == "https" else 80
 
         # ワイルドカードマッチング
         if entry_host.startswith("*."):
             # サブドメインマッチング
             suffix = entry_host[2:]  # "*.example.com" -> "example.com"
             if host.endswith("." + suffix):
-                if entry_port is None or entry_port == port:
+                if entry_port == port:
                     return True
         else:
             # 完全一致
             if host == entry_host:
-                if entry_port is None or entry_port == port:
+                if entry_port == port:
                     return True
 
     return False
