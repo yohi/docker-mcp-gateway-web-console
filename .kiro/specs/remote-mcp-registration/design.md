@@ -406,6 +406,7 @@ class RemoteMcpServiceInterface:
   CREATE INDEX IF NOT EXISTS idx_remote_servers_catalog_item_id
       ON remote_servers(catalog_item_id);
   -- NOTE: credential_key は credentials テーブルへの外部キー
+  -- NOTE: 外部キー制約の前提: credentials.credential_key は PRIMARY KEY または UNIQUE 制約が必要
   -- NOTE: credential 削除時は SET NULL（サーバーレコードは保持、再認証が必要）
 
   CREATE TABLE IF NOT EXISTS oauth_states (
@@ -421,8 +422,10 @@ class RemoteMcpServiceInterface:
       expires_at TEXT NOT NULL,                  -- TTL (10分) - GC 対象
       created_at TEXT NOT NULL
   );
+  CREATE INDEX IF NOT EXISTS idx_oauth_states_expires_at
+      ON oauth_states(expires_at);
   -- NOTE: code_verifier は Backend で保存せず、クライアント側でセッションストレージに短命保持
-  -- NOTE: expires_at にインデックスを作成し、定期 GC で削除
+  -- NOTE: expires_at インデックスにより、定期 GC で効率的に期限切れ state を削除可能
   ```
 
 ##### Implementation Notes
@@ -887,7 +890,7 @@ class StateStore:
 - 不許可エンドポイントの場合:
   - HTTP 400 Bad Request を返却
   - エラーメッセージ: `"Endpoint not allowed: {host}:{port} is not in REMOTE_MCP_ALLOWED_DOMAINS"`
-  - 監査ログに記録: `{"event": "endpoint_rejected", "url": url, "reason": "not_in_allowlist"}`
+  - 監査ログに記録: `{"event": "endpoint_rejected", "endpoint": endpoint, "reason": "not_in_allowlist"}`
 
 **監査ログ例**:
 ```json
