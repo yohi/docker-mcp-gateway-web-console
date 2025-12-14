@@ -95,16 +95,19 @@ sequenceDiagram
     participant DB as StateStore
 
     User->>UI: 認証開始をクリック
-    UI->>API: POST /api/oauth/start
-    API->>API: code_verifier, code_challenge 生成
-    API->>DB: oauth_states に state 保存
+    UI->>UI: code_verifier 生成 (ランダム文字列)
+    UI->>UI: code_challenge = BASE64URL(SHA256(code_verifier)) 計算
+    UI->>API: POST /api/oauth/start {code_challenge}
+    API->>API: state 生成
+    API->>DB: oauth_states に (state, code_challenge, expires_at) 保存
     API-->>UI: auth_url, state 返却
-    UI->>User: 認可ページへリダイレクト
+    UI->>User: 認可ページへリダイレクト (code_challenge 含む)
     User->>OAuth: 認可を許可
     OAuth-->>UI: callback?code=xxx&state=yyy
-    UI->>API: POST /api/oauth/callback
-    API->>DB: state 検証・削除
-    API->>OAuth: トークン交換
+    UI->>API: POST /api/oauth/callback {code, state, code_verifier}
+    API->>DB: state 検証・code_challenge 取得・state 削除
+    API->>OAuth: トークン交換 (code, code_verifier)
+    OAuth->>OAuth: code_verifier 検証 (challenge と照合)
     OAuth-->>API: access_token, refresh_token
     API->>API: Fernet 暗号化
     API->>DB: credentials に保存
@@ -112,8 +115,10 @@ sequenceDiagram
 ```
 
 **Key Decisions**:
-- state は SQLite に永続化し、TTL (10分) と単一使用を保証
-- PKCE code_verifier はクライアント側で生成し、バックエンドは code_challenge のみ保存
+- **PKCE フロー**: クライアント (Web Console) が `code_verifier` を生成し、`code_challenge` を計算して API に渡す
+- **Backend 保存**: API は `state` と `code_challenge` のみを SQLite に TTL (10分) 付きで永続化し、単一使用を保証
+- **Verifier 保持**: `code_verifier` はクライアント側でセッションストレージに短命保持し、callback 後に削除（永続化しない）
+- **検証フロー**: OAuth Provider が `code_verifier` を受け取り、保存された `code_challenge` と照合してトークンを発行
 
 ### リモートサーバー接続フロー
 
@@ -270,12 +275,13 @@ class RemoteMcpServiceInterface:
 
 | Field | Detail |
 |-------|--------|
-| Intent | state の SQLite 永続化対応 |
+| Intent | state の SQLite 永続化対応、PKCE code_challenge 管理 |
 | Requirements | 3.2–3.7, 4.1–4.3 |
 
 ##### Responsibilities & Constraints
-- `oauth_states` テーブルへの state 保存・検証・削除
+- `oauth_states` テーブルへの state、code_challenge 保存・検証・削除
 - TTL (10分) 超過 state の自動無効化
+- PKCE フロー: クライアントから受け取った code_challenge を保存し、callback 時に code_verifier と照合
 
 ##### Dependencies
 - Outbound: StateStore — `oauth_states` テーブル (P0)
@@ -283,12 +289,17 @@ class RemoteMcpServiceInterface:
 **Contracts**: State [x]
 
 ##### State Management
-- **State model**: `OAuthStateRecord` (state, server_id, code_challenge, expires_at, created_at)
+- **State model**: `OAuthStateRecord` (state, server_id, code_challenge, code_challenge_method, scopes, authorize_url, token_url, client_id, redirect_uri, expires_at, created_at)
 - **Persistence**: SQLite via StateStore
 - **Concurrency strategy**: state 検証後の即時削除で再利用防止
+- **PKCE データフロー**:
+  - `/api/oauth/start` 受信時: クライアントから code_challenge を受け取り、state と共に保存
+  - `/api/oauth/callback` 受信時: クライアントから code_verifier を受け取り、保存された code_challenge との整合性を確認後、OAuth Provider へ渡す
+  - **重要**: code_verifier は Backend で永続化せず、クライアント側でセッションストレージに短命保持
 
 ##### Implementation Notes
 - **Migration**: 既存メモリ管理 (`_state_store_mem`) を維持しつつ、永続化を並行稼働させ、段階的に移行
+- **PKCE 検証**: code_challenge_method は "S256" 固定（SHA-256）
 
 ---
 
@@ -333,18 +344,20 @@ class RemoteMcpServiceInterface:
   );
 
   CREATE TABLE IF NOT EXISTS oauth_states (
-      state TEXT PRIMARY KEY,
-      server_id TEXT NOT NULL,
-      code_challenge TEXT,
-      code_challenge_method TEXT,
-      scopes TEXT NOT NULL,
-      authorize_url TEXT NOT NULL,
-      token_url TEXT NOT NULL,
-      client_id TEXT NOT NULL,
-      redirect_uri TEXT NOT NULL,
-      expires_at TEXT NOT NULL,
+      state TEXT PRIMARY KEY,                    -- CSRF 防止用の state パラメータ
+      server_id TEXT NOT NULL,                   -- 対象リモートサーバー ID
+      code_challenge TEXT,                       -- PKCE: クライアントから受け取った challenge (SHA-256)
+      code_challenge_method TEXT,                -- PKCE: 固定 "S256"
+      scopes TEXT NOT NULL,                      -- OAuth スコープ（JSON 配列文字列）
+      authorize_url TEXT NOT NULL,               -- OAuth Provider の認可エンドポイント
+      token_url TEXT NOT NULL,                   -- OAuth Provider のトークンエンドポイント
+      client_id TEXT NOT NULL,                   -- OAuth Client ID
+      redirect_uri TEXT NOT NULL,                -- コールバック URI
+      expires_at TEXT NOT NULL,                  -- TTL (10分) - GC 対象
       created_at TEXT NOT NULL
   );
+  -- NOTE: code_verifier は Backend で保存せず、クライアント側でセッションストレージに短命保持
+  -- NOTE: expires_at にインデックスを作成し、定期 GC で削除
   ```
 
 ---
@@ -462,7 +475,7 @@ class RemoteMcpServiceInterface:
 - TLS 必須 (endpoint, authorize_url, token_url)
 
 ### Data Protection
-- トークンは Fernet 暗号化して永続化 (AES-256-GCM 相当)
+- トークンは Fernet 暗号化して永続化 (AES-128-CBC + HMAC-SHA256 による認証付き暗号化)
 - ログ・エラー応答に認証情報を含めない (5.6, 8.6)
 
 ### Domain Allowlist
