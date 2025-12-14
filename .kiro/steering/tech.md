@@ -1,13 +1,13 @@
 # Technology Stack
 
-最終更新: 2025-12-10
+最終更新: 2025-12-14
 
 ## アーキテクチャ
 
 - Next.js (App Router) フロントエンドが FastAPI バックエンドと REST 経由で通信。
 - バックエンドは Docker デーモンと Bitwarden CLI を操作し、MCP サーバーの起動・停止やシークレット注入を実行。
-- OAuth カタログ接続をバックエンドで管理し、PKCE/state 生成とトークン暗号化保存を行う。
-- セッション情報・外部ゲートウェイ・監査ログを SQLite (`data/state.db`) に保存し、ポリシー・許可リストを参照。
+- OAuth カタログ接続および GitHub トークン管理をバックエンドで担い、トークンは Fernet で暗号化して保存。
+- セッション情報・外部ゲートウェイ・監査ログ・GitHub トークンを SQLite (`data/state.db`) に保存し、ポリシー・許可リストを参照。
 - Docker Compose でフロント (既定 3000) / バックエンド (既定 8000) を一括起動可能。
 
 ## コア技術
@@ -20,8 +20,8 @@
 - **バリデーション**: Pydantic v2
 - **コンテナ制御**: docker SDK for Python
 - **HTTP クライアント**: httpx（カタログ/GitHub/OAuth/ゲートウェイヘルスチェック）
-- **暗号**: cryptography/Fernet（OAuth トークン暗号化）
-- **データストア**: SQLite (state.db) でセッション・ゲートウェイ・資格情報を永続化
+- **暗号**: cryptography/Fernet（OAuth/GitHub トークン暗号化）
+- **データストア**: SQLite (state.db) でセッション・ゲートウェイ・資格情報・トークンを永続化
 - **メトリクス/監査**: MetricsRecorder と監査ログで署名検証・ゲートウェイ許可判定を計測
 - **ASGI サーバー**: uvicorn
 
@@ -43,8 +43,8 @@
 - バックエンド:
   - Bitwarden/Docker: `BITWARDEN_CLI_PATH`, `BITWARDEN_CLI_TIMEOUT_SECONDS`, `DOCKER_HOST`
   - セッション・永続化: `SESSION_TIMEOUT_MINUTES`, `STATE_DB_PATH`, `CREDENTIAL_RETENTION_DAYS`, `JOB_RETENTION_HOURS`, `MTLS_PLACEHOLDER_MODE`
-  - カタログ: `CATALOG_CACHE_TTL_SECONDS`, `CATALOG_DEFAULT_URL`, `GITHUB_TOKEN`
-  - OAuth: `OAUTH_AUTHORIZE_URL`, `OAUTH_TOKEN_URL`, `OAUTH_CLIENT_ID`, `OAUTH_REDIRECT_URI`, `OAUTH_REQUEST_TIMEOUT_SECONDS`, `OAUTH_TOKEN_ENCRYPTION_KEY`, `OAUTH_TOKEN_ENCRYPTION_KEY_ID`
+  - カタログ: `CATALOG_CACHE_TTL_SECONDS`, `CATALOG_DEFAULT_URL`, `GITHUB_TOKEN` (フォールバック用)。**トークン優先順位**: 保存された資格情報 (Bitwarden/DB) > UI設定トークン > 環境変数 GITHUB_TOKEN
+  - OAuth: `OAUTH_AUTHORIZE_URL`, `OAUTH_TOKEN_URL`, `OAUTH_CLIENT_ID`, `OAUTH_REDIRECT_URI`, `OAUTH_REQUEST_TIMEOUT_SECONDS`, `OAUTH_TOKEN_ENCRYPTION_KEY`, `OAUTH_TOKEN_ENCRYPTION_KEY_ID`, `OAUTH_ALLOW_OVERRIDE`, `OAUTH_ALLOWED_DOMAINS`。**推奨デフォルト**: OAUTH_ALLOW_OVERRIDE=false、OAUTH_ALLOWED_DOMAINS は明示的なリスト指定必須（ワイルドカード/空値は不可）
   - セキュリティ/ログ: `CORS_ORIGINS`, `LOG_LEVEL`, `LOG_REQUEST_BODY`
 - Compose 用: `FRONTEND_PORT`, `BACKEND_PORT`, `NEXT_PUBLIC_API_URL`
 
