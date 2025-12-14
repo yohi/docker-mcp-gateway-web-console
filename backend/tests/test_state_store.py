@@ -1,5 +1,6 @@
 """永続化ストアのTDDテスト。"""
 
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -31,6 +32,7 @@ def test_schema_created(store: StateStore) -> None:
     expected = {
         "credentials",
         "remote_servers",
+        "oauth_states",
         "sessions",
         "jobs",
         "signature_policies",
@@ -62,6 +64,38 @@ def test_remote_servers_table_schema(store: StateStore) -> None:
     assert expected_columns.issubset(columns)
     pk_columns = [row["name"] for row in rows if row["pk"]]
     assert pk_columns == ["server_id"]
+
+
+def test_oauth_states_table_schema(store: StateStore) -> None:
+    """oauth_states テーブルのスキーマとインデックスを検証する。"""
+    with store._connect() as conn:
+        rows = conn.execute("PRAGMA table_info(oauth_states)").fetchall()
+        indexes = conn.execute("PRAGMA index_list('oauth_states')").fetchall()
+        index_info = conn.execute(
+            "PRAGMA index_info('idx_oauth_states_expires_at')"
+        ).fetchall()
+
+    columns = {row["name"] for row in rows}
+    expected_columns = {
+        "state",
+        "server_id",
+        "code_challenge",
+        "code_challenge_method",
+        "scopes",
+        "authorize_url",
+        "token_url",
+        "client_id",
+        "redirect_uri",
+        "expires_at",
+        "created_at",
+    }
+
+    assert expected_columns.issubset(columns)
+    pk_columns = [row["name"] for row in rows if row["pk"]]
+    assert pk_columns == ["state"]
+    index_names = {row["name"] for row in indexes}
+    assert "idx_oauth_states_expires_at" in index_names
+    assert any(info["name"] == "expires_at" for info in index_info)
 
 
 def test_credential_gc(store: StateStore) -> None:
@@ -161,6 +195,67 @@ def test_auth_session_gc_by_expires_at(store: StateStore) -> None:
     assert removed["auth_sessions"] == 1
     assert store.get_auth_session("auth-expired") is None
     assert store.get_auth_session("auth-active") is not None
+
+
+def test_oauth_states_gc(store: StateStore) -> None:
+    """expires_at を過ぎた oauth_states レコードが GC されることを検証する。"""
+    now = datetime.now(timezone.utc)
+    expired_at = now - timedelta(minutes=1)
+    valid_at = now + timedelta(minutes=10)
+
+    with store._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO oauth_states (
+                state, server_id, code_challenge, code_challenge_method, scopes,
+                authorize_url, token_url, client_id, redirect_uri, expires_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "state-expired",
+                "server-1",
+                "challenge",
+                "S256",
+                json.dumps(["scope:a"]),
+                "https://auth.example.com/authorize",
+                "https://auth.example.com/token",
+                "client-123",
+                "https://app.example.com/callback",
+                expired_at.isoformat(),
+                (now - timedelta(minutes=5)).isoformat(),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO oauth_states (
+                state, server_id, code_challenge, code_challenge_method, scopes,
+                authorize_url, token_url, client_id, redirect_uri, expires_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "state-valid",
+                "server-2",
+                "challenge2",
+                "S256",
+                json.dumps(["scope:b"]),
+                "https://auth.example.com/authorize",
+                "https://auth.example.com/token",
+                "client-456",
+                "https://app.example.com/callback",
+                valid_at.isoformat(),
+                (now - timedelta(minutes=2)).isoformat(),
+            ),
+        )
+        conn.commit()
+
+    removed = store.gc_expired(now=now)
+
+    assert removed["oauth_states"] == 1
+    with store._connect() as conn:
+        rows = conn.execute("SELECT state FROM oauth_states").fetchall()
+    remaining_states = {row["state"] for row in rows}
+    assert "state-expired" not in remaining_states
+    assert "state-valid" in remaining_states
 
 
 def test_auth_session_roundtrip(store: StateStore) -> None:

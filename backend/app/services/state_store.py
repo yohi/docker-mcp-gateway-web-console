@@ -75,6 +75,21 @@ class StateStore:
                     error_message TEXT,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS oauth_states (
+                    state TEXT PRIMARY KEY,
+                    server_id TEXT NOT NULL,
+                    code_challenge TEXT,
+                    code_challenge_method TEXT,
+                    scopes TEXT NOT NULL,
+                    authorize_url TEXT NOT NULL,
+                    token_url TEXT NOT NULL,
+                    client_id TEXT NOT NULL,
+                    redirect_uri TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_oauth_states_expires_at
+                    ON oauth_states(expires_at);
                 CREATE TABLE IF NOT EXISTS sessions (
                     session_id TEXT PRIMARY KEY,
                     server_id TEXT NOT NULL,
@@ -663,6 +678,12 @@ class StateStore:
             )
             auth_session_deleted = cur.rowcount
 
+            cur.execute(
+                "DELETE FROM oauth_states WHERE expires_at < ?",
+                (_to_iso(now),),
+            )
+            oauth_state_deleted = cur.rowcount
+
             conn.commit()
 
         return {
@@ -670,6 +691,7 @@ class StateStore:
             "sessions": session_deleted,
             "jobs": job_deleted,
             "auth_sessions": auth_session_deleted,
+            "oauth_states": oauth_state_deleted,
         }
 
     def _sanitize_metadata(self, metadata: Dict[str, object]) -> Dict[str, object]:
