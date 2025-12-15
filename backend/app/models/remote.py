@@ -37,6 +37,20 @@ class RemoteServer(BaseModel):
     created_at: datetime = Field(default_factory=_now_utc)
 
 
+class RemoteServerCreateRequest(BaseModel):
+    """リモート MCP サーバー登録リクエスト。"""
+
+    catalog_item_id: str
+    name: str
+    endpoint: str
+
+
+class RemoteServerEnableRequest(BaseModel):
+    """サーバー有効化リクエスト。"""
+
+    requires_auth: bool = True
+
+
 class RemoteConnectResponse(BaseModel):
     """接続 API のレスポンスモデル。"""
 

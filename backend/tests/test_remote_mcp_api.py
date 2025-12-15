@@ -198,3 +198,105 @@ def test_test_endpoint_rejects_disallowed_endpoint(remote_service, monkeypatch) 
     assert response.status_code == 400
     body = response.json()
     assert body["error_code"] == "endpoint_not_allowed"
+
+
+def test_register_remote_server_returns_record(remote_service, monkeypatch) -> None:
+    """POST /api/remote-servers が登録済みサーバーを返す。"""
+    _ = remote_service  # Fixture side effects required
+
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+
+    response = client.post(
+        "/api/remote-servers",
+        json={
+            "catalog_item_id": "cat-1",
+            "name": "Remote API",
+            "endpoint": "https://api.example.com/sse",
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["catalog_item_id"] == "cat-1"
+    assert data["endpoint"] == "https://api.example.com/sse"
+    assert RemoteServerStatus(data["status"]) == RemoteServerStatus.REGISTERED
+
+    server_id = data["server_id"]
+    get_response = client.get(f"/api/remote-servers/{server_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["server_id"] == server_id
+
+
+def test_list_remote_servers_returns_all(remote_service, monkeypatch) -> None:
+    """GET /api/remote-servers が登録済みの全サーバーを返す。"""
+
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    first = _run(
+        remote_service.register_server(
+            catalog_item_id="cat-1",
+            name="First",
+            endpoint="https://api.example.com/sse",
+        )
+    )
+    second = _run(
+        remote_service.register_server(
+            catalog_item_id="cat-2",
+            name="Second",
+            endpoint="https://api.example.com/sse2",
+        )
+    )
+
+    response = client.get("/api/remote-servers")
+
+    assert response.status_code == 200
+    items = response.json()
+    server_ids = {item["server_id"] for item in items}
+    assert server_ids == {first.server_id, second.server_id}
+
+
+def test_enable_and_disable_remote_server(remote_service, monkeypatch) -> None:
+    """/enable と /disable がステータスを更新する。"""
+
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    server = _run(
+        remote_service.register_server(
+            catalog_item_id="cat-3",
+            name="EnableTest",
+            endpoint="https://api.example.com/sse3",
+        )
+    )
+
+    enable_resp = client.post(
+        f"/api/remote-servers/{server.server_id}/enable", json={"requires_auth": True}
+    )
+    assert enable_resp.status_code == 200
+    assert (
+        RemoteServerStatus(enable_resp.json()["status"])
+        == RemoteServerStatus.AUTH_REQUIRED
+    )
+
+    disable_resp = client.post(f"/api/remote-servers/{server.server_id}/disable")
+    assert disable_resp.status_code == 200
+    assert (
+        RemoteServerStatus(disable_resp.json()["status"])
+        == RemoteServerStatus.DISABLED
+    )
+
+
+def test_delete_remote_server_removes_record(remote_service, monkeypatch) -> None:
+    """DELETE /api/remote-servers/{id} がレコードを削除する。"""
+
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    server = _run(
+        remote_service.register_server(
+            catalog_item_id="cat-del",
+            name="DeleteTest",
+            endpoint="https://api.example.com/sse-del",
+        )
+    )
+
+    delete_resp = client.delete(f"/api/remote-servers/{server.server_id}")
+    assert delete_resp.status_code == 204
+
+    get_resp = client.get(f"/api/remote-servers/{server.server_id}")
+    assert get_resp.status_code == 404
