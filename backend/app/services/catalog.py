@@ -129,9 +129,14 @@ class CatalogService:
         HTTPS を必須とし、ALLOW_INSECURE_ENDPOINT=true の場合のみ
         localhost/127.0.0.1 への HTTP を許可する。
         """
+        # Validate endpoint is a non-empty string
+        if not isinstance(endpoint, str) or not endpoint.strip():
+            return False
+
         try:
             parsed = urlparse(endpoint)
-        except Exception:
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Failed to parse endpoint URL: {e}")
             return False
 
         scheme = (parsed.scheme or "").lower()
