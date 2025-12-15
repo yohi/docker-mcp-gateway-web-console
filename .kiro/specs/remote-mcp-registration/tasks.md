@@ -90,7 +90,7 @@
   - 不許可エンドポイントへの接続試行は HTTP 400 を返却し、監査ログに記録
   - _Requirements: 6.1, 6.5, 8.3, 8.4, 9.3_
 
-- [ ] 4.6 (P) Remote Servers API エンドポイントの実装
+- [x] 4.6 (P) Remote Servers API エンドポイントの実装
   - GET /api/remote-servers: 登録済みサーバー一覧を返却
   - POST /api/remote-servers: catalog_item_id を受け取り、サーバーを登録
   - GET /api/remote-servers/{id}: サーバー詳細を返却

@@ -1,13 +1,20 @@
-"""リモート MCP サーバーの接続・接続テスト API。"""
+"""リモート MCP サーバーの CRUD・接続 API。"""
 
 import logging
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import JSONResponse
 
-from ..models.remote import RemoteConnectResponse, RemoteTestResponse
+from ..models.remote import (
+    RemoteConnectResponse,
+    RemoteServer,
+    RemoteServerCreateRequest,
+    RemoteServerEnableRequest,
+    RemoteTestResponse,
+)
 from ..services.oauth import CredentialNotFoundError, RemoteServerNotFoundError
 from ..services.remote_mcp import (
+    DuplicateRemoteServerError,
     EndpointNotAllowedError,
     RemoteMcpError,
     RemoteMcpService,
@@ -37,6 +44,180 @@ def _error_response(
             "correlation_id": correlation_id,
         },
     )
+
+
+@router.get("", response_model=list[RemoteServer])
+async def list_remote_servers() -> list[RemoteServer]:
+    """登録済みリモートサーバーを一覧する。"""
+    return await remote_service.list_servers()
+
+
+@router.post("", response_model=RemoteServer, status_code=status.HTTP_201_CREATED)
+async def register_remote_server(
+    body: RemoteServerCreateRequest, request: Request
+) -> RemoteServer | JSONResponse:
+    """カタログ項目からリモートサーバーを登録する。"""
+    correlation_id = _get_correlation_id(request)
+    try:
+        return await remote_service.register_server(
+            catalog_item_id=body.catalog_item_id,
+            name=body.name,
+            endpoint=body.endpoint,
+            correlation_id=correlation_id,
+        )
+    except EndpointNotAllowedError as exc:
+        return _error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="endpoint_not_allowed",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+    except DuplicateRemoteServerError as exc:
+        return _error_response(
+            status_code=status.HTTP_409_CONFLICT,
+            error_code="remote_server_duplicate",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+    except RemoteMcpError as exc:
+        return _error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="remote_server_error",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("予期せぬエラーでサーバー登録に失敗しました")
+        return _error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_code="internal_error",
+            message="リモートサーバーの登録に失敗しました。",
+            correlation_id=correlation_id,
+        )
+
+
+@router.get("/{server_id}", response_model=RemoteServer)
+async def get_remote_server(
+    server_id: str, request: Request
+) -> RemoteServer | JSONResponse:
+    """server_id でリモートサーバーを取得する。"""
+    correlation_id = _get_correlation_id(request)
+    server = await remote_service.get_server(server_id)
+    if server is None:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_code="remote_server_not_found",
+            message="指定されたリモートサーバーが見つかりません。",
+            correlation_id=correlation_id,
+        )
+    return server
+
+
+@router.post("/{server_id}/enable", response_model=RemoteServer)
+async def enable_remote_server(
+    server_id: str, body: RemoteServerEnableRequest, request: Request
+) -> RemoteServer | JSONResponse:
+    """サーバーを有効化する。"""
+    correlation_id = _get_correlation_id(request)
+    try:
+        return await remote_service.enable_server(
+            server_id,
+            requires_auth=body.requires_auth,
+            correlation_id=correlation_id,
+        )
+    except RemoteServerNotFoundError as exc:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_code="remote_server_not_found",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+    except RemoteMcpError as exc:
+        return _error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="remote_server_error",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("予期せぬエラーで有効化に失敗しました")
+        return _error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_code="internal_error",
+            message="リモートサーバーの有効化に失敗しました。",
+            correlation_id=correlation_id,
+        )
+
+
+@router.post("/{server_id}/disable", response_model=RemoteServer)
+async def disable_remote_server(
+    server_id: str, request: Request
+) -> RemoteServer | JSONResponse:
+    """サーバーを無効化する。"""
+    correlation_id = _get_correlation_id(request)
+    try:
+        return await remote_service.disable_server(
+            server_id, correlation_id=correlation_id
+        )
+    except RemoteServerNotFoundError as exc:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_code="remote_server_not_found",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+    except RemoteMcpError as exc:
+        return _error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="remote_server_error",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("予期せぬエラーで無効化に失敗しました")
+        return _error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_code="internal_error",
+            message="リモートサーバーの無効化に失敗しました。",
+            correlation_id=correlation_id,
+        )
+
+
+@router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_remote_server(
+    server_id: str, request: Request, delete_credentials: bool = False
+) -> Response | JSONResponse:
+    """サーバーを削除する。必要に応じて資格情報も削除する。"""
+    correlation_id = _get_correlation_id(request)
+    try:
+        await remote_service.delete_server(
+            server_id,
+            delete_credentials=delete_credentials,
+            correlation_id=correlation_id,
+        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except RemoteServerNotFoundError as exc:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_code="remote_server_not_found",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+    except RemoteMcpError as exc:
+        return _error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="remote_server_error",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("予期せぬエラーで削除に失敗しました")
+        return _error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_code="internal_error",
+            message="リモートサーバーの削除に失敗しました。",
+            correlation_id=correlation_id,
+        )
 
 
 @router.post("/{server_id}/connect", response_model=RemoteConnectResponse)
