@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     catalog_default_url: str = "https://api.github.com/repos/docker/mcp-registry/contents/servers"
     # GitHub API のレート制限回避用トークン(任意)
     github_token: str = ""
+    # 開発用途でのみ HTTP/localhost を許可するフラグ
+    allow_insecure_endpoint: bool = Field(default=False, validation_alias="ALLOW_INSECURE_ENDPOINT")
 
     # CORS Configuration
     cors_origins: str = "http://localhost:3000"

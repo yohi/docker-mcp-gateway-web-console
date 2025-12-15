@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import contextvars
+from urllib.parse import urlparse
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -78,14 +79,75 @@ class CatalogService:
         self._warning_var.set(f"{current}\n{msg}")
 
     def _filter_items_missing_image(self, items: List[CatalogItem]) -> List[CatalogItem]:
-        """docker_image が未定義(空/空白)の項目を除外し、必要に応じて警告を設定する。"""
-        filtered = [item for item in items if (item.docker_image or "").strip()]
-        removed = len(items) - len(filtered)
-        if removed > 0:
+        """
+        docker_image が未定義、または無効なリモートエンドポイントを持つ項目を除外し、必要に応じて警告を設定する。
+
+        remote_endpoint が有効な場合は docker_image が無くても残す。
+        """
+        filtered: List[CatalogItem] = []
+        removed_missing = 0
+        removed_invalid_remote = 0
+        allow_insecure = getattr(settings, "allow_insecure_endpoint", False)
+
+        for item in items:
+            docker_image = (item.docker_image or "").strip()
+            remote_endpoint = item.remote_endpoint
+
+            if docker_image:
+                filtered.append(item)
+            else:
+                remote_valid = False
+                if remote_endpoint:
+                    remote_valid = self._is_valid_remote_endpoint(
+                        str(remote_endpoint), allow_insecure=allow_insecure
+                    )
+                    if remote_valid:
+                        filtered.append(item)
+                    else:
+                        removed_invalid_remote += 1
+                else:
+                    removed_missing += 1
+
+        if removed_missing > 0:
             self._append_warning(
-                f"Dockerイメージが未定義のカタログ項目 {removed} 件を表示から除外しました。"
+                f"Dockerイメージが未定義のカタログ項目 {removed_missing} 件を表示から除外しました。"
             )
+        if removed_invalid_remote > 0:
+            self._append_warning(
+                "無効なリモートエンドポイントのカタログ項目 "
+                f"{removed_invalid_remote} 件を表示から除外しました。"
+                "HTTPS を必須とし、開発用途で http を利用する場合は "
+                "ALLOW_INSECURE_ENDPOINT=true を設定の上、localhost/127.0.0.1 のみに限定してください。"
+            )
+
         return filtered
+
+    def _is_valid_remote_endpoint(self, endpoint: str, allow_insecure: bool) -> bool:
+        """
+        リモートエンドポイントのスキーム・ホストを検証する。
+
+        HTTPS を必須とし、ALLOW_INSECURE_ENDPOINT=true の場合のみ
+        localhost/127.0.0.1 への HTTP を許可する。
+        """
+        try:
+            parsed = urlparse(endpoint)
+        except Exception:
+            return False
+
+        scheme = (parsed.scheme or "").lower()
+        host = (parsed.hostname or "").lower()
+        if not scheme or not host:
+            return False
+
+        if scheme == "https":
+            return True
+
+        if scheme == "http":
+            if not allow_insecure:
+                return False
+            return host in {"localhost", "127.0.0.1"}
+
+        return False
 
     @staticmethod
     def _is_secret_env(key: str) -> bool:
@@ -185,10 +247,14 @@ class CatalogService:
                     source_url,
                     headers=self._github_headers(source_url),
                 )
-                response.raise_for_status()
+                status_result = response.raise_for_status()
+                if asyncio.iscoroutine(status_result):
+                    await status_result
 
                 # Parse JSON response
                 data = response.json()
+                if asyncio.iscoroutine(data):
+                    data = await data
 
                 # Validate and parse catalog structure
                 if isinstance(data, list):
