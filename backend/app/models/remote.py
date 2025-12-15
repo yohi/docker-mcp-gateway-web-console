@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -35,3 +35,20 @@ class RemoteServer(BaseModel):
     last_connected_at: Optional[datetime] = None
     error_message: Optional[str] = None
     created_at: datetime = Field(default_factory=_now_utc)
+
+
+class RemoteConnectResponse(BaseModel):
+    """接続 API のレスポンスモデル。"""
+
+    server_id: str
+    capabilities: Any
+
+
+class RemoteTestResponse(BaseModel):
+    """接続テスト API のレスポンスモデル。"""
+
+    server_id: str
+    reachable: bool
+    authenticated: bool
+    capabilities: Any | None = None
+    error: Optional[str] = None

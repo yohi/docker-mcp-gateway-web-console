@@ -84,7 +84,7 @@
   - 上限超過時は HTTP 429 (Too Many Requests) を返却
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
-- [ ] 4.5 接続・接続テスト API の実装
+- [x] 4.5 接続・接続テスト API の実装
   - POST /api/remote-servers/{id}/connect: credential 復号後、SSE 接続を確立し、capabilities を返却
   - POST /api/remote-servers/{id}/test: 到達性と認証状態を確認し、結果を返却
   - 不許可エンドポイントへの接続試行は HTTP 400 を返却し、監査ログに記録

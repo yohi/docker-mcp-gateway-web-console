@@ -15,6 +15,7 @@ from app.api import (
     github_token,
     inspector,
     oauth,
+    remote_mcp,
     sessions,
 )
 from app.config import settings
@@ -68,6 +69,7 @@ app.include_router(oauth.public_router)
 app.include_router(sessions.router)
 app.include_router(gateways.router)
 app.include_router(github_token.router)
+app.include_router(remote_mcp.router)
 
 
 @app.get("/")
