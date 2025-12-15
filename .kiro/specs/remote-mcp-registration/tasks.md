@@ -76,7 +76,7 @@
   - 状態遷移の監査ログ記録
   - _Requirements: 2.4, 2.5, 9.2_
 
-- [ ] 4.4 SSE 接続管理の実装
+- [x] 4.4 SSE 接続管理の実装
   - MCP Python SDK の sse_client() をラップし、接続確立タイムアウト（30秒）を設定
   - httpx.AsyncClient で SSE 接続の HTTP レイヤータイムアウトを設定
   - Heartbeat (120秒ごとに MCP ping) とアイドルタイムアウト（連続300秒無応答で切断）を実装

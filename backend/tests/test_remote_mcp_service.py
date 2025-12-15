@@ -1,5 +1,6 @@
 """RemoteMcpService の基盤機能テスト。"""
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -11,16 +12,64 @@ from app.services.remote_mcp import (
     DuplicateRemoteServerError,
     EndpointNotAllowedError,
     RemoteMcpService,
+    TooManyConnectionsError,
 )
 from app.services.state_store import StateStore
 
 
-def _make_service(tmp_path) -> RemoteMcpService:
+class _DummySession:
+    """テスト用 SSE セッションのスタブ。"""
+
+    def __init__(self, initialize_result: dict | None = None, ping_delay: float = 0) -> None:
+        self.initialize_called = 0
+        self.ping_called = 0
+        self._initialize_result = initialize_result or {"capabilities": []}
+        self._ping_delay = ping_delay
+
+    async def initialize(self) -> dict:
+        self.initialize_called += 1
+        return self._initialize_result
+
+    async def ping(self) -> None:
+        self.ping_called += 1
+        if self._ping_delay:
+            await asyncio.sleep(self._ping_delay)
+
+
+class _DummyTransport:
+    """テスト用 SSE トランスポートのスタブ。"""
+
+    def __init__(self, session: _DummySession, on_connect=None) -> None:
+        self._session = session
+        self._on_connect = on_connect
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def connect(self):
+        if self._on_connect:
+            await self._on_connect()
+        return self._session
+
+
+def _make_transport_factory(session: _DummySession, on_connect=None):
+    """sse_client_factory 用の簡易ファクトリ。"""
+
+    def _factory(endpoint: str, headers: dict | None = None, client=None):
+        return _DummyTransport(session, on_connect=on_connect)
+
+    return _factory
+
+
+def _make_service(tmp_path, **kwargs) -> RemoteMcpService:
     """テスト用の RemoteMcpService を作成する。"""
     db_path = tmp_path / "state.db"
     store = StateStore(str(db_path))
     store.init_schema()
-    return RemoteMcpService(state_store=store)
+    return RemoteMcpService(state_store=store, **kwargs)
 
 
 @pytest.mark.asyncio
@@ -378,3 +427,94 @@ async def test_delete_server_removes_credentials_when_requested(tmp_path, monkey
 
     logs = service.state_store.get_recent_audit_logs()
     assert any(log.event_type == "server_deleted" for log in logs)
+
+
+@pytest.mark.asyncio
+async def test_connect_uses_semaphore_and_rejects_when_busy(tmp_path, monkeypatch) -> None:
+    """同時接続上限を超えると TooManyConnectionsError を返す。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    service = _make_service(tmp_path, max_connections=1)
+
+    server = await service.register_server(
+        catalog_item_id="cat-conc",
+        name="Conc",
+        endpoint="https://api.example.com/sse",
+    )
+    expires = datetime.now(timezone.utc) + timedelta(minutes=5)
+    cred = CredentialRecord(
+        credential_key="cred-conc",
+        token_ref={"type": "plaintext", "value": "token"},
+        scopes=["sse"],
+        expires_at=expires,
+        server_id=server.server_id,
+        oauth_token_url="https://auth.example.com/token",
+        oauth_client_id="client",
+        created_by="tester",
+    )
+    service.state_store.save_credential(cred)
+    await service.set_status(
+        server_id=server.server_id,
+        status=RemoteServerStatus.AUTHENTICATED,
+        credential_key=cred.credential_key,
+    )
+
+    first_session = _DummySession()
+    start_event = asyncio.Event()
+    release_event = asyncio.Event()
+
+    async def _on_connect():
+        start_event.set()
+        await release_event.wait()
+
+    factory = _make_transport_factory(first_session, on_connect=_on_connect)
+    service._sse_client_factory = factory  # テスト用に差し替え
+
+    # 1つ目の接続でセマフォを占有
+    first_task = asyncio.create_task(service.connect(server.server_id))
+    await start_event.wait()
+
+    # 2つ目は TooManyConnectionsError
+    with pytest.raises(TooManyConnectionsError):
+        await service.connect(server.server_id)
+
+    # 解放して完了
+    release_event.set()
+    result = await first_task
+    assert result["capabilities"] == []
+
+
+@pytest.mark.asyncio
+async def test_connect_rejects_when_endpoint_not_allowed(tmp_path, monkeypatch) -> None:
+    """接続時も許可リスト検証が行われる。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    service = _make_service(tmp_path)
+
+    server = await service.register_server(
+        catalog_item_id="cat-allow",
+        name="Allow",
+        endpoint="https://api.example.com/sse",
+    )
+    expires = datetime.now(timezone.utc) + timedelta(minutes=5)
+    cred = CredentialRecord(
+        credential_key="cred-allow",
+        token_ref={"type": "plaintext", "value": "token"},
+        scopes=["sse"],
+        expires_at=expires,
+        server_id=server.server_id,
+        oauth_token_url="https://auth.example.com/token",
+        oauth_client_id="client",
+        created_by="tester",
+    )
+    service.state_store.save_credential(cred)
+    await service.set_status(
+        server_id=server.server_id,
+        status=RemoteServerStatus.AUTHENTICATED,
+        credential_key=cred.credential_key,
+    )
+
+    # 接続時に allowlist を空にして拒否させる
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "")
+    service._sse_client_factory = _make_transport_factory(_DummySession())
+
+    with pytest.raises(EndpointNotAllowedError):
+        await service.connect(server.server_id)

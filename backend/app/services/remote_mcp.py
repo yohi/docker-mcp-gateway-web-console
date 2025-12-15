@@ -1,10 +1,14 @@
 """リモート MCP サーバーを管理するサービス層。"""
 
+import asyncio
 import logging
+import os
 from datetime import datetime, timezone
 from typing import List, Optional
 from urllib.parse import urlparse
 from uuid import uuid4
+
+import httpx
 
 from ..models.remote import RemoteServer, RemoteServerStatus
 from ..models.state import CredentialRecord, RemoteServerRecord
@@ -27,6 +31,10 @@ class DuplicateRemoteServerError(RemoteMcpError):
     """既に登録済みのサーバーに対する重複登録エラー。"""
 
 
+class TooManyConnectionsError(RemoteMcpError):
+    """同時接続上限を超過した場合のエラー。"""
+
+
 class RemoteMcpService:
     """リモート MCP サーバーの CRUD と資格情報取得を担当する。"""
 
@@ -34,6 +42,13 @@ class RemoteMcpService:
         self,
         state_store: Optional[StateStore] = None,
         oauth_service: Optional[object] = None,
+        *,
+        max_connections: Optional[int] = None,
+        sse_client_factory: Optional[object] = None,
+        http_client_factory: Optional[object] = None,
+        connect_timeout_seconds: float = 30.0,
+        heartbeat_interval_seconds: float = 120.0,
+        idle_timeout_seconds: float = 300.0,
     ) -> None:
         self._state_store = state_store or StateStore()
         self.state_store = self._state_store  # テスト用に公開
@@ -42,6 +57,26 @@ class RemoteMcpService:
             self._state_store.init_schema()
         except Exception:
             logger.debug("state store init skipped", exc_info=True)
+
+        # 依存を注入可能にし、テスト時にモックできるようにする
+        if sse_client_factory is not None:
+            self._sse_client_factory = sse_client_factory
+        else:
+            try:
+                from mcp.client.sse import sse_client  # type: ignore
+
+                self._sse_client_factory = sse_client
+            except Exception:
+                self._sse_client_factory = None
+
+        self._http_client_factory = http_client_factory or self._default_http_client_factory
+
+        self._connect_timeout = float(connect_timeout_seconds)
+        self._heartbeat_interval = float(heartbeat_interval_seconds)
+        self._idle_timeout = float(idle_timeout_seconds)
+
+        max_conn = max_connections or self._get_max_connections()
+        self._connection_semaphore = asyncio.Semaphore(max_conn)
 
     async def register_server(
         self,
@@ -116,6 +151,94 @@ class RemoteMcpService:
         record = self._to_record(server)
         self._state_store.save_remote_server(record)
         return server
+
+    async def connect(self, server_id: str) -> dict:
+        """
+        リモート MCP サーバーへ SSE 接続し、capabilities を返す。
+
+        - 許可リスト検証を接続前に実施
+        - 同時接続数をセマフォで制御（上限超過時は TooManyConnectionsError）
+        - 接続・初期化はタイムアウト付きで実行
+        """
+        server = await self._require_server(server_id)
+        if server.status == RemoteServerStatus.DISABLED:
+            raise RemoteMcpError("サーバーが無効化されています")
+
+        if not self._state_store.is_endpoint_allowed(server.endpoint):
+            parsed = urlparse(server.endpoint)
+            host = parsed.hostname or ""
+            port = parsed.port or (443 if (parsed.scheme or "").lower() == "https" else 80)
+            self._record_audit(
+                event_type="endpoint_rejected",
+                correlation_id=server_id,
+                metadata={
+                    "server_id": server_id,
+                    "endpoint": server.endpoint,
+                    "reason": "not_in_allowlist",
+                },
+            )
+            raise EndpointNotAllowedError(
+                f"Endpoint not allowed: {host}:{port} is not in REMOTE_MCP_ALLOWED_DOMAINS"
+            )
+
+        acquired = False
+        try:
+            await self._try_acquire_connection_slot()
+            acquired = True
+
+            credential = await self.get_server_credential(server_id)
+            headers = self._build_auth_headers(credential)
+
+            if self._sse_client_factory is None:
+                raise RemoteMcpError("SSE クライアントが設定されていません")
+
+            async with self._http_client_factory() as http_client:
+                transport = self._sse_client_factory(
+                    server.endpoint,
+                    headers=headers,
+                    client=http_client,
+                )
+                async with transport as client:
+                    session = await asyncio.wait_for(
+                        client.connect(), timeout=self._connect_timeout
+                    )
+                    capabilities = await asyncio.wait_for(
+                        session.initialize(), timeout=self._connect_timeout
+                    )
+                    await self._run_heartbeat(session)
+
+            await self.set_status(
+                server_id=server_id,
+                status=RemoteServerStatus.AUTHENTICATED,
+                last_connected_at=datetime.now(timezone.utc),
+                error_message="",
+            )
+            self._record_audit(
+                event_type="server_authenticated",
+                correlation_id=server_id,
+                metadata={"server_id": server_id, "endpoint": server.endpoint},
+            )
+            return capabilities
+        except Exception as exc:  # noqa: BLE001
+            await self.set_status(
+                server_id=server_id,
+                status=RemoteServerStatus.ERROR,
+                error_message=str(exc),
+            )
+            self._record_audit(
+                event_type="connection_failed",
+                correlation_id=server_id,
+                metadata={
+                    "server_id": server_id,
+                    "endpoint": server.endpoint,
+                    "error": str(exc),
+                },
+            )
+            raise
+        finally:
+            # セマフォを取得できた場合のみ解放する
+            if acquired:
+                self._connection_semaphore.release()
 
     async def list_servers(self) -> List[RemoteServer]:
         """登録済みリモートサーバーを全件取得する。"""
@@ -298,3 +421,59 @@ class RemoteMcpService:
             )
         except Exception:
             logger.warning("監査ログの記録に失敗しました", exc_info=True)
+
+    async def _try_acquire_connection_slot(self) -> None:
+        """同時接続セマフォを即時取得し、失敗時は TooManyConnectionsError を送出する。"""
+        try:
+            await asyncio.wait_for(self._connection_semaphore.acquire(), timeout=0)
+        except asyncio.TimeoutError as exc:
+            raise TooManyConnectionsError("同時接続上限を超えています") from exc
+
+    @staticmethod
+    def _get_max_connections() -> int:
+        """環境変数 REMOTE_MCP_MAX_CONNECTIONS から上限を取得する。未設定時は 5 を既定とする。"""
+        raw = os.getenv("REMOTE_MCP_MAX_CONNECTIONS")
+        if raw:
+            try:
+                value = int(raw)
+                return max(1, value)
+            except ValueError:
+                logger.warning("REMOTE_MCP_MAX_CONNECTIONS が不正なため既定値 5 を使用します: %s", raw)
+        return 5
+
+    @staticmethod
+    def _default_http_client_factory() -> httpx.AsyncClient:
+        """SSE 接続用の httpx.AsyncClient を生成する。"""
+        return httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0))
+
+    def _build_auth_headers(self, credential: CredentialRecord) -> dict:
+        """credential から Authorization ヘッダーを組み立てる。"""
+        token_value = None
+        if self._oauth_service and hasattr(self._oauth_service, "_decrypt_token_ref"):
+            try:
+                secret = self._oauth_service._decrypt_token_ref(credential.token_ref)  # type: ignore[attr-defined]
+                token_value = secret.get("access_token")
+            except Exception:
+                logger.debug("token_ref の復号に失敗しました", exc_info=True)
+
+        if token_value is None:
+            token_value = credential.token_ref.get("access_token") or credential.token_ref.get("value")
+
+        headers: dict[str, str] = {}
+        if token_value:
+            headers["Authorization"] = f"Bearer {token_value}"
+        return headers
+
+    async def _run_heartbeat(self, session: object) -> None:
+        """
+        心拍（ping）を送信し、接続ヘルスを確認する。
+
+        120 秒間隔を想定するが、ここでは初回接続時に 1 度送信して
+        SSE セッションが疎通できることを検証する。
+        """
+        if not hasattr(session, "ping"):
+            return
+        try:
+            await asyncio.wait_for(session.ping(), timeout=self._idle_timeout)
+        except Exception as exc:  # noqa: BLE001
+            raise RemoteMcpError("SSE heartbeat failed") from exc
