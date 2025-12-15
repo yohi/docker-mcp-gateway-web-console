@@ -238,6 +238,108 @@ async def test_register_server_rejects_duplicate(tmp_path, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_enable_server_sets_auth_required_and_records_audit(tmp_path, monkeypatch) -> None:
+    """有効化時に認証が未設定なら auth_required に遷移し監査される。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    service = _make_service(tmp_path)
+
+    server = await service.register_server(
+        catalog_item_id="cat-enable",
+        name="EnableMe",
+        endpoint="https://api.example.com/sse",
+    )
+
+    updated = await service.enable_server(server.server_id, correlation_id="corr-enable")
+
+    assert updated.status == RemoteServerStatus.AUTH_REQUIRED
+    persisted = await service.get_server(server.server_id)
+    assert persisted is not None
+    assert persisted.status == RemoteServerStatus.AUTH_REQUIRED
+
+    logs = service.state_store.get_recent_audit_logs()
+    assert any(
+        log.event_type == "server_enabled"
+        and log.metadata.get("server_id") == server.server_id
+        and log.metadata.get("to_status") == RemoteServerStatus.AUTH_REQUIRED.value
+        for log in logs
+    )
+
+
+@pytest.mark.asyncio
+async def test_enable_server_uses_credentials_when_present(tmp_path, monkeypatch) -> None:
+    """credential がある場合は authenticated に遷移し監査される。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    service = _make_service(tmp_path)
+
+    server = await service.register_server(
+        catalog_item_id="cat-enable-cred",
+        name="EnableWithCred",
+        endpoint="https://api.example.com/sse",
+    )
+
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    credential = CredentialRecord(
+        credential_key="cred-enable",
+        token_ref={"type": "plaintext", "value": "secret"},
+        scopes=["scope"],
+        expires_at=expires,
+        server_id=server.server_id,
+        oauth_token_url="https://auth.example.com/token",
+        oauth_client_id="client-id",
+        created_by="tester",
+    )
+    service.state_store.save_credential(credential)
+    await service.set_status(
+        server_id=server.server_id,
+        status=RemoteServerStatus.REGISTERED,
+        credential_key=credential.credential_key,
+    )
+
+    updated = await service.enable_server(server.server_id)
+
+    assert updated.status == RemoteServerStatus.AUTHENTICATED
+    persisted = await service.get_server(server.server_id)
+    assert persisted is not None
+    assert persisted.status == RemoteServerStatus.AUTHENTICATED
+
+    logs = service.state_store.get_recent_audit_logs()
+    assert any(
+        log.event_type == "server_enabled"
+        and log.metadata.get("server_id") == server.server_id
+        and log.metadata.get("to_status") == RemoteServerStatus.AUTHENTICATED.value
+        for log in logs
+    )
+
+
+@pytest.mark.asyncio
+async def test_disable_server_sets_disabled_and_records_audit(tmp_path, monkeypatch) -> None:
+    """無効化時に disabled へ遷移し監査される。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    service = _make_service(tmp_path)
+
+    server = await service.register_server(
+        catalog_item_id="cat-disable",
+        name="DisableMe",
+        endpoint="https://api.example.com/sse",
+    )
+
+    updated = await service.disable_server(server.server_id, correlation_id="corr-disable")
+
+    assert updated.status == RemoteServerStatus.DISABLED
+    persisted = await service.get_server(server.server_id)
+    assert persisted is not None
+    assert persisted.status == RemoteServerStatus.DISABLED
+
+    logs = service.state_store.get_recent_audit_logs()
+    assert any(
+        log.event_type == "server_disabled"
+        and log.metadata.get("server_id") == server.server_id
+        and log.metadata.get("to_status") == RemoteServerStatus.DISABLED.value
+        for log in logs
+    )
+
+
+@pytest.mark.asyncio
 async def test_delete_server_removes_credentials_when_requested(tmp_path, monkeypatch) -> None:
     """delete_credentials=True で紐づく資格情報も削除されること。"""
     monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")

@@ -70,7 +70,7 @@
   - delete_server: delete_credentials フラグに応じて credentials テーブルから認証情報を削除
   - _Requirements: 2.1, 2.3, 2.5, 2.6, 8.3, 8.4, 9.1, 9.2_
 
-- [ ] 4.3 (P) サーバー有効化・無効化ロジックの実装
+- [x] 4.3 (P) サーバー有効化・無効化ロジックの実装
   - enable_server: 認証が必要な場合は status=auth_required に設定
   - disable_server: status=disabled に更新し、ランタイム統合を停止
   - 状態遷移の監査ログ記録
