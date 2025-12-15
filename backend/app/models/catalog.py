@@ -5,6 +5,15 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 
+class OAuthConfig(BaseModel):
+    """OAuth configuration for remote MCP servers."""
+    client_id: str = Field(..., description="OAuth client ID")
+    scopes: List[str] = Field(..., description="List of OAuth scopes")
+    authorize_url: Optional[str] = Field(default=None, description="OAuth authorization endpoint URL")
+    token_url: Optional[str] = Field(default=None, description="OAuth token endpoint URL")
+    redirect_uri: Optional[str] = Field(default=None, description="OAuth redirect URI")
+
+
 class CatalogItem(BaseModel):
     """Model for a single MCP server in the catalog."""
     id: str = Field(..., description="Unique identifier for the catalog item")
@@ -57,26 +66,33 @@ class CatalogItem(BaseModel):
         default=None,
         description="OAuth redirect_uri (server-specific override)",
     )
-    oauth_config: Optional[dict] = Field(
+    oauth_config: Optional[OAuthConfig] = Field(
         default=None,
         description="OAuth configuration payload for remote servers.",
     )
 
     @model_validator(mode="after")
     def _derive_remote_flags(self) -> "CatalogItem":
-        """Derive server_type and is_remote based on available endpoints."""
+        """Derive server_type and is_remote based on available endpoints.
+
+        If server_type is explicitly provided, it will be preserved.
+        Otherwise, it will be derived from docker_image or remote_endpoint.
+        """
+        # Check if server_type was explicitly provided
+        explicit_server_type = self.server_type is not None
+
         has_docker = bool((self.docker_image or "").strip())
         has_remote = self.remote_endpoint is not None
 
-        if has_docker:
-            self.server_type = "docker"
-            self.is_remote = False
-        elif has_remote:
-            self.server_type = "remote"
-            self.is_remote = True
-        else:
-            # Neither docker_image nor remote_endpoint provided; keep defaults
-            self.is_remote = False
+        # Only derive server_type if it wasn't explicitly provided
+        if not explicit_server_type:
+            if has_docker:
+                self.server_type = "docker"
+            elif has_remote:
+                self.server_type = "remote"
+
+        # Set is_remote based on the final server_type
+        self.is_remote = self.server_type == "remote"
 
         return self
 

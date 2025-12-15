@@ -11,9 +11,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 import yaml
+from pydantic import ValidationError
 
 from ..config import settings
-from ..models.catalog import Catalog, CatalogItem
+from ..models.catalog import Catalog, CatalogItem, OAuthConfig
 from ..schemas.catalog import RegistryItem
 from .github_token import GitHubTokenError, GitHubTokenService
 
@@ -562,7 +563,20 @@ class CatalogService:
         description = item.get("description") or ""
         remote_endpoint = item.get("remote_endpoint")
         server_type = item.get("server_type")
-        oauth_config = item.get("oauth_config")
+
+        # Parse and validate oauth_config if present
+        oauth_config: Optional[OAuthConfig] = None
+        oauth_config_dict = item.get("oauth_config")
+        if oauth_config_dict is not None:
+            try:
+                oauth_config = OAuthConfig(**oauth_config_dict)
+            except ValidationError as e:
+                logger.warning(
+                    f"Invalid oauth_config for item '{slug}': {e}. "
+                    f"Expected fields: client_id (str), scopes (list[str]). "
+                    f"Received: {oauth_config_dict}"
+                )
+                oauth_config = None
 
         secrets = item.get("secrets", [])
         required_envs: List[str] = []
