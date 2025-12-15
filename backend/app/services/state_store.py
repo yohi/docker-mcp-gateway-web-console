@@ -79,6 +79,8 @@ class StateStore:
                     error_message TEXT,
                     created_at TEXT NOT NULL
                 );
+                CREATE INDEX IF NOT EXISTS idx_remote_servers_catalog_item_id
+                    ON remote_servers(catalog_item_id);
                 CREATE TABLE IF NOT EXISTS oauth_states (
                     state TEXT PRIMARY KEY,
                     server_id TEXT NOT NULL,
@@ -317,6 +319,33 @@ class StateStore:
             error_message=row["error_message"],
             created_at=_from_iso(row["created_at"]),
         )
+
+    def list_remote_servers(self) -> List[RemoteServerRecord]:
+        """リモートサーバーレコードを全件取得する。"""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM remote_servers").fetchall()
+        records: List[RemoteServerRecord] = []
+        for row in rows:
+            records.append(
+                RemoteServerRecord(
+                    server_id=row["server_id"],
+                    catalog_item_id=row["catalog_item_id"],
+                    name=row["name"],
+                    endpoint=row["endpoint"],
+                    status=row["status"],
+                    credential_key=row["credential_key"],
+                    last_connected_at=_from_iso(row["last_connected_at"]) if row["last_connected_at"] else None,
+                    error_message=row["error_message"],
+                    created_at=_from_iso(row["created_at"]),
+                )
+            )
+        return records
+
+    def delete_remote_server(self, server_id: str) -> None:
+        """リモートサーバーレコードを削除する。存在しない場合は何もしない。"""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM remote_servers WHERE server_id=?", (server_id,))
+            conn.commit()
 
     # OAuth state operations
     def save_oauth_state(self, record: OAuthStateRecord) -> None:

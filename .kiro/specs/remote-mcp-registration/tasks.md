@@ -57,7 +57,7 @@
   - _Requirements: 3.1, 3.8, 4.1, 4.2, 4.3, 4.4_
 
 ## 4. RemoteMcpService の実装
-- [ ] 4.1 RemoteMcpService サービス層の基盤実装
+- [x] 4.1 RemoteMcpService サービス層の基盤実装
   - RemoteServerStatus Enum と RemoteServerRecord モデルを定義
   - StateStore への依存注入と remote_servers テーブルへの CRUD 操作を実装
   - OAuthService への依存注入と credential 取得・検証ロジックを実装
