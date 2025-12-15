@@ -200,7 +200,7 @@ def test_test_endpoint_rejects_disallowed_endpoint(remote_service, monkeypatch) 
     assert body["error_code"] == "endpoint_not_allowed"
 
 
-def test_register_remote_server_returns_record(_remote_service, monkeypatch) -> None:  # noqa: ARG001
+def test_register_remote_server_returns_record(_remote_service, monkeypatch) -> None:
     """POST /api/remote-servers が登録済みサーバーを返す。"""
 
     monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
