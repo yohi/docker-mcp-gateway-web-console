@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient, Response
 
+from app.config import settings
 from app.models.catalog import CatalogItem
 from app.services.catalog import (
     CatalogError,
@@ -64,6 +65,87 @@ def sample_catalog_items(sample_catalog_data):
 
 class TestCatalogService:
     """Test suite for CatalogService."""
+
+    def test_filter_keeps_remote_endpoint_without_docker_image(self, catalog_service):
+        """remote_endpoint があれば docker_image が無くても除外しないこと。"""
+        remote_item = CatalogItem(
+            id="remote-1",
+            name="Remote Server",
+            description="Remote MCP SSE endpoint",
+            vendor="Acme",
+            category="remote",
+            docker_image="",
+            remote_endpoint="https://api.example.com/sse",
+        )
+
+        filtered = catalog_service._filter_items_missing_image([remote_item])
+
+        assert len(filtered) == 1
+        assert filtered[0].id == "remote-1"
+        assert filtered[0].is_remote is True
+        assert catalog_service.warning is None
+
+    def test_filter_rejects_http_remote_endpoint_when_insecure_disabled(
+        self, catalog_service
+    ):
+        """ALLOW_INSECURE_ENDPOINT=false では HTTP リモートを除外する。"""
+        http_remote = CatalogItem(
+            id="remote-http",
+            name="Remote HTTP",
+            description="Insecure remote endpoint",
+            vendor="Acme",
+            category="remote",
+            docker_image="",
+            remote_endpoint="http://api.example.com/sse",
+        )
+
+        filtered = catalog_service._filter_items_missing_image([http_remote])
+
+        assert filtered == []
+        assert catalog_service.warning is not None
+        assert "リモートエンドポイント" in catalog_service.warning
+        assert "HTTPS" in catalog_service.warning
+
+    def test_filter_allows_localhost_http_when_insecure_enabled(
+        self, catalog_service, monkeypatch
+    ):
+        """ALLOW_INSECURE_ENDPOINT=true なら localhost の HTTP を許可する。"""
+        monkeypatch.setattr(settings, "allow_insecure_endpoint", True, raising=False)
+        http_local_remote = CatalogItem(
+            id="remote-local",
+            name="Local HTTP",
+            description="Local dev remote endpoint",
+            vendor="Acme",
+            category="remote",
+            docker_image="",
+            remote_endpoint="http://localhost:9000/sse",
+        )
+
+        filtered = catalog_service._filter_items_missing_image([http_local_remote])
+
+        assert len(filtered) == 1
+        assert filtered[0].id == "remote-local"
+        assert str(filtered[0].remote_endpoint) == "http://localhost:9000/sse"
+
+    def test_filter_prefers_docker_image_over_invalid_remote_endpoint(
+        self, catalog_service
+    ):
+        """docker_image があれば remote_endpoint が無効でも除外しない。"""
+        docker_first = CatalogItem(
+            id="docker-with-remote",
+            name="Docker Preferred",
+            description="Has docker and remote endpoint",
+            vendor="Acme",
+            category="general",
+            docker_image="docker/image:latest",
+            remote_endpoint="http://api.example.com/sse",
+        )
+
+        filtered = catalog_service._filter_items_missing_image([docker_first])
+
+        assert len(filtered) == 1
+        assert filtered[0].docker_image == "docker/image:latest"
+        assert catalog_service.warning is None
 
     @pytest.mark.asyncio
     async def test_search_by_keyword(self, catalog_service, sample_catalog_items):

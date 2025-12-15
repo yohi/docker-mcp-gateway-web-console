@@ -27,7 +27,7 @@
   - docker_image が存在すれば優先、なければ remote_endpoint を使用する派生ロジックを実装
   - _Requirements: 1.1, 1.3_
 
-- [ ] 2.2 カタログフィルタロジックの更新
+- [x] 2.2 カタログフィルタロジックの更新
   - _filter_items_missing_image を「docker_image OR remote_endpoint が存在」に変更
   - remote_endpoint の URL 形式・スキーム検証を実施（不正な形式は除外し、警告ログに記録）
   - HTTPS 必須（ALLOW_INSECURE_ENDPOINT=true 時は localhost/http を一時許可）
