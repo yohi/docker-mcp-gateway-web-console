@@ -153,6 +153,72 @@ class RemoteMcpService:
             },
         )
 
+    async def enable_server(
+        self,
+        server_id: str,
+        *,
+        requires_auth: bool = True,
+        correlation_id: Optional[str] = None,
+    ) -> RemoteServer:
+        """サーバーを有効化し、必要に応じて認証待ち状態へ遷移させる。"""
+        server = await self._require_server(server_id)
+        previous_status = server.status
+
+        if server.credential_key:
+            new_status = RemoteServerStatus.AUTHENTICATED
+        elif requires_auth:
+            new_status = RemoteServerStatus.AUTH_REQUIRED
+        else:
+            new_status = RemoteServerStatus.REGISTERED
+
+        updated = await self.set_status(
+            server_id=server_id,
+            status=new_status,
+            error_message="",
+        )
+
+        self._record_audit(
+            event_type="server_enabled",
+            correlation_id=correlation_id or server_id,
+            metadata={
+                "server_id": server_id,
+                "from_status": previous_status.value,
+                "to_status": new_status.value,
+                "requires_auth": requires_auth,
+            },
+        )
+
+        return updated
+
+    async def disable_server(
+        self,
+        server_id: str,
+        *,
+        correlation_id: Optional[str] = None,
+    ) -> RemoteServer:
+        """サーバーを無効化し、ランタイム統合を停止状態へ遷移させる。"""
+        server = await self._require_server(server_id)
+        previous_status = server.status
+
+        updated = await self.set_status(
+            server_id=server_id,
+            status=RemoteServerStatus.DISABLED,
+            last_connected_at=None,
+            error_message="",
+        )
+
+        self._record_audit(
+            event_type="server_disabled",
+            correlation_id=correlation_id or server_id,
+            metadata={
+                "server_id": server_id,
+                "from_status": previous_status.value,
+                "to_status": RemoteServerStatus.DISABLED.value,
+            },
+        )
+
+        return updated
+
     async def set_status(
         self,
         server_id: str,
