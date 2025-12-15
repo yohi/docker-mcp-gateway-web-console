@@ -48,6 +48,7 @@ class OAuthInitiateResponse(BaseModel):
 class OAuthCallbackResponse(BaseModel):
     """認可コールバックレスポンス。"""
 
+    success: bool = Field(default=True, description="処理結果の成否")
     status: str = Field(..., description="認可状態")
     scope: List[str] = Field(default_factory=list, description="認可されたスコープ")
     expires_in: Optional[int] = Field(default=None, description="アクセストークン有効秒数")
@@ -57,6 +58,7 @@ class OAuthCallbackResponse(BaseModel):
     expires_at: Optional[datetime] = Field(
         default=None, description="アクセストークンの有効期限（UTC）"
     )
+    server_id: Optional[str] = Field(default=None, description="対象サーバーID")
 
 
 class OAuthCallbackRequest(BaseModel):
@@ -64,7 +66,7 @@ class OAuthCallbackRequest(BaseModel):
 
     code: str = Field(..., description="認可コード")
     state: str = Field(..., description="認可開始時の state")
-    server_id: str = Field(..., description="対象サーバーID")
+    server_id: Optional[str] = Field(default=None, description="対象サーバーID（省略可）")
     code_verifier: Optional[str] = Field(
         default=None, description="クライアント保持の PKCE code_verifier"
     )

@@ -15,6 +15,7 @@ from ..models.state import (
     AuthSessionRecord,
     ContainerConfigRecord,
     CredentialRecord,
+    RemoteServerRecord,
     GatewayAllowEntry,
     JobRecord,
     GitHubTokenRecord,
@@ -270,6 +271,52 @@ class StateStore:
                 (credential_key,),
             )
             conn.commit()
+
+    # Remote server operations
+    def save_remote_server(self, record: RemoteServerRecord) -> None:
+        """リモートサーバーレコードを保存する。"""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO remote_servers (
+                    server_id, catalog_item_id, name, endpoint, status,
+                    credential_key, last_connected_at, error_message, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.server_id,
+                    record.catalog_item_id,
+                    record.name,
+                    record.endpoint,
+                    record.status,
+                    record.credential_key,
+                    _to_iso(record.last_connected_at) if record.last_connected_at else None,
+                    record.error_message,
+                    _to_iso(record.created_at),
+                ),
+            )
+            conn.commit()
+
+    def get_remote_server(self, server_id: str) -> Optional[RemoteServerRecord]:
+        """リモートサーバーレコードを取得する。"""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM remote_servers WHERE server_id=?",
+                (server_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return RemoteServerRecord(
+            server_id=row["server_id"],
+            catalog_item_id=row["catalog_item_id"],
+            name=row["name"],
+            endpoint=row["endpoint"],
+            status=row["status"],
+            credential_key=row["credential_key"],
+            last_connected_at=_from_iso(row["last_connected_at"]) if row["last_connected_at"] else None,
+            error_message=row["error_message"],
+            created_at=_from_iso(row["created_at"]),
+        )
 
     # OAuth state operations
     def save_oauth_state(self, record: OAuthStateRecord) -> None:
