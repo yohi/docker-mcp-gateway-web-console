@@ -200,7 +200,7 @@ def test_test_endpoint_rejects_disallowed_endpoint(remote_service, monkeypatch) 
     assert body["error_code"] == "endpoint_not_allowed"
 
 
-def test_register_remote_server_returns_record(remote_service, monkeypatch) -> None:
+def test_register_remote_server_returns_record(_remote_service, monkeypatch) -> None:  # noqa: ARG001
     """POST /api/remote-servers が登録済みサーバーを返す。"""
 
     monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
@@ -241,7 +241,7 @@ def test_list_remote_servers_returns_all(remote_service, monkeypatch) -> None:
         remote_service.register_server(
             catalog_item_id="cat-2",
             name="Second",
-            endpoint="https://api2.example.com/sse",
+            endpoint="https://api.example.com/sse2",
         )
     )
 
@@ -261,7 +261,7 @@ def test_enable_and_disable_remote_server(remote_service, monkeypatch) -> None:
         remote_service.register_server(
             catalog_item_id="cat-3",
             name="EnableTest",
-            endpoint="https://api3.example.com/sse",
+            endpoint="https://api.example.com/sse3",
         )
     )
 
@@ -290,7 +290,7 @@ def test_delete_remote_server_removes_record(remote_service, monkeypatch) -> Non
         remote_service.register_server(
             catalog_item_id="cat-del",
             name="DeleteTest",
-            endpoint="https://api-del.example.com/sse",
+            endpoint="https://api.example.com/sse-del",
         )
     )
 
