@@ -181,9 +181,11 @@ class RemoteMcpService:
                 f"Endpoint not allowed: {host}:{port} is not in REMOTE_MCP_ALLOWED_DOMAINS"
             )
 
-        await self._try_acquire_connection_slot()
-
+        acquired = False
         try:
+            await self._try_acquire_connection_slot()
+            acquired = True
+
             credential = await self.get_server_credential(server_id)
             headers = self._build_auth_headers(credential)
 
@@ -234,11 +236,9 @@ class RemoteMcpService:
             )
             raise
         finally:
-            # セマフォを必ず解放する
-            try:
+            # セマフォを取得できた場合のみ解放する
+            if acquired:
                 self._connection_semaphore.release()
-            except Exception:
-                logger.debug("connection semaphore release failed", exc_info=True)
 
     async def list_servers(self) -> List[RemoteServer]:
         """登録済みリモートサーバーを全件取得する。"""
