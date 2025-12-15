@@ -7,7 +7,11 @@ import pytest
 from app.models.remote import RemoteServer, RemoteServerStatus
 from app.models.state import CredentialRecord
 from app.services.oauth import CredentialNotFoundError, RemoteServerNotFoundError
-from app.services.remote_mcp import RemoteMcpService
+from app.services.remote_mcp import (
+    DuplicateRemoteServerError,
+    EndpointNotAllowedError,
+    RemoteMcpService,
+)
 from app.services.state_store import StateStore
 
 
@@ -160,3 +164,115 @@ async def test_set_status_raises_for_unknown_server(tmp_path) -> None:
 
     with pytest.raises(RemoteServerNotFoundError):
         await service.set_status("unknown", RemoteServerStatus.REGISTERED)
+
+
+@pytest.mark.asyncio
+async def test_register_server_saves_and_records_audit(tmp_path, monkeypatch) -> None:
+    """許可されたエンドポイントを登録し、監査ログが残ること。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    service = _make_service(tmp_path)
+
+    server = await service.register_server(
+        catalog_item_id="cat-1",
+        name="Example",
+        endpoint="https://api.example.com/sse",
+        correlation_id="corr-1",
+    )
+
+    persisted = await service.get_server(server.server_id)
+    assert persisted is not None
+    assert persisted.catalog_item_id == "cat-1"
+    assert persisted.endpoint == "https://api.example.com/sse"
+
+    logs = service.state_store.get_recent_audit_logs()
+    assert any(
+        log.event_type == "server_registered"
+        and log.metadata.get("server_id") == server.server_id
+        and log.metadata.get("endpoint") == "https://api.example.com/sse"
+        for log in logs
+    )
+
+
+@pytest.mark.asyncio
+async def test_register_server_rejects_not_allowed_endpoint(tmp_path, monkeypatch) -> None:
+    """許可リストにないエンドポイントは登録できないこと。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "allowed.example.com")
+    service = _make_service(tmp_path)
+
+    with pytest.raises(EndpointNotAllowedError):
+        await service.register_server(
+            catalog_item_id="cat-2",
+            name="NotAllowed",
+            endpoint="https://blocked.example.com/sse",
+            correlation_id="corr-2",
+        )
+
+    servers = await service.list_servers()
+    assert servers == []
+
+    logs = service.state_store.get_recent_audit_logs()
+    assert any(log.event_type == "endpoint_rejected" for log in logs)
+
+
+@pytest.mark.asyncio
+async def test_register_server_rejects_duplicate(tmp_path, monkeypatch) -> None:
+    """catalog_item_id または endpoint が重複する場合は拒否されること。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "dup.example.com")
+    service = _make_service(tmp_path)
+
+    await service.register_server(
+        catalog_item_id="cat-dup",
+        name="Dup",
+        endpoint="https://dup.example.com/sse",
+    )
+
+    with pytest.raises(DuplicateRemoteServerError):
+        await service.register_server(
+            catalog_item_id="cat-dup",
+            name="Dup2",
+            endpoint="https://dup.example.com/sse",
+        )
+
+    servers = await service.list_servers()
+    assert len(servers) == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_server_removes_credentials_when_requested(tmp_path, monkeypatch) -> None:
+    """delete_credentials=True で紐づく資格情報も削除されること。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    service = _make_service(tmp_path)
+
+    server = await service.register_server(
+        catalog_item_id="cat-del",
+        name="DeleteMe",
+        endpoint="https://api.example.com/sse",
+    )
+
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    cred = CredentialRecord(
+        credential_key="cred-del",
+        token_ref={"type": "plaintext", "value": "secret"},
+        scopes=["scope"],
+        expires_at=expires,
+        server_id=server.server_id,
+        oauth_token_url="https://auth.example.com/token",
+        oauth_client_id="client-id",
+        created_by="tester",
+    )
+    service.state_store.save_credential(cred)
+    await service.set_status(
+        server_id=server.server_id,
+        status=RemoteServerStatus.AUTHENTICATED,
+        credential_key="cred-del",
+    )
+
+    await service.delete_server(
+        server_id=server.server_id, delete_credentials=True, correlation_id="corr-del"
+    )
+
+    assert await service.get_server(server.server_id) is None
+    assert service.state_store.get_credential("cred-del") is None
+
+    logs = service.state_store.get_recent_audit_logs()
+    assert any(log.event_type == "server_deleted" for log in logs)

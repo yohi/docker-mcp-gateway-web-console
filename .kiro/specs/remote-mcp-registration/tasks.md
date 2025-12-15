@@ -63,7 +63,7 @@
   - OAuthService への依存注入と credential 取得・検証ロジックを実装
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 4.2 (P) サーバー登録・削除ロジックの実装
+- [x] 4.2 (P) サーバー登録・削除ロジックの実装
   - register_server: catalog_item_id から endpoint を取得し、is_endpoint_allowed で検証後、remote_servers に保存
   - 不許可エンドポイントの場合、HTTP 400 Bad Request を返却し、監査ログに記録
   - 重複登録時は HTTP 409 Conflict を返却
