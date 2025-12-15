@@ -59,6 +59,17 @@ class OAuthCallbackResponse(BaseModel):
     )
 
 
+class OAuthCallbackRequest(BaseModel):
+    """認可コールバックリクエスト。"""
+
+    code: str = Field(..., description="認可コード")
+    state: str = Field(..., description="認可開始時の state")
+    server_id: str = Field(..., description="対象サーバーID")
+    code_verifier: Optional[str] = Field(
+        default=None, description="クライアント保持の PKCE code_verifier"
+    )
+
+
 class OAuthRefreshRequest(BaseModel):
     """トークンリフレッシュリクエスト。"""
 

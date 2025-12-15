@@ -98,6 +98,83 @@ async def test_oauth_initiate_persists_state(reset_oauth_service):
 
 
 @pytest.mark.asyncio
+async def test_oauth_start_alias_endpoint_returns_state(reset_oauth_service):
+    code_verifier = "alias-verifier"
+    code_challenge = OAuthService._compute_code_challenge(code_verifier)
+
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.post(
+            "/api/oauth/start",
+            json={
+                "server_id": "srv-1",
+                "scopes": ["repo:read"],
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            },
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["state"]
+    assert data["auth_url"].startswith("https://auth.example.com/authorize")
+    assert f"code_challenge={code_challenge}" in data["auth_url"]
+
+
+@pytest.mark.asyncio
+async def test_oauth_start_rejects_non_s256_method(reset_oauth_service):
+    code_verifier = "test-verifier"
+    code_challenge = OAuthService._compute_code_challenge(code_verifier)
+
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.post(
+            "/api/oauth/start",
+            json={
+                "server_id": "srv-1",
+                "scopes": ["repo:read"],
+                "code_challenge": code_challenge,
+                "code_challenge_method": "plain",
+            },
+        )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert "S256" in body["detail"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_oauth_callback_pkce_mismatch_returns_400(reset_oauth_service):
+    code_verifier = "correct-verifier"
+    code_challenge = OAuthService._compute_code_challenge(code_verifier)
+
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        init_resp = await ac.post(
+            "/api/oauth/start",
+            json={
+                "server_id": "srv-1",
+                "scopes": ["repo:read"],
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            },
+        )
+        state = init_resp.json()["state"]
+
+        callback_resp = await ac.get(
+            "/api/oauth/callback",
+            params={
+                "code": "auth-code",
+                "state": state,
+                "server_id": "srv-1",
+                "code_verifier": "mismatched-verifier",
+            },
+        )
+
+    assert callback_resp.status_code == 400
+    body = callback_resp.json()
+    assert body["error_code"] == "pkce_verification_failed"
+    assert "code_verifier" in body["message"]
+
+
+@pytest.mark.asyncio
 async def test_oauth_callback_state_mismatch_returns_401(reset_oauth_service):
     async with AsyncClient(app=app, base_url="http://test") as ac:
         response = await ac.get(
