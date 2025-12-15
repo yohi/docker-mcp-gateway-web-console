@@ -50,7 +50,7 @@
   - 取得したトークンを server_id に紐付けて credentials テーブルに保存
   - _Requirements: 3.2, 3.4, 3.5, 3.6, 3.7, 4.3, 4.4, 4.5_
 
-- [ ] 3.3 OAuth API エンドポイントの実装
+- [x] 3.3 OAuth API エンドポイントの実装
   - POST /api/oauth/start: server_id, code_challenge を受け取り、auth_url, state を返却
   - POST /api/oauth/callback: code, state, code_verifier を受け取り、トークン取得・保存後に success: true を返却
   - エラーハンドリング: 400 (不正リクエスト), 401 (トークン交換拒否), 404 (server_id 不存在), 500 (内部エラー)

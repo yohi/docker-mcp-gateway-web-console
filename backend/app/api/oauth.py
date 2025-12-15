@@ -20,6 +20,7 @@ from ..services.oauth import (
     OAuthService,
     OAuthStateMismatchError,
     PkceVerificationError,
+    RemoteServerNotFoundError,
     ScopeNotAllowedError,
 )
 
@@ -52,6 +53,8 @@ async def _start_oauth(request: OAuthInitiateRequest) -> OAuthInitiateResponse:
             status_code=400,
             detail={"message": str(exc), "missing_scopes": exc.missing},
         ) from exc
+    except RemoteServerNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"message": str(exc)}) from exc
     except OAuthError as exc:
         raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
 
@@ -61,7 +64,7 @@ async def _handle_oauth_callback(
     request: Request,
     code: str,
     state: str,
-    server_id: str,
+    server_id: str | None,
     code_verifier: str | None,
 ) -> JSONResponse | OAuthCallbackResponse:
     correlation_id = _get_correlation_id(request)
@@ -110,6 +113,15 @@ async def _handle_oauth_callback(
                 "correlation_id": correlation_id,
             },
         )
+    except RemoteServerNotFoundError as exc:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error_code": "remote_server_not_found",
+                "message": str(exc),
+                "correlation_id": correlation_id,
+            },
+        )
     except OAuthError as exc:
         return JSONResponse(
             status_code=400,
@@ -138,7 +150,7 @@ async def oauth_callback(
     request: Request,
     code: str = Query(..., description="認可コード"),
     state: str = Query(..., description="認可開始時の state"),
-    server_id: str = Query(..., description="対象サーバーID"),
+    server_id: str | None = Query(default=None, description="対象サーバーID（省略可）"),
     code_verifier: str | None = Query(
         default=None, description="クライアント保持の PKCE code_verifier"
     ),
@@ -158,7 +170,7 @@ async def oauth_callback_alias(
     request: Request,
     code: str = Query(..., description="認可コード"),
     state: str = Query(..., description="認可開始時の state"),
-    server_id: str = Query(..., description="対象サーバーID"),
+    server_id: str | None = Query(default=None, description="対象サーバーID（省略可）"),
     code_verifier: str | None = Query(
         default=None, description="クライアント保持の PKCE code_verifier"
     ),

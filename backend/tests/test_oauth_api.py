@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from app.services.oauth import OAuthService, ScopeUpdateForbiddenError
 from app.services.state_store import StateStore
-from app.models.state import CredentialRecord, OAuthStateRecord
+from app.models.state import CredentialRecord, OAuthStateRecord, RemoteServerRecord
 from app.main import app
 
 
@@ -34,6 +34,15 @@ def reset_oauth_service(monkeypatch, tmp_path: Path):
     db_path = tmp_path / "state.db"
     store = StateStore(str(db_path))
     store.init_schema()
+    store.save_remote_server(
+        RemoteServerRecord(
+            server_id="srv-1",
+            catalog_item_id="cat-1",
+            name="Remote Server 1",
+            endpoint="https://api.example.com/sse",
+            status="registered",
+        )
+    )
     oauth.oauth_service = oauth.OAuthService(
         state_store=store,
         permitted_scopes=["repo:read"],
@@ -121,6 +130,25 @@ async def test_oauth_start_alias_endpoint_returns_state(reset_oauth_service):
 
 
 @pytest.mark.asyncio
+async def test_oauth_start_returns_404_for_unknown_server(reset_oauth_service):
+    code_verifier = "unknown-verifier"
+    code_challenge = OAuthService._compute_code_challenge(code_verifier)
+
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.post(
+            "/api/oauth/start",
+            json={
+                "server_id": "missing-server",
+                "scopes": ["repo:read"],
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            },
+        )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_oauth_start_rejects_non_s256_method(reset_oauth_service):
     code_verifier = "test-verifier"
     code_challenge = OAuthService._compute_code_challenge(code_verifier)
@@ -163,7 +191,6 @@ async def test_oauth_callback_pkce_mismatch_returns_400(reset_oauth_service):
             params={
                 "code": "auth-code",
                 "state": state,
-                "server_id": "srv-1",
                 "code_verifier": "mismatched-verifier",
             },
         )
@@ -179,7 +206,7 @@ async def test_oauth_callback_state_mismatch_returns_401(reset_oauth_service):
     async with AsyncClient(app=app, base_url="http://test") as ac:
         response = await ac.get(
             "/api/catalog/oauth/callback",
-            params={"code": "abc", "state": "invalid", "server_id": "srv-1"},
+            params={"code": "abc", "state": "invalid"},
         )
 
     assert response.status_code == 401
@@ -212,7 +239,6 @@ async def test_oauth_callback_rejects_expired_state(reset_oauth_service):
             params={
                 "code": "auth-code",
                 "state": "expired-state",
-                "server_id": "srv-1",
                 "code_verifier": "verifier",
             },
         )
@@ -266,7 +292,6 @@ async def test_oauth_callback_provider_4xx_returns_400(monkeypatch, reset_oauth_
             params={
                 "code": "auth-code",
                 "state": state,
-                "server_id": "srv-1",
                 "code_verifier": code_verifier,
             },
         )
@@ -326,7 +351,6 @@ async def test_oauth_callback_provider_5xx_retries_then_502(monkeypatch, reset_o
             params={
                 "code": "auth-code",
                 "state": state,
-                "server_id": "srv-1",
                 "code_verifier": code_verifier,
             },
         )
@@ -386,13 +410,13 @@ async def test_oauth_callback_success_returns_status(monkeypatch, reset_oauth_se
             params={
                 "code": "auth-code",
                 "state": state,
-                "server_id": "srv-1",
                 "code_verifier": code_verifier,
             },
         )
 
     assert response.status_code == 200
     body = response.json()
+    assert body["success"] is True
     assert body["status"] == "authorized"
     assert body["credential_key"]
     assert "expires_at" in body
@@ -451,7 +475,6 @@ async def test_oauth_callback_consumes_persisted_state(monkeypatch, reset_oauth_
             params={
                 "code": "auth-code",
                 "state": state,
-                "server_id": "srv-1",
                 "code_verifier": code_verifier,
             },
         )
@@ -514,7 +537,6 @@ async def test_oauth_callback_saves_credential_and_returns_key(
             params={
                 "code": "auth-code",
                 "state": state,
-                "server_id": "srv-1",
                 "code_verifier": code_verifier,
             },
         )
@@ -578,7 +600,6 @@ async def test_oauth_tokens_persist_and_reload(monkeypatch, reset_oauth_service)
             params={
                 "code": "auth-code",
                 "state": state,
-                "server_id": "srv-1",
                 "code_verifier": code_verifier,
             },
         )
@@ -683,7 +704,6 @@ async def test_oauth_refresh_rotates_token_when_expiring(monkeypatch, reset_oaut
             params={
                 "code": "auth-code",
                 "state": state,
-                "server_id": "srv-1",
                 "code_verifier": code_verifier,
             },
         )
@@ -769,7 +789,6 @@ async def test_oauth_refresh_keeps_old_credential_when_save_fails(
             params={
                 "code": "auth-code",
                 "state": state,
-                "server_id": "srv-1",
                 "code_verifier": code_verifier,
             },
         )
@@ -848,7 +867,6 @@ async def test_oauth_refresh_invalid_grant_deletes_credential(
             params={
                 "code": "auth-code",
                 "state": state,
-                "server_id": "srv-1",
                 "code_verifier": code_verifier,
             },
         )
@@ -928,7 +946,6 @@ async def test_oauth_refresh_provider_5xx_keeps_credential(
             params={
                 "code": "auth-code",
                 "state": state,
-                "server_id": "srv-1",
                 "code_verifier": code_verifier,
             },
         )
@@ -997,7 +1014,6 @@ async def test_oauth_refresh_server_id_mismatch_returns_422(monkeypatch, reset_o
             params={
                 "code": "auth-code",
                 "state": state,
-                "server_id": "srv-1",
                 "code_verifier": code_verifier,
             },
         )

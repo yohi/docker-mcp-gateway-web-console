@@ -41,6 +41,20 @@ class OAuthStateRecord(BaseModel):
     created_at: datetime = Field(default_factory=_now_utc)
 
 
+class RemoteServerRecord(BaseModel):
+    """リモート MCP サーバーの永続化レコード。"""
+
+    server_id: str
+    catalog_item_id: str
+    name: str
+    endpoint: str
+    status: str
+    credential_key: Optional[str] = None
+    last_connected_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+    created_at: datetime = Field(default_factory=_now_utc)
+
+
 class GitHubTokenRecord(BaseModel):
     """GitHub パーソナルアクセストークンの永続化レコード。"""
 

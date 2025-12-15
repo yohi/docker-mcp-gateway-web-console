@@ -251,6 +251,10 @@ class CredentialNotFoundError(OAuthError):
     """credential_key が見つからない場合の例外。"""
 
 
+class RemoteServerNotFoundError(OAuthError):
+    """server_id に対応するリモートサーバーが存在しない場合の例外。"""
+
+
 class ConfigurationError(OAuthError):
     """設定値が無効な場合の例外。"""
 
@@ -416,6 +420,11 @@ class OAuthService:
         code_challenge_method: str = "S256",
     ) -> dict:
         """state を生成し、クライアント指定の code_challenge で認可 URL を返す。"""
+        # server_id の存在確認（リモートサーバーが登録済みであることが前提）
+        server_record = self._state_store.get_remote_server(server_id)
+        if server_record is None:
+            raise RemoteServerNotFoundError("server_id が存在しません")
+
         use_authorize_url = authorize_url or settings.oauth_authorize_url
         use_token_url = token_url or settings.oauth_token_url
         use_client_id = client_id or settings.oauth_client_id
@@ -573,15 +582,15 @@ class OAuthService:
             metadata={"permitted_scopes": scopes},
         )
 
-    def _load_state(self, state: str, server_id: str) -> OAuthState:
-        """永続ストアまたはメモリから state を取得し、検証する。"""
+    def _load_state(self, state: str, server_id: Optional[str] = None) -> OAuthState:
+        """永続ストアまたはメモリから state を取得し、必要に応じ server_id を検証する。"""
         now = datetime.now(timezone.utc)
         record = self._state_store.get_oauth_state(state)
         if record:
             self._state_store.delete_oauth_state(state)
             if record.expires_at < now:
                 raise OAuthStateMismatchError("state の有効期限が切れています。再認可を実施してください")
-            if record.server_id != server_id:
+            if server_id and record.server_id != server_id:
                 raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
             return OAuthState(
                 server_id=record.server_id,
@@ -599,7 +608,7 @@ class OAuthService:
         if oauth_state:
             if oauth_state.expires_at < now:
                 raise OAuthStateMismatchError("state の有効期限が切れています。再認可を実施してください")
-            if oauth_state.server_id != server_id:
+            if server_id and oauth_state.server_id != server_id:
                 raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
             return oauth_state
 
@@ -609,11 +618,16 @@ class OAuthService:
         self,
         code: str,
         state: str,
-        server_id: str,
+        server_id: Optional[str] = None,
         code_verifier: Optional[str] = None,
     ) -> dict:
         """認可コードをトークンに交換する。"""
         oauth_state = self._load_state(state, server_id)
+
+        # state から復元した server_id が現在も有効か確認
+        server_record = self._state_store.get_remote_server(oauth_state.server_id)
+        if server_record is None:
+            raise RemoteServerNotFoundError("server_id が存在しません")
 
         if oauth_state.code_challenge:
             if not code_verifier:
@@ -656,11 +670,13 @@ class OAuthService:
                     oauth_client_id=oauth_state.client_id,
                 )
                 return {
+                    "success": True,
                     "status": "authorized",
                     "scope": scope_list,
                     "expires_in": payload.get("expires_in"),
                     "credential_key": credential["credential_key"],
                     "expires_at": credential["expires_at"],
+                    "server_id": oauth_state.server_id,
                 }
             except OAuthProviderUnavailableError as exc:
                 last_error = exc
