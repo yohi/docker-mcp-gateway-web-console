@@ -35,7 +35,7 @@
   - _Requirements: 1.1, 1.2, 8.1, 8.2_
 
 ## 3. OAuthService 拡張（state 永続化・PKCE 対応）
-- [ ] 3.1 state 永続化ロジックの実装
+- [x] 3.1 state 永続化ロジックの実装
   - _persist_state メソッドを追加し、state, server_id, code_challenge, OAuth設定を oauth_states テーブルに保存
   - TTL (10分) を expires_at に設定し、定期 GC で削除
   - state 検証時にタイムスタンプをチェックし、有効期限外は CSRF 試行として拒否

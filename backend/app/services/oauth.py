@@ -19,7 +19,7 @@ import httpx
 from cryptography.fernet import Fernet, InvalidToken
 
 from ..config import OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER, settings
-from ..models.state import CredentialRecord
+from ..models.state import CredentialRecord, OAuthStateRecord
 from .state_store import StateStore
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ class OAuthState:
     token_url: str
     client_id: str
     redirect_uri: str
+    expires_at: datetime
 
 
 def _is_private_or_local_ip(hostname: str) -> bool:
@@ -308,6 +309,7 @@ class OAuthService:
             self._state_store.init_schema()
         except Exception:
             logger.debug("state store init skipped", exc_info=True)
+        self._state_ttl = timedelta(minutes=10)
         self._backoff_schedule = backoff_schedule or [1.0, 2.0, 4.0]
         self._refresh_backoff_schedule = refresh_backoff_schedule or [2.0, 4.0]
         self._refresh_threshold = timedelta(minutes=15)
@@ -504,7 +506,8 @@ class OAuthService:
 
         auth_url = f"{use_authorize_url}?{urlencode(query)}"
 
-        self._state_store_mem[state] = OAuthState(
+        expires_at = datetime.now(timezone.utc) + self._state_ttl
+        oauth_state = OAuthState(
             server_id=server_id,
             code_challenge=code_challenge,
             code_challenge_method=code_challenge_method if code_challenge else None,
@@ -513,7 +516,10 @@ class OAuthService:
             token_url=use_token_url,
             client_id=use_client_id,
             redirect_uri=use_redirect_uri,
+            expires_at=expires_at,
         )
+        self._state_store_mem[state] = oauth_state
+        self._persist_state(state, oauth_state)
 
         logger.info("OAuth 認可開始: server_id=%s state=%s", server_id, state)
         return {
@@ -521,6 +527,22 @@ class OAuthService:
             "state": state,
             "required_scopes": scopes,
         }
+
+    def _persist_state(self, state: str, oauth_state: OAuthState) -> None:
+        """state を永続化し、単一使用・TTL を担保する。"""
+        record = OAuthStateRecord(
+            state=state,
+            server_id=oauth_state.server_id,
+            code_challenge=oauth_state.code_challenge,
+            code_challenge_method=oauth_state.code_challenge_method,
+            scopes=oauth_state.scopes,
+            authorize_url=oauth_state.authorize_url,
+            token_url=oauth_state.token_url,
+            client_id=oauth_state.client_id,
+            redirect_uri=oauth_state.redirect_uri,
+            expires_at=oauth_state.expires_at,
+        )
+        self._state_store.save_oauth_state(record)
 
     def update_permitted_scopes(
         self, scopes: List[str], is_admin: bool, correlation_id: Optional[str] = None
@@ -545,6 +567,38 @@ class OAuthService:
             metadata={"permitted_scopes": scopes},
         )
 
+    def _load_state(self, state: str, server_id: str) -> OAuthState:
+        """永続ストアまたはメモリから state を取得し、検証する。"""
+        now = datetime.now(timezone.utc)
+        record = self._state_store.get_oauth_state(state)
+        if record:
+            self._state_store.delete_oauth_state(state)
+            if record.expires_at < now:
+                raise OAuthStateMismatchError("state の有効期限が切れています。再認可を実施してください")
+            if record.server_id != server_id:
+                raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
+            return OAuthState(
+                server_id=record.server_id,
+                code_challenge=record.code_challenge,
+                code_challenge_method=record.code_challenge_method,
+                scopes=record.scopes,
+                authorize_url=record.authorize_url,
+                token_url=record.token_url,
+                client_id=record.client_id,
+                redirect_uri=record.redirect_uri,
+                expires_at=record.expires_at,
+            )
+
+        oauth_state = self._state_store_mem.pop(state, None)
+        if oauth_state:
+            if oauth_state.expires_at < now:
+                raise OAuthStateMismatchError("state の有効期限が切れています。再認可を実施してください")
+            if oauth_state.server_id != server_id:
+                raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
+            return oauth_state
+
+        raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
+
     async def exchange_token(
         self,
         code: str,
@@ -553,15 +607,7 @@ class OAuthService:
         code_verifier: Optional[str] = None,
     ) -> dict:
         """認可コードをトークンに交換する。"""
-        if state not in self._state_store_mem:
-            raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
-
-        oauth_state = self._state_store_mem.get(state)
-        if oauth_state is None:
-            raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
-        if oauth_state.server_id != server_id:
-            raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
-        oauth_state = self._state_store_mem.pop(state)
+        oauth_state = self._load_state(state, server_id)
 
         if oauth_state.code_challenge:
             if not code_verifier:
