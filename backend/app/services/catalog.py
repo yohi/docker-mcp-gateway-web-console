@@ -115,7 +115,7 @@ class CatalogService:
         if removed_invalid_remote > 0:
             self._append_warning(
                 "無効なリモートエンドポイントのカタログ項目 "
-                f"{removed_invalid_remote} 件を表示から除外しました。"
+                f"{removed_invalid_remote} 件を表示から除外しました。\n\n"
                 "HTTPS を必須とし、開発用途で http を利用する場合は "
                 "ALLOW_INSECURE_ENDPOINT=true を設定の上、localhost/127.0.0.1 のみに限定してください。"
             )
