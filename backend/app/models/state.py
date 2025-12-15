@@ -25,6 +25,22 @@ class CredentialRecord(BaseModel):
     created_at: datetime = Field(default_factory=_now_utc)
 
 
+class OAuthStateRecord(BaseModel):
+    """OAuth state の永続化レコード。"""
+
+    state: str
+    server_id: str
+    code_challenge: Optional[str]
+    code_challenge_method: Optional[str]
+    scopes: List[str]
+    authorize_url: str
+    token_url: str
+    client_id: str
+    redirect_uri: str
+    expires_at: datetime
+    created_at: datetime = Field(default_factory=_now_utc)
+
+
 class GitHubTokenRecord(BaseModel):
     """GitHub パーソナルアクセストークンの永続化レコード。"""
 

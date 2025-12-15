@@ -55,6 +55,7 @@ CLAUDE.md
 .agent/
 .serena/
 .codex/
+.claude/
 
 # Kiro
 .kiro/settings/rules

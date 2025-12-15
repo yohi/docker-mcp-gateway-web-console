@@ -11,6 +11,7 @@ from app.models.state import (
     CredentialRecord,
     GatewayAllowEntry,
     JobRecord,
+    OAuthStateRecord,
     SessionRecord,
     SignaturePolicyRecord,
 )
@@ -96,6 +97,40 @@ def test_oauth_states_table_schema(store: StateStore) -> None:
     index_names = {row["name"] for row in indexes}
     assert "idx_oauth_states_expires_at" in index_names
     assert any(info["name"] == "expires_at" for info in index_info)
+
+
+def test_oauth_state_roundtrip(store: StateStore) -> None:
+    """oauth_states が保存・取得・削除できることを検証する。"""
+    now = datetime.now(timezone.utc)
+    record = OAuthStateRecord(
+        state="state-123",
+        server_id="srv-1",
+        code_challenge="challenge",
+        code_challenge_method="S256",
+        scopes=["scope:a", "scope:b"],
+        authorize_url="https://auth.example.com/authorize",
+        token_url="https://auth.example.com/token",
+        client_id="client-123",
+        redirect_uri="https://app.example.com/callback",
+        expires_at=now + timedelta(minutes=10),
+        created_at=now,
+    )
+
+    store.save_oauth_state(record)
+
+    fetched = store.get_oauth_state("state-123")
+    assert fetched is not None
+    assert fetched.server_id == "srv-1"
+    assert fetched.code_challenge == "challenge"
+    assert fetched.code_challenge_method == "S256"
+    assert fetched.scopes == ["scope:a", "scope:b"]
+    assert fetched.authorize_url.endswith("/authorize")
+    assert fetched.token_url.endswith("/token")
+    assert fetched.client_id == "client-123"
+    assert fetched.redirect_uri.endswith("/callback")
+
+    store.delete_oauth_state("state-123")
+    assert store.get_oauth_state("state-123") is None
 
 
 def test_credential_gc(store: StateStore) -> None:

@@ -18,6 +18,7 @@ from ..models.state import (
     GatewayAllowEntry,
     JobRecord,
     GitHubTokenRecord,
+    OAuthStateRecord,
     SessionRecord,
     SignaturePolicyRecord,
 )
@@ -267,6 +268,66 @@ class StateStore:
             conn.execute(
                 "DELETE FROM credentials WHERE credential_key=?",
                 (credential_key,),
+            )
+            conn.commit()
+
+    # OAuth state operations
+    def save_oauth_state(self, record: OAuthStateRecord) -> None:
+        """OAuth state レコードを保存する。"""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO oauth_states (
+                    state, server_id, code_challenge, code_challenge_method, scopes,
+                    authorize_url, token_url, client_id, redirect_uri, expires_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.state,
+                    record.server_id,
+                    record.code_challenge,
+                    record.code_challenge_method,
+                    json.dumps(record.scopes),
+                    record.authorize_url,
+                    record.token_url,
+                    record.client_id,
+                    record.redirect_uri,
+                    _to_iso(record.expires_at),
+                    _to_iso(record.created_at),
+                ),
+            )
+            conn.commit()
+
+    def get_oauth_state(self, state: str) -> Optional[OAuthStateRecord]:
+        """OAuth state レコードを取得する。"""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM oauth_states WHERE state=?",
+                (state,),
+            ).fetchone()
+
+        if row is None:
+            return None
+        return OAuthStateRecord(
+            state=row["state"],
+            server_id=row["server_id"],
+            code_challenge=row["code_challenge"],
+            code_challenge_method=row["code_challenge_method"],
+            scopes=json.loads(row["scopes"]),
+            authorize_url=row["authorize_url"],
+            token_url=row["token_url"],
+            client_id=row["client_id"],
+            redirect_uri=row["redirect_uri"],
+            expires_at=_from_iso(row["expires_at"]),
+            created_at=_from_iso(row["created_at"]),
+        )
+
+    def delete_oauth_state(self, state: str) -> None:
+        """OAuth state レコードを削除する。存在しない場合は何もしない。"""
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM oauth_states WHERE state=?",
+                (state,),
             )
             conn.commit()
 

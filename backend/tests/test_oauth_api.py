@@ -1,11 +1,11 @@
 import httpx
 from httpx import AsyncClient
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import pytest
 from app.services.oauth import OAuthService, ScopeUpdateForbiddenError
 from app.services.state_store import StateStore
-from app.models.state import CredentialRecord
+from app.models.state import CredentialRecord, OAuthStateRecord
 from app.main import app
 
 
@@ -69,6 +69,35 @@ async def test_oauth_initiate_returns_state_and_auth_url(reset_oauth_service):
 
 
 @pytest.mark.asyncio
+async def test_oauth_initiate_persists_state(reset_oauth_service):
+    code_verifier = "test-verifier"
+    code_challenge = OAuthService._compute_code_challenge(code_verifier)
+    store = reset_oauth_service.state_store
+
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.post(
+            "/api/catalog/oauth/initiate",
+            json={
+                "server_id": "srv-1",
+                "scopes": ["repo:read"],
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            },
+        )
+
+    state = response.json()["state"]
+    record = store.get_oauth_state(state)
+    assert record is not None
+    assert record.server_id == "srv-1"
+    assert record.code_challenge == code_challenge
+    assert record.code_challenge_method == "S256"
+    assert record.scopes == ["repo:read"]
+    ttl_seconds = (record.expires_at - datetime.now(timezone.utc)).total_seconds()
+    # TTL は 10 分前後になるはず。多少の時間経過を許容する。
+    assert 500 <= ttl_seconds <= 610
+
+
+@pytest.mark.asyncio
 async def test_oauth_callback_state_mismatch_returns_401(reset_oauth_service):
     async with AsyncClient(app=app, base_url="http://test") as ac:
         response = await ac.get(
@@ -78,6 +107,41 @@ async def test_oauth_callback_state_mismatch_returns_401(reset_oauth_service):
 
     assert response.status_code == 401
     assert "state" in response.json()["message"]
+
+
+@pytest.mark.asyncio
+async def test_oauth_callback_rejects_expired_state(reset_oauth_service):
+    store = reset_oauth_service.state_store
+    now = datetime.now(timezone.utc)
+    expired = OAuthStateRecord(
+        state="expired-state",
+        server_id="srv-1",
+        code_challenge="challenge",
+        code_challenge_method="S256",
+        scopes=["repo:read"],
+        authorize_url="https://auth.example.com/authorize",
+        token_url="https://auth.example.com/token",
+        client_id="client-123",
+        redirect_uri="http://localhost:8000/api/catalog/oauth/callback",
+        expires_at=now - timedelta(seconds=1),
+        created_at=now - timedelta(minutes=1),
+    )
+    store.save_oauth_state(expired)
+    reset_oauth_service._state_store_mem.clear()
+
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.get(
+            "/api/catalog/oauth/callback",
+            params={
+                "code": "auth-code",
+                "state": "expired-state",
+                "server_id": "srv-1",
+                "code_verifier": "verifier",
+            },
+        )
+
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "state_mismatch"
 
 
 @pytest.mark.asyncio
@@ -256,6 +320,67 @@ async def test_oauth_callback_success_returns_status(monkeypatch, reset_oauth_se
     assert body["credential_key"]
     assert "expires_at" in body
     assert SuccessClient.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_oauth_callback_consumes_persisted_state(monkeypatch, reset_oauth_service):
+    from app.services import oauth as oauth_service_module
+
+    code_verifier = "test-verifier"
+    code_challenge = OAuthService._compute_code_challenge(code_verifier)
+
+    class SuccessClient:
+        def __init__(self, *args, **kwargs):
+            return
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, data=None, headers=None, timeout=None):
+            return httpx.Response(
+                status_code=200,
+                request=httpx.Request("POST", url),
+                json={
+                    "access_token": "token",
+                    "refresh_token": "refresh",
+                    "expires_in": 3600,
+                    "scope": "repo:read",
+                },
+            )
+
+    monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", SuccessClient)
+    store = reset_oauth_service.state_store
+
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        init_resp = await ac.post(
+            "/api/catalog/oauth/initiate",
+            json={
+                "server_id": "srv-1",
+                "scopes": ["repo:read"],
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            },
+        )
+        state = init_resp.json()["state"]
+
+        # メモリキャッシュをクリアしても永続化された state から復旧できることを確認
+        reset_oauth_service._state_store_mem.clear()
+
+        callback_resp = await ac.get(
+            "/api/catalog/oauth/callback",
+            params={
+                "code": "auth-code",
+                "state": state,
+                "server_id": "srv-1",
+                "code_verifier": code_verifier,
+            },
+        )
+
+    assert callback_resp.status_code == 200
+    assert store.get_oauth_state(state) is None
 
 
 @pytest.mark.asyncio
