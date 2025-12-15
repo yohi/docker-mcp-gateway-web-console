@@ -247,14 +247,10 @@ class CatalogService:
                     source_url,
                     headers=self._github_headers(source_url),
                 )
-                status_result = response.raise_for_status()
-                if asyncio.iscoroutine(status_result):
-                    await status_result
+                response.raise_for_status()
 
                 # Parse JSON response
                 data = response.json()
-                if asyncio.iscoroutine(data):
-                    data = await data
 
                 # Validate and parse catalog structure
                 if isinstance(data, list):
