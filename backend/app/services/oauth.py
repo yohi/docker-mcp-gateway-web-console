@@ -227,6 +227,10 @@ class OAuthStateMismatchError(OAuthError):
     """state 不一致時の例外。"""
 
 
+class PkceVerificationError(OAuthError):
+    """PKCE 検証失敗時の例外。"""
+
+
 class OAuthProviderError(OAuthError):
     """プロバイダ 4xx 時の例外。"""
 
@@ -489,8 +493,10 @@ class OAuthService:
             )
             raise ScopeNotAllowedError(missing)
 
-        if code_challenge and code_challenge_method not in {"S256", "plain"}:
-            raise OAuthError("未対応の code_challenge_method です。S256 もしくは plain を指定してください。")
+        if not code_challenge:
+            raise OAuthError("code_challenge が指定されていません")
+        if code_challenge_method != "S256":
+            raise OAuthError("code_challenge_method は S256 のみサポートします")
 
         scope_value = " ".join(scopes) if scopes else ""
         query = {
@@ -510,7 +516,7 @@ class OAuthService:
         oauth_state = OAuthState(
             server_id=server_id,
             code_challenge=code_challenge,
-            code_challenge_method=code_challenge_method if code_challenge else None,
+            code_challenge_method=code_challenge_method,
             scopes=scopes,
             authorize_url=use_authorize_url,
             token_url=use_token_url,
@@ -611,13 +617,12 @@ class OAuthService:
 
         if oauth_state.code_challenge:
             if not code_verifier:
-                raise OAuthError("code_verifier が指定されていません")
-            if oauth_state.code_challenge_method == "S256":
-                computed_challenge = self._compute_code_challenge(code_verifier)
-            else:
-                computed_challenge = code_verifier
+                raise PkceVerificationError("code_verifier が指定されていません")
+            if oauth_state.code_challenge_method and oauth_state.code_challenge_method != "S256":
+                raise PkceVerificationError("code_challenge_method が不正です")
+            computed_challenge = self._compute_code_challenge(code_verifier)
             if oauth_state.code_challenge != computed_challenge:
-                raise OAuthError("code_verifier が一致しません")
+                raise PkceVerificationError("code_verifier が一致しません")
 
         request_data = {
             "grant_type": "authorization_code",

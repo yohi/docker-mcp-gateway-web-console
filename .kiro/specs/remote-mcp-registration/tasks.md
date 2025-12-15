@@ -42,7 +42,7 @@
   - 検証成功後、当該 state を即座に無効化し、再利用を防止
   - _Requirements: 3.2, 3.3, 4.1, 4.2_
 
-- [ ] 3.2 PKCE フローの実装
+- [x] 3.2 PKCE フローの実装
   - POST /api/oauth/start で server_id と code_challenge を受け取り、server_id から OAuth 設定を取得
   - code_challenge_method は "S256" 固定（SHA-256）
   - POST /api/oauth/callback で code, state, code_verifier を受け取り、code_verifier と保存された code_challenge の整合性を確認
