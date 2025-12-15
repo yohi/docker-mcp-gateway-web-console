@@ -240,6 +240,27 @@ class RemoteMcpService:
             if acquired:
                 self._connection_semaphore.release()
 
+    async def test_connection(self, server_id: str) -> dict:
+        """
+        リモート MCP サーバーへの到達性と認証状態を検証する。
+
+        - allowlist や同時接続上限の検証は connect() と同一
+        - 既知の入力エラーは上位へ送出し、その他の失敗は reachable=False で返す
+        """
+        try:
+            capabilities = await self.connect(server_id)
+            return {"reachable": True, "authenticated": True, "capabilities": capabilities}
+        except (
+            EndpointNotAllowedError,
+            RemoteServerNotFoundError,
+            TooManyConnectionsError,
+            CredentialNotFoundError,
+        ):
+            # HTTP レイヤーで適切なステータスに変換させる
+            raise
+        except Exception as exc:  # noqa: BLE001
+            return {"reachable": False, "authenticated": False, "error": str(exc)}
+
     async def list_servers(self) -> List[RemoteServer]:
         """登録済みリモートサーバーを全件取得する。"""
         records = self._state_store.list_remote_servers()
