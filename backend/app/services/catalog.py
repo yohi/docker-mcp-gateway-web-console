@@ -552,9 +552,17 @@ class CatalogService:
 
         title = item.get("title") or item.get("name") or "unknown"
         slug = item.get("slug") or item.get("id") or _slug(title)
-        image = item.get("image") or item.get("container") or ""
+        image = (
+            item.get("image")
+            or item.get("container")
+            or item.get("docker_image")
+            or ""
+        )
         vendor = item.get("owner") or item.get("publisher") or ""
         description = item.get("description") or ""
+        remote_endpoint = item.get("remote_endpoint")
+        server_type = item.get("server_type")
+        oauth_config = item.get("oauth_config")
 
         secrets = item.get("secrets", [])
         required_envs: List[str] = []
@@ -585,6 +593,9 @@ class CatalogService:
             oauth_token_url=item.get("oauth_token_url"),
             oauth_client_id=item.get("oauth_client_id"),
             oauth_redirect_uri=item.get("oauth_redirect_uri"),
+            remote_endpoint=remote_endpoint,
+            server_type=server_type,
+            oauth_config=oauth_config,
         )
 
     async def get_cached_catalog(self, source_url: str) -> Optional[List[CatalogItem]]:

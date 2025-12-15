@@ -21,7 +21,7 @@
   - _Requirements: 8.3, 8.4_
 
 ## 2. CatalogService 拡張（リモートサーバー対応）
-- [ ] 2.1 CatalogItem モデル拡張
+- [x] 2.1 CatalogItem モデル拡張
   - server_type (Optional[str]), remote_endpoint (Optional[HttpUrl]), is_remote (bool) フィールドを追加
   - oauth_config (Optional[dict]) フィールドを追加（リモートサーバー用 OAuth 設定）
   - docker_image が存在すれば優先、なければ remote_endpoint を使用する派生ロジックを実装
