@@ -27,7 +27,7 @@ const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh
     if (isContainersLoading) return 'loading';
     const container = containers.find((c) => matchCatalogItemContainer(item, c));
     return container || null;
-  }, [containers, isContainersLoading, isRemote, item.docker_image, item.name]);
+  }, [containers, isContainersLoading, item.is_remote, item.server_type, item.remote_endpoint, item.docker_image, item.name]);
 
   const status =
     isRemote
