@@ -72,6 +72,7 @@ export default function RemoteServerDetail({ serverId }: Props) {
         codeVerifier: pkce.codeVerifier,
         serverId: data.server_id,
         createdAt: Date.now(),
+        returnUrl: window.location.href,
       });
 
       try {
