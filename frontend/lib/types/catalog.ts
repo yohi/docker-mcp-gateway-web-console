@@ -6,7 +6,7 @@ export interface CatalogItem {
   description: string;
   vendor: string;
   category: string;
-  docker_image: string;
+  docker_image?: string;
   icon_url: string;
   default_env: Record<string, string>;
   required_envs: string[];
@@ -21,6 +21,11 @@ export interface CatalogItem {
   permit_unsigned?: string[];
   allowlist_hint?: string;
   allowlist_status?: 'allowed' | 'pending' | 'rejected';
+  // Remote MCP specific fields
+  remote_endpoint?: string;
+  is_remote?: boolean;
+  server_type?: 'docker' | 'remote' | string;
+  oauth_config?: Record<string, unknown> | null;
 }
 
 export interface CatalogResponse {

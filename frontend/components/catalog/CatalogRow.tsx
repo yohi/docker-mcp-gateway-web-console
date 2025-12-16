@@ -6,6 +6,7 @@ import type { ContainerInfo } from '@/lib/types/containers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
 import { useToast } from '@/contexts/ToastContext';
+import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
 
 type Props = {
   item: CatalogItem;
@@ -19,21 +20,26 @@ type Props = {
 const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh, onInstall, onSelect }: Props) => {
   const { showSuccess, showError } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
+  const isRemote = isRemoteCatalogItem(item);
+  const remoteEndpoint = getRemoteEndpoint(item);
 
   const matchedContainer = useMemo(() => {
+    if (isRemote) return null;
     if (isContainersLoading) return 'loading';
     const container = containers.find((c) => matchCatalogItemContainer(item, c));
     return container || null;
-  }, [containers, isContainersLoading, item.docker_image, item.name]);
+  }, [containers, isContainersLoading, isRemote, item]);
 
   const status =
-    matchedContainer === 'loading'
-      ? 'loading'
-      : matchedContainer
-        ? matchedContainer.status === 'running'
-          ? 'running'
-          : 'installed'
-        : 'not_installed';
+    isRemote
+      ? 'remote'
+      : matchedContainer === 'loading'
+        ? 'loading'
+        : matchedContainer
+          ? matchedContainer.status === 'running'
+            ? 'running'
+            : 'installed'
+          : 'not_installed';
 
   const handleUninstall = async () => {
     if (!matchedContainer || matchedContainer === 'loading') return;
@@ -74,6 +80,13 @@ const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh
             <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
               {item.category}
             </span>
+            <span
+              className={`text-xs px-2 py-0.5 rounded-full ${
+                isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              {isRemote ? 'リモート' : 'Docker'}
+            </span>
             {item.vendor ? (
               <span className="text-xs text-gray-500">by {item.vendor}</span>
             ) : null}
@@ -89,11 +102,23 @@ const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh
             )}
           </div>
           <p className="text-sm text-gray-600 line-clamp-2">{item.description}</p>
-          <p className="text-xs text-gray-500 mt-1 break-all">イメージ: {item.docker_image}</p>
+          {isRemote ? (
+            <p className="text-xs text-gray-500 mt-1 break-all">リモートエンドポイント: {remoteEndpoint || '未設定'}</p>
+          ) : (
+            <p className="text-xs text-gray-500 mt-1 break-all">イメージ: {item.docker_image || '未設定'}</p>
+          )}
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        {status === 'running' || status === 'installed' ? (
+        {isRemote ? (
+          <button
+            type="button"
+            onClick={() => onSelect(item)}
+            className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 transition"
+          >
+            詳細を見る
+          </button>
+        ) : status === 'running' || status === 'installed' ? (
           <button
             type="button"
             onClick={handleUninstall}
@@ -112,13 +137,15 @@ const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh
             インストール
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => onSelect(item)}
-          className="px-3 py-1.5 bg-gray-100 text-gray-800 text-sm rounded-md hover:bg-gray-200 transition"
-        >
-          詳細
-        </button>
+        {!isRemote && (
+          <button
+            type="button"
+            onClick={() => onSelect(item)}
+            className="px-3 py-1.5 bg-gray-100 text-gray-800 text-sm rounded-md hover:bg-gray-200 transition"
+          >
+            詳細
+          </button>
+        )}
       </div>
     </div>
   );

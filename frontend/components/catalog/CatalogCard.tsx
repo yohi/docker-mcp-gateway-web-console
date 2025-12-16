@@ -5,36 +5,49 @@ import { CatalogItem } from '@/lib/types/catalog';
 import type { ContainerInfo } from '@/lib/types/containers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
+import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
 
 interface CatalogCardProps {
     item: CatalogItem;
-    containers: ContainerInfo[];
-    isContainersLoading: boolean;
-    onContainersRefresh: () => void;
+    containers?: ContainerInfo[];
+    isContainersLoading?: boolean;
+    onContainersRefresh?: () => void;
     onInstall: (item: CatalogItem) => void;
     onSelect?: (item: CatalogItem) => void;
 }
 
-export default function CatalogCard({ item, containers, isContainersLoading, onContainersRefresh, onInstall, onSelect }: CatalogCardProps) {
+export default function CatalogCard({
+    item,
+    containers = [],
+    isContainersLoading = false,
+    onContainersRefresh = () => {},
+    onInstall,
+    onSelect,
+}: CatalogCardProps) {
+    const isRemote = isRemoteCatalogItem(item);
+    const remoteEndpoint = getRemoteEndpoint(item);
     const [isDeleting, setIsDeleting] = useState(false);
     const [deleteError, setDeleteError] = useState<string | null>(null);
     const scopes = item.required_scopes || [];
     const allowStatus = item.allowlist_status;
 
     const matchedContainer = useMemo(() => {
+        if (isRemote) return null;
         if (isContainersLoading) return 'loading';
         const container = containers.find((c) => matchCatalogItemContainer(item, c));
         return container || null;
-    }, [containers, isContainersLoading, item.docker_image, item.name]);
+    }, [containers, isContainersLoading, isRemote, item]);
 
     const status =
-        matchedContainer === 'loading'
-            ? 'loading'
-            : matchedContainer
-              ? matchedContainer.status === 'running'
-                  ? 'running'
-                  : 'installed'
-              : 'not_installed';
+        isRemote
+            ? 'remote'
+            : matchedContainer === 'loading'
+              ? 'loading'
+              : matchedContainer
+                  ? matchedContainer.status === 'running'
+                      ? 'running'
+                      : 'installed'
+                  : 'not_installed';
 
     const handleSelect = () => {
         if (onSelect) {
@@ -120,6 +133,13 @@ export default function CatalogCard({ item, containers, isContainersLoading, onC
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                         {item.category}
                     </span>
+                    <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
+                        }`}
+                    >
+                        {isRemote ? 'リモート' : 'Docker'}
+                    </span>
 
                     {item.required_secrets.length > 0 && (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
@@ -157,12 +177,29 @@ export default function CatalogCard({ item, containers, isContainersLoading, onC
                 </div>
 
                 <div className="text-xs text-gray-500 mb-2">
-                    <span className="font-mono">{item.docker_image}</span>
+                    {isRemote ? (
+                        <div>
+                            <span className="font-semibold text-gray-700">リモートエンドポイント: </span>
+                            <span className="font-mono break-all" data-testid="remote-endpoint">{remoteEndpoint || '未設定'}</span>
+                        </div>
+                    ) : (
+                        <span className="font-mono">{item.docker_image}</span>
+                    )}
                 </div>
             </div>
 
             <div className="mt-4">
-                {status === 'loading' ? (
+                {isRemote ? (
+                    <button
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            handleSelect();
+                        }}
+                        className="w-full px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+                    >
+                        詳細を見る
+                    </button>
+                ) : status === 'loading' ? (
                     <button
                         disabled
                         className="w-full px-4 py-2 bg-gray-100 text-gray-400 rounded-md cursor-not-allowed"
