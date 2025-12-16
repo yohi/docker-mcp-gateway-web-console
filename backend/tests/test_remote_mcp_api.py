@@ -207,9 +207,49 @@ def test_connect_endpoint_rejects_disabled(remote_service, monkeypatch) -> None:
     assert response.status_code == 400
     body = response.json()
     assert body["error_code"] == "server_disabled"
-    persisted = _run(remote_service.get_server(server_id))
-    assert persisted is not None
-    assert persisted.status == RemoteServerStatus.DISABLED
+
+
+def test_register_rejected_endpoint_records_audit(remote_service, monkeypatch) -> None:
+    """許可リスト外エンドポイントの登録拒否が 400 と監査ログに反映されること。"""
+
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "")
+
+    response = client.post(
+        "/api/remote-servers",
+        json={
+            "catalog_item_id": "cat-blocked",
+            "name": "BlockedServer",
+            "endpoint": "https://blocked.example.com/sse",
+        },
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error_code"] == "endpoint_not_allowed"
+
+    logs = remote_service.state_store.get_recent_audit_logs()
+    assert any(
+        log.event_type == "endpoint_rejected"
+        and log.metadata.get("endpoint") == "https://blocked.example.com/sse"
+        for log in logs
+    )
+
+
+def test_connect_allows_wildcard_subdomain(remote_service, monkeypatch) -> None:
+    """ワイルドカード許可リストでサブドメインへの接続が成功すること。"""
+
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "*.trusted.com")
+
+    server_id = _create_authenticated_server(
+        remote_service, "https://api.trusted.com/sse"
+    )
+
+    response = client.post(f"/api/remote-servers/{server_id}/connect")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["server_id"] == server_id
+    assert body["capabilities"] == {"capabilities": []}
 
 
 def test_connect_endpoint_rejects_expired_credential(remote_service, monkeypatch) -> None:

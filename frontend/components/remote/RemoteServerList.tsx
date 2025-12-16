@@ -23,6 +23,10 @@ const STATUS_CLASSES: Record<RemoteServerStatus, string> = {
   [RemoteServerStatus.ERROR]: 'bg-red-50 text-red-700 border border-red-200',
 };
 
+type Props = {
+  onSelect?: (server: RemoteServer) => void;
+};
+
 function getBadge(status: RemoteServerStatus) {
   return {
     label: STATUS_LABELS[status] ?? status,
@@ -30,7 +34,7 @@ function getBadge(status: RemoteServerStatus) {
   };
 }
 
-export default function RemoteServerList() {
+export default function RemoteServerList({ onSelect }: Props) {
   const { data, error, isLoading, mutate, isValidating } = useSWR<RemoteServer[]>(
     'remote-servers',
     fetchRemoteServers,
@@ -150,7 +154,10 @@ export default function RemoteServerList() {
               <li
                 key={server.server_id}
                 data-testid="remote-server-row"
-                className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+                className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm cursor-pointer hover:border-blue-200 hover:shadow"
+                onClick={() => onSelect?.(server)}
+                role={onSelect ? 'button' : undefined}
+                tabIndex={onSelect ? 0 : undefined}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-1">
