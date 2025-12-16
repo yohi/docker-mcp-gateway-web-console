@@ -99,7 +99,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
 ## 5. フロントエンド UI の実装
-- [ ] 5.1 RemoteServerList コンポーネントの実装
+- [x] 5.1 RemoteServerList コンポーネントの実装
   - SWR で /api/remote-servers からサーバー一覧を取得
   - status によるバッジ表示（未登録/要認証/認証済み/エラー）
   - 検索・フィルタ機能の実装
