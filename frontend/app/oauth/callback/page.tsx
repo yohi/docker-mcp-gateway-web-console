@@ -1,177 +1,169 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { exchangeOAuth } from '@/lib/api/oauth';
-import type { OAuthExchangeResult } from '@/lib/api/oauth';
+import { completeOAuthCallback, OAuthCallbackResult } from '@/lib/api/oauth';
 
 type Status = 'processing' | 'success' | 'error';
 
-type StoredPKCE = {
-  codeVerifier: string;
-  serverId: string;
-  createdAt: number;
+type StoredPkce = {
+  codeVerifier?: string;
+  serverId?: string;
+  returnUrl?: string;
 };
 
-const STORAGE_PREFIX = 'oauth:pkce:';
-const STORAGE_TTL_MS = 15 * 60 * 1000;
+function readStoredPkce(state: string): StoredPkce | null {
+  const key = `oauth:pkce:${state}`;
+  const storages: Storage[] = [];
+  if (typeof window !== 'undefined') {
+    storages.push(sessionStorage, localStorage);
+  }
+  for (const storage of storages) {
+    try {
+      const raw = storage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as StoredPkce;
+      return parsed;
+    } catch {
+      // noop
+    }
+  }
+  return null;
+}
 
-function safeParseStored(value: string | null): StoredPKCE | null {
-  if (!value) return null;
+function clearStoredPkce(state: string) {
+  if (typeof window === 'undefined') return;
+  const key = `oauth:pkce:${state}`;
   try {
-    const parsed = JSON.parse(value) as Partial<StoredPKCE>;
-    if (!parsed.codeVerifier || !parsed.serverId || !parsed.createdAt) return null;
-    return parsed as StoredPKCE;
+    sessionStorage.removeItem(key);
   } catch {
-    return null;
+    // noop
+  }
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // noop
   }
 }
 
-function OAuthCallbackContent() {
+export default function OAuthCallbackPage() {
   const router = useRouter();
-  const params = useSearchParams();
+  const searchParams = useSearchParams();
   const [status, setStatus] = useState<Status>('processing');
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<OAuthExchangeResult | null>(null);
-
-  const code = params.get('code') || '';
-  const state = params.get('state') || '';
-  const providerError = params.get('error');
-  const providerErrorDescription = params.get('error_description');
-
-  const storageKey = useMemo(() => (state ? `${STORAGE_PREFIX}${state}` : ''), [state]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [result, setResult] = useState<OAuthCallbackResult | null>(null);
 
   useEffect(() => {
-    if (providerError) {
+    if (!searchParams) return;
+    const code = searchParams.get('code');
+    const state = searchParams.get('state');
+    const errorParam = searchParams.get('error');
+    const serverIdParam = searchParams.get('server_id');
+
+    if (errorParam) {
       setStatus('error');
-      setError(providerErrorDescription || providerError);
+      setErrorMessage(`認証が拒否されました: ${errorParam}`);
       return;
     }
 
     if (!code || !state) {
       setStatus('error');
-      setError('認可結果のパラメータ(code/state)が不足しています。');
+      setErrorMessage('認証コードまたは state が見つかりません。もう一度認証を開始してください。');
       return;
     }
 
+    const storedPkce = readStoredPkce(state);
+    const codeVerifier = storedPkce?.codeVerifier;
+    const serverId = serverIdParam ?? storedPkce?.serverId ?? undefined;
+    const returnUrl = storedPkce?.returnUrl;
+
     const run = async () => {
-      // localStorageからPKCE情報を読み込み（ストレージ例外を処理）
-      let storedValue: string | null = null;
       try {
-        storedValue = localStorage.getItem(storageKey);
-      } catch (err) {
-        console.error('localStorage read error:', err);
-        setStatus('error');
-        setError('ブラウザのストレージにアクセスできません。プライベートモードやストレージ制限を確認してください。');
-        return;
-      }
-
-      const stored = safeParseStored(storedValue);
-      if (!stored) {
-        setStatus('error');
-        setError('認可状態が見つかりません（stateが失効/不一致の可能性があります）。最初からやり直してください。');
-        return;
-      }
-
-      // TTLチェックと期限切れ時の削除（ストレージ例外を処理）
-      if (Date.now() - stored.createdAt > STORAGE_TTL_MS) {
-        try {
-          localStorage.removeItem(storageKey);
-        } catch (err) {
-          console.error('localStorage removeItem error (TTL exceeded):', err);
-          setStatus('error');
-          setError('認可状態が期限切れです。ストレージのクリーンアップに失敗しましたが、最初からやり直してください。');
-          return;
-        }
-        setStatus('error');
-        setError('認可状態が期限切れです。最初からやり直してください。');
-        return;
-      }
-
-      try {
-        const exchange = await exchangeOAuth({
+        const response = await completeOAuthCallback({
           code,
           state,
-          serverId: stored.serverId,
-          codeVerifier: stored.codeVerifier,
+          serverId,
+          codeVerifier,
         });
-
-        // トークン交換成功後のクリーンアップ（失敗してもエラーにはしない）
-        try {
-          localStorage.removeItem(storageKey);
-        } catch (err) {
-          console.error('localStorage removeItem error (after success):', err);
-          // 認証は成功しているため、削除失敗は無視
-        }
-
-        setResult(exchange);
+        setResult(response);
         setStatus('success');
+        clearStoredPkce(state);
 
-        if (window.opener && !window.opener.closed) {
-          window.opener.postMessage(
-            { type: 'oauth:complete', state, result: exchange },
-            window.location.origin
-          );
-          window.close();
+        if (typeof window !== 'undefined' && window.opener && window.opener !== window) {
+          try {
+            window.opener.postMessage(
+              { type: 'oauth:complete', state, result: response },
+              window.location.origin
+            );
+          } catch {
+            // noop
+          }
+          try {
+            window.close();
+          } catch {
+            // noop
+          }
           return;
         }
 
-        // ポップアップが使えない場合は、少し待ってから戻す
-        setTimeout(() => router.replace('/catalog'), 1200);
+        const fallback = serverId ? `/catalog?server=${serverId}` : '/catalog';
+        router.replace(returnUrl || fallback);
       } catch (err) {
         setStatus('error');
-        setError(err instanceof Error ? err.message : 'トークン交換に失敗しました。');
+        setErrorMessage(
+          err instanceof Error ? err.message : '認証処理に失敗しました。再度お試しください。'
+        );
       }
     };
 
-    void run();
-  }, [code, providerError, providerErrorDescription, router, state, storageKey]);
+    run();
+  }, [router, searchParams]);
+
+  const statusMessage = useMemo(() => {
+    if (status === 'processing') return '認証処理を完了しています...';
+    if (status === 'success') return '認証が完了しました。まもなくリダイレクトします。';
+    return errorMessage ?? '認証処理に失敗しました。';
+  }, [errorMessage, status]);
 
   return (
-    <div className="min-h-[60vh] flex items-center justify-center p-6">
-      <div className="w-full max-w-xl rounded-lg border border-gray-200 bg-white shadow-sm p-6 space-y-3">
-        <h1 className="text-lg font-semibold text-gray-900">OAuth 認証</h1>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="w-full max-w-lg rounded-lg bg-white shadow-md p-6 space-y-4 border border-gray-200">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">OAuth コールバック</h1>
+          <p className="mt-1 text-sm text-gray-600">リモート MCP サーバーの認証結果を処理しています。</p>
+        </div>
 
-        {status === 'processing' && (
-          <div className="text-sm text-gray-700">
-            認証を完了しています… この画面は自動で閉じます。
-          </div>
-        )}
-
-        {status === 'success' && (
-          <div className="text-sm text-green-700">
-            認証が完了しました。アプリに戻ります…
-            {result?.credential_key ? (
-              <div className="mt-2 text-xs text-gray-600">
-                credential_key: <span className="font-mono">{result.credential_key}</span>
+        <div className="rounded-md border border-gray-200 bg-gray-50 p-4 space-y-2">
+          <p className="text-sm text-gray-800">{statusMessage}</p>
+          {status === 'processing' && (
+            <p className="text-xs text-gray-500">このタブを閉じずにお待ちください...</p>
+          )}
+          {status === 'success' && result?.server_id && (
+            <p className="text-xs text-gray-600">対象サーバー: {result.server_id}</p>
+          )}
+          {status === 'error' && (
+            <div className="space-y-2">
+              <p className="text-sm text-red-700">問題が発生しました。再度認証を開始してください。</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => router.replace('/catalog')}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+                >
+                  カタログへ戻る
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.replace('/dashboard')}
+                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50"
+                >
+                  ダッシュボードへ戻る
+                </button>
               </div>
-            ) : null}
-          </div>
-        )}
-
-        {status === 'error' && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-            {error || '認証に失敗しました。'}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
-  );
-}
-
-export default function OAuthCallbackPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-[60vh] flex items-center justify-center p-6">
-          <div className="w-full max-w-xl rounded-lg border border-gray-200 bg-white shadow-sm p-6 space-y-3">
-            <h1 className="text-lg font-semibold text-gray-900">OAuth 認証</h1>
-            <div className="text-sm text-gray-700">読み込み中...</div>
-          </div>
-        </div>
-      }
-    >
-      <OAuthCallbackContent />
-    </Suspense>
   );
 }

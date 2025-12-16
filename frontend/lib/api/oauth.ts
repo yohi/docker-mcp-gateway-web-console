@@ -46,6 +46,16 @@ export interface OAuthRefreshResult {
   expires_at: string;
 }
 
+export interface OAuthCallbackResult {
+  success: boolean;
+  status: string;
+  scope: string[];
+  credential_key?: string;
+  expires_at?: string;
+  expires_in?: number;
+  server_id?: string;
+}
+
 function toQuery(params: Record<string, string | undefined | null>): string {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -106,6 +116,26 @@ export async function refreshOAuth(params: OAuthRefreshParams): Promise<OAuthRef
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.message || 'トークンリフレッシュに失敗しました');
+  }
+  return response.json();
+}
+
+export async function completeOAuthCallback(params: {
+  code: string;
+  state: string;
+  serverId?: string;
+  codeVerifier?: string;
+}): Promise<OAuthCallbackResult> {
+  const query = toQuery({
+    code: params.code,
+    state: params.state,
+    server_id: params.serverId,
+    code_verifier: params.codeVerifier,
+  });
+  const response = await fetch(`${API_BASE_URL}/api/oauth/callback?${query}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || '認証結果の処理に失敗しました');
   }
   return response.json();
 }
