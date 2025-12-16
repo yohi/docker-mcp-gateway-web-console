@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
 import { useContainers } from '@/hooks/useContainers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
+import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
 import SessionExecutionPanel from './SessionExecutionPanel';
 
 interface CatalogDetailModalProps {
@@ -21,7 +22,7 @@ export default function CatalogDetailModal({
   onInstall,
   onOAuth,
 }: CatalogDetailModalProps) {
-  const isRemote = item?.is_remote || item?.server_type === 'remote' || (!!item?.remote_endpoint && !item?.docker_image);
+  const isRemote = item ? isRemoteCatalogItem(item) : false;
   const { containers, isLoading } = useContainers();
 
   const status = useMemo<'loading' | 'running' | 'installed' | 'not_installed'>(() => {
@@ -161,7 +162,7 @@ export default function CatalogDetailModal({
                 {isRemote ? 'リモートエンドポイント' : 'Dockerイメージ'}
               </p>
               <p className="mt-1 font-mono text-sm text-gray-900 break-words">
-                {isRemote ? item.remote_endpoint || '未設定' : item.docker_image || '未設定'}
+                {isRemote ? getRemoteEndpoint(item) || '未設定' : item.docker_image || '未設定'}
               </p>
             </div>
 

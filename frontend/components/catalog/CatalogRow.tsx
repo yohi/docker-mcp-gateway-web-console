@@ -6,6 +6,7 @@ import type { ContainerInfo } from '@/lib/types/containers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
 import { useToast } from '@/contexts/ToastContext';
+import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
 
 type Props = {
   item: CatalogItem;
@@ -19,15 +20,15 @@ type Props = {
 const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh, onInstall, onSelect }: Props) => {
   const { showSuccess, showError } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
-  const isRemote = item.is_remote || item.server_type === 'remote' || (!!item.remote_endpoint && !item.docker_image);
-  const remoteEndpoint = item.remote_endpoint || '';
+  const isRemote = isRemoteCatalogItem(item);
+  const remoteEndpoint = getRemoteEndpoint(item);
 
   const matchedContainer = useMemo(() => {
     if (isRemote) return null;
     if (isContainersLoading) return 'loading';
     const container = containers.find((c) => matchCatalogItemContainer(item, c));
     return container || null;
-  }, [containers, isContainersLoading, item.is_remote, item.server_type, item.remote_endpoint, item.docker_image, item.name]);
+  }, [containers, isContainersLoading, isRemote, item]);
 
   const status =
     isRemote
@@ -136,13 +137,15 @@ const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh
             インストール
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => onSelect(item)}
-          className="px-3 py-1.5 bg-gray-100 text-gray-800 text-sm rounded-md hover:bg-gray-200 transition"
-        >
-          詳細
-        </button>
+        {!isRemote && (
+          <button
+            type="button"
+            onClick={() => onSelect(item)}
+            className="px-3 py-1.5 bg-gray-100 text-gray-800 text-sm rounded-md hover:bg-gray-200 transition"
+          >
+            詳細
+          </button>
+        )}
       </div>
     </div>
   );

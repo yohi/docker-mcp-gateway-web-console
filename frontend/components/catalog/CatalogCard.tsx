@@ -5,6 +5,7 @@ import { CatalogItem } from '@/lib/types/catalog';
 import type { ContainerInfo } from '@/lib/types/containers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
+import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
 
 interface CatalogCardProps {
     item: CatalogItem;
@@ -23,8 +24,8 @@ export default function CatalogCard({
     onInstall,
     onSelect,
 }: CatalogCardProps) {
-    const isRemote = item.is_remote || item.server_type === 'remote' || (!!item.remote_endpoint && !item.docker_image);
-    const remoteEndpoint = item.remote_endpoint || '';
+    const isRemote = isRemoteCatalogItem(item);
+    const remoteEndpoint = getRemoteEndpoint(item);
     const [isDeleting, setIsDeleting] = useState(false);
     const [deleteError, setDeleteError] = useState<string | null>(null);
     const scopes = item.required_scopes || [];
@@ -35,7 +36,7 @@ export default function CatalogCard({
         if (isContainersLoading) return 'loading';
         const container = containers.find((c) => matchCatalogItemContainer(item, c));
         return container || null;
-    }, [containers, isContainersLoading, isRemote, item.docker_image, item.name]);
+    }, [containers, isContainersLoading, isRemote, item]);
 
     const status =
         isRemote
