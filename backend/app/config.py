@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     oauth_request_timeout_seconds: int = 10
     # サーバーごとに OAuth エンドポイント等を上書きできるか(カタログ/クライアント由来の値を使用するため慎重に運用する)
     oauth_allow_override: bool = Field(default=False, validation_alias="OAUTH_ALLOW_OVERRIDE")
-    # OAuth URL の許可ドメインリスト(カンマ区切り)。空の場合は制限なし（開発向け）。
+    # OAuth URL の許可ドメインリスト(カンマ区切り)。空の場合はすべてのドメインを拒否（本番環境では必ず明示的に設定すること）。
     oauth_allowed_domains: str = Field(
         default="", validation_alias="OAUTH_ALLOWED_DOMAINS"
     )

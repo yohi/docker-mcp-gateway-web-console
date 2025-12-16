@@ -162,9 +162,9 @@ def _is_github_oauth_endpoints(authorize_url: str, token_url: str) -> bool:
 
 def _is_domain_allowed(url: str, allowed_domains: list[str]) -> bool:
     """URLのドメインが許可リストに含まれているかチェックする。"""
-    # 許可ドメイン指定なしの場合は許可（開発・テスト向けのデフォルト）
+    # 許可ドメイン指定なしの場合は拒否（本番環境で明示的な設定を要求）
     if not allowed_domains:
-        return True
+        return False
 
     try:
         parsed = urlparse(url)
