@@ -29,6 +29,17 @@ const servers = [
 test.describe('Remote Servers', () => {
   test.beforeEach(async ({ page }) => {
     await mockAuthentication(page);
+
+    // OAuth リダイレクトをスタブ化（すべてのナビゲーション前に実行）
+    await page.addInitScript(() => {
+      const original = window.location;
+      const stub = Object.create(original);
+      (stub as any).assign = (url: string) => {
+        (window as any).__oauthRedirect = url;
+      };
+      Object.defineProperty(window, 'location', { value: stub });
+    });
+
     await mockRemoteServers(page, servers);
     await mockRemoteServerDetail(page, servers[0]);
     await mockRemoteServerDetail(page, servers[1]);
@@ -51,15 +62,6 @@ test.describe('Remote Servers', () => {
       serverId: 'srv-1',
       authUrl: 'https://auth.example.com/authorize',
       state: 'state-123',
-    });
-
-    await page.addInitScript(() => {
-      const original = window.location;
-      const stub = Object.create(original);
-      (stub as any).assign = (url: string) => {
-        (window as any).__oauthRedirect = url;
-      };
-      Object.defineProperty(window, 'location', { value: stub });
     });
 
     await page.getByRole('button', { name: '認証開始' }).click();
