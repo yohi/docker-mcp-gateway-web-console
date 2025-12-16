@@ -18,3 +18,11 @@ export interface RemoteServer {
   error_message?: string | null;
   created_at: string;
 }
+
+export interface RemoteTestResult {
+  server_id: string;
+  reachable: boolean;
+  authenticated: boolean;
+  capabilities?: unknown;
+  error?: string | null;
+}

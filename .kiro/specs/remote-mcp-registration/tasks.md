@@ -105,7 +105,7 @@
   - 検索・フィルタ機能の実装
   - _Requirements: 1.1, 1.2, 7.1_
 
-- [ ] 5.2 RemoteServerDetail コンポーネントの実装
+- [x] 5.2 RemoteServerDetail コンポーネントの実装
   - サーバー詳細表示（名称、提供元、説明、接続先エンドポイント、認証要否、要求スコープ、想定トランスポート）
   - 「認証開始」ボタン: クライアント側で code_verifier を生成し、code_challenge を計算して /api/oauth/start に送信
   - 取得した auth_url へリダイレクト、state と code_verifier をセッションストレージに保存
