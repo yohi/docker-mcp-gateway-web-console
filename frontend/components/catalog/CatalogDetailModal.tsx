@@ -249,7 +249,7 @@ export default function CatalogDetailModal({
             </div>
           </div>
 
-          {!isRemote && (
+          {!isRemote && item.docker_image && (
             <div className="rounded-lg border border-gray-200 p-4">
               <p className="text-sm font-semibold text-gray-900">Session/Execution パネル</p>
               <p className="text-xs text-gray-600 mb-3">
