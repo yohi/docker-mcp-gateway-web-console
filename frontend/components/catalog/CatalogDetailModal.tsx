@@ -161,7 +161,7 @@ export default function CatalogDetailModal({
                 {isRemote ? 'リモートエンドポイント' : 'Dockerイメージ'}
               </p>
               <p className="mt-1 font-mono text-sm text-gray-900 break-words">
-                {isRemote ? item.remote_endpoint || '未設定' : item.docker_image}
+                {isRemote ? item.remote_endpoint || '未設定' : item.docker_image || '未設定'}
               </p>
             </div>
 

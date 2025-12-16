@@ -104,7 +104,7 @@ const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh
           {isRemote ? (
             <p className="text-xs text-gray-500 mt-1 break-all">リモートエンドポイント: {remoteEndpoint || '未設定'}</p>
           ) : (
-            <p className="text-xs text-gray-500 mt-1 break-all">イメージ: {item.docker_image}</p>
+            <p className="text-xs text-gray-500 mt-1 break-all">イメージ: {item.docker_image || '未設定'}</p>
           )}
         </div>
       </div>
