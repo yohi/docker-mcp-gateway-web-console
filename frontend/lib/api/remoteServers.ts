@@ -49,8 +49,8 @@ export async function startRemoteOAuth(params: {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: '認証を開始できませんでした' }));
-    throw new Error(error.message || '認証を開始できませんでした');
+    const error = await response.json().catch(() => ({ message: 'Could not start authentication' }));
+    throw new Error(error.message || 'Could not start authentication');
   }
 
   return response.json();
