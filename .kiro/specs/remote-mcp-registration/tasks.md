@@ -156,22 +156,22 @@
   - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
 
 ## 8. テストの実装
-- [ ] 8.1 (P) StateStore.is_endpoint_allowed のユニットテスト
+- [x] 8.1 (P) StateStore.is_endpoint_allowed のユニットテスト
   - 完全一致マッチング、ポート番号明示マッチング、ワイルドカードマッチング、IPv6 拒否、空リスト deny-all のテストケース
   - _Requirements: 8.3, 8.4_
 
-- [ ] 8.2 (P) RemoteMcpService のユニットテスト
+- [x] 8.2 (P) RemoteMcpService のユニットテスト
   - register_server: 正常登録、重複拒否、allowlist 検証（許可/不許可エンドポイント）
   - connect: credential 復号、SSE 接続モック、allowlist 検証（許可/不許可エンドポイント）
   - _Requirements: 2.1, 2.3, 6.1, 8.3, 8.4_
 
-- [ ] 8.3 (P) OAuthService のユニットテスト
+- [x] 8.3 (P) OAuthService のユニットテスト
   - _persist_state: server_id を渡し、oauth_states に正しく保存されることを確認
   - _validate_state: state から server_id を取得できることを確認、存在しない server_id での OAuth 開始は HTTP 404 を返却
   - TTL 検証と server_id 紐付け
   - _Requirements: 3.2, 3.3, 4.1, 4.2_
 
-- [ ] 8.4 (P) CatalogService のユニットテスト
+- [x] 8.4 (P) CatalogService のユニットテスト
   - docker_image 優先ロジック（両方存在時）
   - remote_endpoint 単独時の is_remote=True 設定
   - HTTPS スキーム検証（ALLOW_INSECURE_ENDPOINT=false 時）

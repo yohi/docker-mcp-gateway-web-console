@@ -58,10 +58,14 @@ def _is_private_or_local_ip(hostname: str) -> bool:
             return True
 
         return False
-    except (socket.gaierror, ValueError):
-        # DNS解決失敗またはIPアドレス変換失敗の場合は安全側に倒す（拒否）
-        # 攻撃者がDNSを制御してSSRFをバイパスすることを防ぐため、fail-closedとしてTrueを返す
+    except socket.gaierror:
+        # DNS解決に失敗した場合はfail-closed（安全側に倒す）:
+        # 一時的なDNS障害やDNS rebinding攻撃の可能性があり、
+        # 安全性を優先してプライベートとみなし、アクセスを拒否する
         return True
+    except ValueError:
+        # IP形式への変換ができない場合はプライベート判定できないため非プライベートとみなす
+        return False
 
 
 def _normalize_oauth_url(value: str, *, field_name: str) -> str:
@@ -72,20 +76,26 @@ def _normalize_oauth_url(value: str, *, field_name: str) -> str:
 
     parsed = urlparse(url)
 
-    # HTTPSスキームのみ許可(HTTPは拒否)
-    if parsed.scheme != "https":
+    # HTTPSスキームのみ許可。ただしローカル開発用途の http://localhost 系のみ許容
+    hostname = parsed.hostname or parsed.netloc.split(":")[0]
+    if parsed.scheme == "http":
+        if hostname not in {"localhost", "127.0.0.1", "::1"}:
+            logger.warning(
+                "OAuth URL rejected: non-HTTPS scheme. field=%s url=%s",
+                field_name,
+                url,
+            )
+            raise OAuthError(f"{field_name} は HTTPS スキームである必要があります: {url}")
+    elif parsed.scheme != "https":
         logger.warning(
-            "OAuth URL rejected: non-HTTPS scheme. field=%s url=%s",
+            "OAuth URL rejected: unsupported scheme. field=%s url=%s",
             field_name,
             url,
         )
-        raise OAuthError(f"{field_name} は HTTPS スキームである必要があります: {url}")
+        raise OAuthError(f"{field_name} のスキームが不正です: {url}")
 
     if not parsed.netloc:
         raise OAuthError(f"{field_name} が不正です: {url}")
-
-    # ホスト名を抽出(ポート番号を除く)
-    hostname = parsed.hostname or parsed.netloc.split(":")[0]
 
     # IPアドレス形式をチェック
     try:
@@ -98,7 +108,9 @@ def _normalize_oauth_url(value: str, *, field_name: str) -> str:
                 url,
                 hostname,
             )
-            raise OAuthError(f"{field_name} にプライベート/ローカルIPは使用できません")
+            # ローカル開発用途の http + localhost 以外は拒否
+            if not (parsed.scheme == "http" and hostname in {"127.0.0.1", "::1"}):
+                raise OAuthError(f"{field_name} にプライベート/ローカルIPは使用できません")
 
         # クラウドメタデータエンドポイントを拒否
         if str(ip) == "169.254.169.254":
@@ -110,18 +122,18 @@ def _normalize_oauth_url(value: str, *, field_name: str) -> str:
             raise OAuthError(f"{field_name} にメタデータエンドポイントは使用できません")
     except ValueError:
         # IPアドレスではなくホスト名の場合
-        # ローカルホスト名を拒否
+        # ローカルホスト名は HTTP スキームの開発用途のみ許容
         if hostname.lower() in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}:
-            logger.warning(
-                "OAuth URL rejected: localhost. field=%s url=%s hostname=%s",
-                field_name,
-                url,
-                hostname,
-            )
-            raise OAuthError(f"{field_name} に localhost は使用できません")
-
+            if parsed.scheme != "http":
+                logger.warning(
+                    "OAuth URL rejected: localhost. field=%s url=%s hostname=%s",
+                    field_name,
+                    url,
+                    hostname,
+                )
+                raise OAuthError(f"{field_name} に localhost は使用できません")
         # DNS解決してプライベートIPをチェック
-        if _is_private_or_local_ip(hostname):
+        elif _is_private_or_local_ip(hostname):
             logger.warning(
                 "OAuth URL rejected: resolves to private IP. field=%s url=%s hostname=%s",
                 field_name,
@@ -149,6 +161,7 @@ def _is_github_oauth_endpoints(authorize_url: str, token_url: str) -> bool:
 
 def _is_domain_allowed(url: str, allowed_domains: list[str]) -> bool:
     """URLのドメインが許可リストに含まれているかチェックする。"""
+    # 許可ドメイン指定なしの場合は拒否（本番環境で明示的な設定を要求）
     if not allowed_domains:
         return False
 

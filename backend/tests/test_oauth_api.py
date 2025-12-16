@@ -14,15 +14,28 @@ def configure_oauth_settings(monkeypatch):
     """OAuth設定をテスト用に固定化する。"""
     from app.config import settings
     import base64
+    import socket
 
     monkeypatch.setattr(settings, "oauth_authorize_url", "https://auth.example.com/authorize")
     monkeypatch.setattr(settings, "oauth_token_url", "https://auth.example.com/token")
     monkeypatch.setattr(settings, "oauth_client_id", "client-123")
     monkeypatch.setattr(settings, "oauth_redirect_uri", "http://localhost:8000/api/catalog/oauth/callback")
     monkeypatch.setattr(settings, "oauth_request_timeout_seconds", 2)
+    monkeypatch.setattr(settings, "oauth_allowed_domains", "auth.example.com,api.example.com,github.com")
     key = base64.urlsafe_b64encode(b"0" * 32).decode()
     monkeypatch.setattr(settings, "oauth_token_encryption_key", key)
     monkeypatch.setattr(settings, "oauth_token_encryption_key_id", "test-key")
+
+    # DNS解決のモック: テスト用ドメインをパブリックIPに解決
+    original_gethostbyname = socket.gethostbyname
+
+    def mock_gethostbyname(hostname):
+        # テスト用ドメインは正常なパブリックIPに解決
+        if hostname in ("auth.example.com", "api.example.com"):
+            return "93.184.216.34"  # example.com の実際のIP
+        return original_gethostbyname(hostname)
+
+    monkeypatch.setattr(socket, "gethostbyname", mock_gethostbyname)
     yield
 
 

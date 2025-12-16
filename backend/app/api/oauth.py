@@ -213,6 +213,7 @@ async def oauth_refresh(
         error_code: str,
         message: str,
         remediation: str | None = None,
+        detail: str | None = None,
     ) -> JSONResponse:
         return JSONResponse(
             status_code=status_code,
@@ -221,6 +222,7 @@ async def oauth_refresh(
                 "message": message,
                 "remediation": remediation,
                 "correlation_id": correlation_id,
+                "detail": detail or "",
             },
         )
 
@@ -254,7 +256,8 @@ async def oauth_refresh(
     except OAuthError as exc:
         return error_response(
             status_code=422,
-            error_code="internal_error",
+            error_code="invalid_request",
             message=str(exc),
             remediation=None,
+            detail=str(exc),
         )
