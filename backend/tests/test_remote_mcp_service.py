@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from app.services.metrics import MetricsRecorder
+
 from app.models.remote import RemoteServer, RemoteServerStatus
 from app.models.state import CredentialRecord
 from app.services.oauth import CredentialNotFoundError, RemoteServerNotFoundError
@@ -69,7 +71,8 @@ def _make_service(tmp_path, **kwargs) -> RemoteMcpService:
     db_path = tmp_path / "state.db"
     store = StateStore(str(db_path))
     store.init_schema()
-    return RemoteMcpService(state_store=store, **kwargs)
+    metrics = kwargs.pop("metrics", None) or MetricsRecorder()
+    return RemoteMcpService(state_store=store, metrics=metrics, **kwargs)
 
 
 @pytest.mark.asyncio
@@ -282,8 +285,37 @@ async def test_register_server_rejects_duplicate(tmp_path, monkeypatch) -> None:
             endpoint="https://dup.example.com/sse",
         )
 
+
+@pytest.mark.asyncio
+async def test_register_server_records_metrics_on_allowlist_reject(tmp_path, monkeypatch) -> None:
+    """登録時の許可リスト拒否がメトリクスに記録されること。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "allow.example.com")
+    metrics = MetricsRecorder()
+    service = _make_service(tmp_path, metrics=metrics)
+
+    with pytest.raises(EndpointNotAllowedError):
+        await service.register_server(
+            catalog_item_id="cat-metrics",
+            name="Blocked",
+            endpoint="https://blocked.example.com/sse",
+            correlation_id="corr-metrics",
+        )
+
+    assert (
+        metrics.get_counter(
+            "remote_server_connections_total", {"result": "rejected", "stage": "register"}
+        )
+        == 1
+    )
+    assert (
+        metrics.get_counter(
+            "remote_server_connections_rejected_total", {"reason": "not_in_allowlist"}
+        )
+        == 1
+    )
+
     servers = await service.list_servers()
-    assert len(servers) == 1
+    assert len(servers) == 0
 
 
 @pytest.mark.asyncio
@@ -533,7 +565,8 @@ async def test_connect_uses_semaphore_and_rejects_when_busy(tmp_path, monkeypatc
 async def test_connect_rejects_when_endpoint_not_allowed(tmp_path, monkeypatch) -> None:
     """接続時も許可リスト検証が行われる。"""
     monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
-    service = _make_service(tmp_path)
+    metrics = MetricsRecorder()
+    service = _make_service(tmp_path, metrics=metrics)
 
     server = await service.register_server(
         catalog_item_id="cat-allow",
@@ -564,3 +597,17 @@ async def test_connect_rejects_when_endpoint_not_allowed(tmp_path, monkeypatch) 
 
     with pytest.raises(EndpointNotAllowedError):
         await service.connect(server.server_id)
+
+    assert metrics.get_counter("remote_server_connections_total", {"result": "attempt"}) == 1
+    assert (
+        metrics.get_counter(
+            "remote_server_connections_total", {"result": "rejected", "stage": "connect"}
+        )
+        == 1
+    )
+    assert (
+        metrics.get_counter(
+            "remote_server_connections_rejected_total", {"reason": "not_in_allowlist"}
+        )
+        == 1
+    )

@@ -140,7 +140,7 @@
   - 認証情報の有無と紐づくサーバーを Web Console で確認できるように表示
   - _Requirements: 4.7, 5.4, 5.5_
 
-- [ ] 6.3 (P) 監査ログとメトリクスの実装
+- [x] 6.3 (P) 監査ログとメトリクスの実装
   - server_registered, server_authenticated, connection_failed, endpoint_rejected イベントを audit_logs に記録
   - remote_server_connections_total, remote_server_connections_rejected_total, oauth_flow_success_total, oauth_flow_failure_total メトリクスを記録
   - 許可リスト検証によるアクセス拒否時の監査ログ記録

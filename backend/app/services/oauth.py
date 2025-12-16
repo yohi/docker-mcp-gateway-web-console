@@ -21,6 +21,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from ..config import OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER, settings
 from ..models.state import CredentialRecord, OAuthStateRecord
+from .metrics import MetricsRecorder
 from .state_store import StateStore
 
 logger = logging.getLogger(__name__)
@@ -356,6 +357,7 @@ class OAuthService:
         refresh_backoff_schedule: Optional[List[float]] = None,
         permitted_scopes: Optional[List[str]] = None,
         credential_creator: str = "system",
+        metrics: Optional[MetricsRecorder] = None,
     ) -> None:
         # state 管理（メモリ）と永続ストア
         self._state_store_mem: Dict[str, OAuthState] = {}
@@ -375,6 +377,7 @@ class OAuthService:
         self._token_cipher = self._build_token_cipher()
         self._secret_store: Dict[str, Dict[str, object]] = {}
         self._load_persisted_credentials()
+        self.metrics = metrics or MetricsRecorder()
 
     def _load_persisted_credentials(self) -> None:
         """永続ストアから暗号化済みトークンを復元する。失敗時は再認可させるため削除する。"""
@@ -728,6 +731,9 @@ class OAuthService:
                     oauth_token_url=oauth_state.token_url,
                     oauth_client_id=oauth_state.client_id,
                 )
+                self.metrics.increment(
+                    "oauth_flow_success_total", {"result": "exchange_token"}
+                )
                 return {
                     "success": True,
                     "status": "authorized",
@@ -753,6 +759,10 @@ class OAuthService:
                 break
 
         if last_error:
+            self.metrics.increment(
+                "oauth_flow_failure_total",
+                {"error": last_error.__class__.__name__, "result": "exchange_token"},
+            )
             raise last_error
 
         raise OAuthProviderUnavailableError("プロバイダ障害。時間を置いて再試行してください")
