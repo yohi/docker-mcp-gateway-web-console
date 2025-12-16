@@ -297,6 +297,33 @@ class RemoteMcpService:
             },
         )
 
+    async def revoke_credentials(
+        self, server_id: str, *, correlation_id: Optional[str] = None
+    ) -> RemoteServer:
+        """サーバーに紐づく資格情報を削除し、認証待ち状態へ遷移させる。"""
+        server = await self._require_server(server_id)
+
+        if not server.credential_key:
+            raise CredentialNotFoundError("credential_key が設定されていません")
+
+        self._state_store.delete_credential(server.credential_key)
+        updated = await self.set_status(
+            server_id=server_id,
+            status=RemoteServerStatus.AUTH_REQUIRED,
+            credential_key=None,
+            error_message="",
+        )
+
+        self._record_audit(
+            event_type="credentials_revoked",
+            correlation_id=correlation_id or server_id,
+            metadata={
+                "server_id": server_id,
+                "catalog_item_id": server.catalog_item_id,
+            },
+        )
+        return updated
+
     async def enable_server(
         self,
         server_id: str,
