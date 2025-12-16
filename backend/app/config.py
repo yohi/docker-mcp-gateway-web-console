@@ -63,9 +63,9 @@ class Settings(BaseSettings):
     oauth_request_timeout_seconds: int = 10
     # サーバーごとに OAuth エンドポイント等を上書きできるか(カタログ/クライアント由来の値を使用するため慎重に運用する)
     oauth_allow_override: bool = Field(default=False, validation_alias="OAUTH_ALLOW_OVERRIDE")
-    # OAuth URL の許可ドメインリスト(カンマ区切り)。空の場合は GitHub のみ許可。
+    # OAuth URL の許可ドメインリスト(カンマ区切り)。空の場合は制限なし（開発向け）。
     oauth_allowed_domains: str = Field(
-        default="github.com", validation_alias="OAUTH_ALLOWED_DOMAINS"
+        default="", validation_alias="OAUTH_ALLOWED_DOMAINS"
     )
     # アクセス/リフレッシュトークンの暗号化キー(Fernet)。必ず環境変数 OAUTH_TOKEN_ENCRYPTION_KEY で本番用のキーを指定すること。
     oauth_token_encryption_key: str = Field(
