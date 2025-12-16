@@ -59,8 +59,10 @@ def _is_private_or_local_ip(hostname: str) -> bool:
 
         return False
     except socket.gaierror:
-        # DNS解決に失敗した場合はローカル開発やオフライン環境を許容し、非プライベートとみなす
-        return False
+        # DNS解決に失敗した場合はfail-closed（安全側に倒す）:
+        # 一時的なDNS障害やDNS rebinding攻撃の可能性があり、
+        # 安全性を優先してプライベートとみなし、アクセスを拒否する
+        return True
     except ValueError:
         # IP形式への変換ができない場合はプライベート判定できないため非プライベートとみなす
         return False
@@ -94,9 +96,6 @@ def _normalize_oauth_url(value: str, *, field_name: str) -> str:
 
     if not parsed.netloc:
         raise OAuthError(f"{field_name} が不正です: {url}")
-
-    # ホスト名を抽出(ポート番号を除く)
-    hostname = parsed.hostname or parsed.netloc.split(":")[0]
 
     # IPアドレス形式をチェック
     try:
