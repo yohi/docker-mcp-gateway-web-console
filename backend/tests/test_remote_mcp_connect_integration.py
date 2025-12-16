@@ -185,7 +185,7 @@ def load_test_services(monkeypatch, tmp_path):
     session = _DummySession()
     heartbeat_entered = asyncio.Event()
 
-    async def _slow_heartbeat(session_obj):  # noqa: ANN001
+    async def _slow_heartbeat(*_args):  # noqa: ANN002
         heartbeat_entered.set()
         await asyncio.sleep(0.2)
 
