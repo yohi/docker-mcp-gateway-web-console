@@ -36,6 +36,18 @@ class TooManyConnectionsError(RemoteMcpError):
     """同時接続上限を超過した場合のエラー。"""
 
 
+class ServerDisabledError(RemoteMcpError):
+    """無効化されたサーバーへの接続要求。"""
+
+
+class CredentialExpiredError(RemoteMcpError):
+    """期限切れ資格情報。"""
+
+
+class RemoteConnectionError(RemoteMcpError):
+    """ネットワーク等の接続エラー。"""
+
+
 class RemoteMcpService:
     """リモート MCP サーバーの CRUD と資格情報取得を担当する。"""
 
@@ -171,7 +183,7 @@ class RemoteMcpService:
         """
         server = await self._require_server(server_id)
         if server.status == RemoteServerStatus.DISABLED:
-            raise RemoteMcpError("サーバーが無効化されています")
+            raise ServerDisabledError("サーバーが無効化されています")
 
         self.metrics.increment("remote_server_connections_total", {"result": "attempt"})
         if not self._state_store.is_endpoint_allowed(server.endpoint):
@@ -236,6 +248,32 @@ class RemoteMcpService:
                 metadata={"server_id": server_id, "endpoint": server.endpoint},
             )
             return capabilities
+        except (
+            ServerDisabledError,
+            EndpointNotAllowedError,
+            TooManyConnectionsError,
+            CredentialNotFoundError,
+            CredentialExpiredError,
+            RemoteServerNotFoundError,
+        ):
+            raise
+        except httpx.RequestError as exc:
+            self.metrics.increment("remote_server_connections_total", {"result": "failure"})
+            await self.set_status(
+                server_id=server_id,
+                status=RemoteServerStatus.ERROR,
+                error_message=str(exc),
+            )
+            self._record_audit(
+                event_type="connection_failed",
+                correlation_id=server_id,
+                metadata={
+                    "server_id": server_id,
+                    "endpoint": server.endpoint,
+                    "error": str(exc),
+                },
+            )
+            raise RemoteConnectionError(f"network error: {exc}") from exc
         except Exception as exc:  # noqa: BLE001
             self.metrics.increment("remote_server_connections_total", {"result": "failure"})
             await self.set_status(
@@ -252,7 +290,7 @@ class RemoteMcpService:
                     "error": str(exc),
                 },
             )
-            raise
+            raise RemoteMcpError(str(exc)) from exc
         finally:
             # セマフォを取得できた場合のみ解放する
             if acquired:
@@ -442,6 +480,18 @@ class RemoteMcpService:
         record = self._state_store.get_credential(credential_key)
         if record is None or record.server_id != server_id:
             raise CredentialNotFoundError("credential_key が server_id に紐づいていません")
+        now = datetime.now(timezone.utc)
+        if record.expires_at and record.expires_at < now:
+            try:
+                self._state_store.delete_credential(credential_key)
+            finally:
+                await self.set_status(
+                    server_id=server_id,
+                    status=RemoteServerStatus.AUTH_REQUIRED,
+                    credential_key=None,
+                    error_message="資格情報の有効期限が切れています。再認証してください。",
+                )
+            raise CredentialExpiredError("資格情報の有効期限が切れています。再認証してください。")
         return record
 
     async def _require_server(self, server_id: str) -> RemoteServer:
@@ -491,8 +541,8 @@ class RemoteMcpService:
     async def _try_acquire_connection_slot(self) -> None:
         """同時接続セマフォを即時取得し、失敗時は TooManyConnectionsError を送出する。"""
         try:
-            await asyncio.wait_for(self._connection_semaphore.acquire(), timeout=0)
-        except asyncio.TimeoutError as exc:
+            await asyncio.wait_for(self._connection_semaphore.acquire(), timeout=5)
+        except asyncio.TimeoutError as exc:  # pragma: no cover - defensive
             raise TooManyConnectionsError("同時接続上限を超えています") from exc
 
     @staticmethod
