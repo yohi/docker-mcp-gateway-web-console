@@ -75,6 +75,13 @@ class Settings(BaseSettings):
     oauth_token_encryption_key_id: str = Field(
         default="default", validation_alias="OAUTH_TOKEN_ENCRYPTION_KEY_ID"
     )
+    # Credential Encryption (AES-GCM) for OAuth トークンの代替暗号鍵
+    credential_encryption_key: str = Field(
+        default="", validation_alias="CREDENTIAL_ENCRYPTION_KEY"
+    )
+    credential_encryption_key_id: str = Field(
+        default="credential", validation_alias="CREDENTIAL_ENCRYPTION_KEY_ID"
+    )
     # 暗号鍵の永続化パス (env > file > generate の順で利用)
     oauth_token_key_file: str = Field(
         default="data/oauth_encryption.key", validation_alias="OAUTH_TOKEN_ENCRYPTION_KEY_FILE"

@@ -17,6 +17,7 @@ from urllib.parse import urlencode
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from ..config import OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER, settings
 from ..models.state import CredentialRecord, OAuthStateRecord
@@ -181,9 +182,24 @@ class TokenCipher:
     """トークンを暗号化・復号するユーティリティ。"""
 
     def __init__(self, key: str, key_id: str = "default", algorithm: str = "fernet") -> None:
-        self._algo = algorithm
+        self._algo = algorithm or "fernet"
         self._key_id = key_id
-        self._fernet = Fernet(key.encode("utf-8") if isinstance(key, str) else key)
+        self._fernet: Optional[Fernet] = None
+        self._aesgcm: Optional[AESGCM] = None
+
+        if self._algo == "fernet":
+            self._fernet = Fernet(key.encode("utf-8") if isinstance(key, str) else key)
+        elif self._algo == "aes-gcm":
+            key_bytes = key.encode("utf-8") if isinstance(key, str) else key
+            try:
+                key_bytes = base64.urlsafe_b64decode(key_bytes)
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError("invalid AES-GCM key encoding") from exc
+            if len(key_bytes) != 32:
+                raise ValueError("AES-GCM key must be 32 bytes (256-bit)")
+            self._aesgcm = AESGCM(key_bytes)
+        else:
+            raise ValueError(f"unsupported algorithm: {self._algo}")
 
     @property
     def metadata(self) -> Dict[str, str]:
@@ -192,8 +208,23 @@ class TokenCipher:
 
     def encrypt(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """ペイロードを暗号化し token_ref 用の辞書を返す。"""
-        blob = self._fernet.encrypt(json.dumps(payload).encode("utf-8")).decode("utf-8")
-        return {"type": "encrypted", "algo": self._algo, "key_id": self._key_id, "blob": blob}
+        message = json.dumps(payload).encode("utf-8")
+        if self._algo == "fernet" and self._fernet:
+            blob = self._fernet.encrypt(message).decode("utf-8")
+            return {"type": "encrypted", "algo": self._algo, "key_id": self._key_id, "blob": blob}
+
+        if self._algo == "aes-gcm" and self._aesgcm:
+            nonce = secrets.token_bytes(12)
+            ciphertext = self._aesgcm.encrypt(nonce, message, associated_data=None)
+            return {
+                "type": "encrypted",
+                "algo": self._algo,
+                "key_id": self._key_id,
+                "blob": base64.urlsafe_b64encode(ciphertext).decode("utf-8"),
+                "nonce": base64.urlsafe_b64encode(nonce).decode("utf-8"),
+            }
+
+        raise ValueError("cipher is not initialized")
 
     def decrypt(self, token_ref: Dict[str, Any]) -> Dict[str, Any]:
         """token_ref から平文ペイロードを復号する。"""
@@ -207,16 +238,33 @@ class TokenCipher:
         if key_id and key_id != self._key_id:
             raise ValueError(f"unsupported key id: {key_id}")
 
-        blob = token_ref.get("blob")
-        if not blob:
-            raise ValueError("token_ref missing blob")
+        if self._algo == "fernet" and self._fernet:
+            blob = token_ref.get("blob")
+            if not blob:
+                raise ValueError("token_ref missing blob")
+            try:
+                decrypted = self._fernet.decrypt(blob.encode("utf-8"))
+            except InvalidToken as exc:  # noqa: BLE001
+                raise ValueError("token_ref decrypt failed") from exc
+            return json.loads(decrypted.decode("utf-8"))
 
-        try:
-            decrypted = self._fernet.decrypt(blob.encode("utf-8"))
-        except InvalidToken as exc:
-            raise ValueError("token_ref decrypt failed") from exc
+        if self._algo == "aes-gcm" and self._aesgcm:
+            blob = token_ref.get("blob")
+            nonce = token_ref.get("nonce")
+            if not blob or not nonce:
+                raise ValueError("token_ref missing blob or nonce")
+            try:
+                ciphertext = base64.urlsafe_b64decode(blob)
+                nonce_bytes = base64.urlsafe_b64decode(nonce)
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError("token_ref base64 decode failed") from exc
+            try:
+                decrypted = self._aesgcm.decrypt(nonce_bytes, ciphertext, associated_data=None)
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError("token_ref decrypt failed") from exc
+            return json.loads(decrypted.decode("utf-8"))
 
-        return json.loads(decrypted.decode("utf-8"))
+        raise ValueError("cipher is not initialized")
 
 
 class OAuthError(Exception):
@@ -324,18 +372,7 @@ class OAuthService:
         self._scope_policy = ScopePolicyService(permitted_scopes or [])
         self._credential_creator = credential_creator
         self._client_secret = settings.oauth_client_secret.strip() or None
-        encryption_key = settings.oauth_token_encryption_key
-        if (
-            not encryption_key
-            or encryption_key.strip() == ""
-            or encryption_key == OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER
-        ):
-            raise ConfigurationError(
-                "oauth_token_encryption_key が未設定またはプレースホルダーのままです。環境変数 OAUTH_TOKEN_ENCRYPTION_KEY に有効な Fernet キーを設定してください。"
-            )
-        self._token_cipher = TokenCipher(
-            encryption_key, settings.oauth_token_encryption_key_id
-        )
+        self._token_cipher = self._build_token_cipher()
         self._secret_store: Dict[str, Dict[str, object]] = {}
         self._load_persisted_credentials()
 
@@ -393,6 +430,28 @@ class OAuthService:
             "expires_at": expires_at,
             "scope": scopes,
         }
+
+    def _build_token_cipher(self) -> TokenCipher:
+        """暗号化方式を選択して TokenCipher を構築する。"""
+        cred_key = settings.credential_encryption_key.strip()
+        if cred_key:
+            return TokenCipher(
+                cred_key,
+                settings.credential_encryption_key_id,
+                algorithm="aes-gcm",
+            )
+
+        fernet_key = settings.oauth_token_encryption_key
+        if fernet_key and fernet_key.strip() and fernet_key != OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER:
+            return TokenCipher(
+                fernet_key,
+                settings.oauth_token_encryption_key_id,
+                algorithm="fernet",
+            )
+
+        raise ConfigurationError(
+            "credential_encryption_key もしくは oauth_token_encryption_key を設定してください。"
+        )
 
     @staticmethod
     def _parse_expires_in(raw_value: object) -> int:
