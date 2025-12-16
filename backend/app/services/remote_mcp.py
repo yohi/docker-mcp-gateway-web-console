@@ -12,6 +12,7 @@ import httpx
 
 from ..models.remote import RemoteServer, RemoteServerStatus
 from ..models.state import CredentialRecord, RemoteServerRecord
+from .metrics import MetricsRecorder
 from .oauth import CredentialNotFoundError, RemoteServerNotFoundError
 from .state_store import StateStore
 
@@ -49,6 +50,7 @@ class RemoteMcpService:
         connect_timeout_seconds: float = 30.0,
         heartbeat_interval_seconds: float = 120.0,
         idle_timeout_seconds: float = 300.0,
+        metrics: Optional[MetricsRecorder] = None,
     ) -> None:
         self._state_store = state_store or StateStore()
         self.state_store = self._state_store  # テスト用に公開
@@ -57,6 +59,7 @@ class RemoteMcpService:
             self._state_store.init_schema()
         except Exception:
             logger.debug("state store init skipped", exc_info=True)
+        self.metrics = metrics or MetricsRecorder()
 
         # 依存を注入可能にし、テスト時にモックできるようにする
         if sse_client_factory is not None:
@@ -102,6 +105,12 @@ class RemoteMcpService:
         port = parsed.port or (443 if (parsed.scheme or "").lower() == "https" else 80)
 
         if not self._state_store.is_endpoint_allowed(endpoint_norm):
+            self.metrics.increment(
+                "remote_server_connections_total", {"result": "rejected", "stage": "register"}
+            )
+            self.metrics.increment(
+                "remote_server_connections_rejected_total", {"reason": "not_in_allowlist"}
+            )
             self._record_audit(
                 event_type="endpoint_rejected",
                 correlation_id=correlation_id or catalog_item_id,
@@ -164,10 +173,17 @@ class RemoteMcpService:
         if server.status == RemoteServerStatus.DISABLED:
             raise RemoteMcpError("サーバーが無効化されています")
 
+        self.metrics.increment("remote_server_connections_total", {"result": "attempt"})
         if not self._state_store.is_endpoint_allowed(server.endpoint):
             parsed = urlparse(server.endpoint)
             host = parsed.hostname or ""
             port = parsed.port or (443 if (parsed.scheme or "").lower() == "https" else 80)
+            self.metrics.increment(
+                "remote_server_connections_total", {"result": "rejected", "stage": "connect"}
+            )
+            self.metrics.increment(
+                "remote_server_connections_rejected_total", {"reason": "not_in_allowlist"}
+            )
             self._record_audit(
                 event_type="endpoint_rejected",
                 correlation_id=server_id,
@@ -213,6 +229,7 @@ class RemoteMcpService:
                 last_connected_at=datetime.now(timezone.utc),
                 error_message="",
             )
+            self.metrics.increment("remote_server_connections_total", {"result": "success"})
             self._record_audit(
                 event_type="server_authenticated",
                 correlation_id=server_id,
@@ -220,6 +237,7 @@ class RemoteMcpService:
             )
             return capabilities
         except Exception as exc:  # noqa: BLE001
+            self.metrics.increment("remote_server_connections_total", {"result": "failure"})
             await self.set_status(
                 server_id=server_id,
                 status=RemoteServerStatus.ERROR,
