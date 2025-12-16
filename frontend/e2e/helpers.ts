@@ -246,3 +246,90 @@ export async function waitForToast(page: Page, message?: string | RegExp, timeou
   await toast.first().waitFor({ state: 'visible', timeout });
   return toast.first();
 }
+
+/**
+ * Mock remote server list response
+ */
+export async function mockRemoteServers(page: Page, servers: any[]) {
+  await page.route('**/api/remote-servers', (route) => {
+    if (route.request().method() !== 'GET') {
+      route.continue();
+      return;
+    }
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(servers),
+    });
+  });
+}
+
+/**
+ * Mock remote server detail response
+ */
+export async function mockRemoteServerDetail(page: Page, server: any) {
+  await page.route(`**/api/remote-servers/${server.server_id}`, (route) => {
+    if (route.request().method() !== 'GET') {
+      route.continue();
+      return;
+    }
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(server),
+    });
+  });
+}
+
+/**
+ * Mock start OAuth for remote server
+ */
+export async function mockStartRemoteOAuth(
+  page: Page,
+  params: { serverId: string; authUrl: string; state: string; requiredScopes?: string[] }
+) {
+  await page.route('**/api/oauth/start', async (route) => {
+    if (route.request().method() !== 'POST') {
+      route.continue();
+      return;
+    }
+    const body = await route.request().postDataJSON();
+    if (body?.server_id !== params.serverId) {
+      route.fulfill({ status: 404 });
+      return;
+    }
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        auth_url: params.authUrl,
+        state: params.state,
+        required_scopes: params.requiredScopes ?? [],
+      }),
+    });
+  });
+}
+
+/**
+ * Mock remote server test connection response
+ */
+export async function mockRemoteTest(
+  page: Page,
+  serverId: string,
+  result: { reachable: boolean; authenticated: boolean; capabilities?: any; error?: string | null }
+) {
+  await page.route(`**/api/remote-servers/${serverId}/test`, (route) => {
+    if (route.request().method() !== 'POST') {
+      route.continue();
+      return;
+    }
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        server_id: serverId,
+        ...result,
+      }),
+    });
+  });
+}
