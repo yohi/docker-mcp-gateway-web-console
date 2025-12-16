@@ -8,14 +8,21 @@ import { deleteContainer } from '@/lib/api/containers';
 
 interface CatalogCardProps {
     item: CatalogItem;
-    containers: ContainerInfo[];
-    isContainersLoading: boolean;
-    onContainersRefresh: () => void;
+    containers?: ContainerInfo[];
+    isContainersLoading?: boolean;
+    onContainersRefresh?: () => void;
     onInstall: (item: CatalogItem) => void;
     onSelect?: (item: CatalogItem) => void;
 }
 
-export default function CatalogCard({ item, containers, isContainersLoading, onContainersRefresh, onInstall, onSelect }: CatalogCardProps) {
+export default function CatalogCard({
+    item,
+    containers = [],
+    isContainersLoading = false,
+    onContainersRefresh = () => {},
+    onInstall,
+    onSelect,
+}: CatalogCardProps) {
     const isRemote = item.is_remote || item.server_type === 'remote' || (!!item.remote_endpoint && !item.docker_image);
     const remoteEndpoint = item.remote_endpoint || '';
     const [isDeleting, setIsDeleting] = useState(false);

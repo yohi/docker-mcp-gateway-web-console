@@ -43,7 +43,15 @@ describe('CatalogCard', () => {
             isLoading: false,
         });
 
-        render(<CatalogCard item={mockItem} onInstall={jest.fn()} />);
+        render(
+            <CatalogCard
+                item={mockItem}
+                onInstall={jest.fn()}
+                containers={[]}
+                isContainersLoading={false}
+                onContainersRefresh={jest.fn()}
+            />
+        );
 
         expect(screen.getByText('Test Server')).toBeInTheDocument();
         expect(screen.getByText('Test Description')).toBeInTheDocument();
@@ -53,7 +61,15 @@ describe('CatalogCard', () => {
 
     it('shows install button when not installed', () => {
         const onInstall = jest.fn();
-        render(<CatalogCard item={mockItem} onInstall={onInstall} />);
+        render(
+            <CatalogCard
+                item={mockItem}
+                onInstall={onInstall}
+                containers={[]}
+                isContainersLoading={false}
+                onContainersRefresh={jest.fn()}
+            />
+        );
 
         const button = screen.getByRole('button', { name: 'インストール' });
         expect(button).toBeInTheDocument();
@@ -76,7 +92,23 @@ describe('CatalogCard', () => {
             isLoading: false,
         });
 
-        render(<CatalogCard item={mockItem} onInstall={jest.fn()} />);
+        render(
+            <CatalogCard
+                item={mockItem}
+                onInstall={jest.fn()}
+                containers={[{
+                    id: 'c1',
+                    name: 'test-c',
+                    image: 'test/image:latest',
+                    status: 'running',
+                    created_at: '',
+                    ports: {},
+                    labels: {}
+                }]}
+                isContainersLoading={false}
+                onContainersRefresh={jest.fn()}
+            />
+        );
 
         expect(screen.queryByRole('button', { name: 'インストール' })).not.toBeInTheDocument();
         expect(screen.getByText('実行中')).toBeInTheDocument();
@@ -96,9 +128,26 @@ describe('CatalogCard', () => {
             isLoading: false,
         });
 
-        render(<CatalogCard item={mockItem} onInstall={jest.fn()} />);
+        render(
+            <CatalogCard
+                item={mockItem}
+                onInstall={jest.fn()}
+                containers={[{
+                    id: 'c1',
+                    name: 'test-c',
+                    image: 'test/image:latest',
+                    status: 'stopped',
+                    created_at: '',
+                    ports: {},
+                    labels: {}
+                }]}
+                isContainersLoading={false}
+                onContainersRefresh={jest.fn()}
+            />
+        );
 
-        expect(screen.getByText('インストール済み')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'アンインストール' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'インストール' })).not.toBeInTheDocument();
     });
 
     it('shows loading state', () => {
@@ -107,7 +156,15 @@ describe('CatalogCard', () => {
             isLoading: true,
         });
 
-        render(<CatalogCard item={mockItem} onInstall={jest.fn()} />);
+        render(
+            <CatalogCard
+                item={mockItem}
+                onInstall={jest.fn()}
+                containers={[]}
+                isContainersLoading
+                onContainersRefresh={jest.fn()}
+            />
+        );
 
         // Exact text depends on implementation "Checking..." or similar
         // I'll assume we put a disabled button or text
@@ -120,16 +177,33 @@ describe('CatalogCard', () => {
             isLoading: false,
         });
 
-        render(<CatalogCard item={mockItem} onInstall={jest.fn()} />);
+        render(
+            <CatalogCard
+                item={mockItem}
+                onInstall={jest.fn()}
+                containers={[]}
+                isContainersLoading={false}
+                onContainersRefresh={jest.fn()}
+            />
+        );
 
-        expect(screen.getByText('要求スコープ')).toBeInTheDocument();
+        expect(screen.getByText(/要求スコープ/)).toBeInTheDocument();
         expect(screen.getByText('repo:read')).toBeInTheDocument();
         expect(screen.getByText('署名検証: 有効')).toBeInTheDocument();
     });
 
     it('calls onSelect when card clicked', () => {
         const onSelect = jest.fn();
-        render(<CatalogCard item={mockItem} onInstall={jest.fn()} onSelect={onSelect} />);
+        render(
+            <CatalogCard
+                item={mockItem}
+                onInstall={jest.fn()}
+                onSelect={onSelect}
+                containers={[]}
+                isContainersLoading={false}
+                onContainersRefresh={jest.fn()}
+            />
+        );
 
         const card = screen.getByTestId('catalog-card');
         card.click();
@@ -146,13 +220,23 @@ describe('CatalogCard', () => {
         };
         const onSelect = jest.fn();
 
-        render(<CatalogCard item={remoteItem} onInstall={jest.fn()} onSelect={onSelect} />);
+        render(
+            <CatalogCard
+                item={remoteItem}
+                onInstall={jest.fn()}
+                onSelect={onSelect}
+                containers={[]}
+                isContainersLoading={false}
+                onContainersRefresh={jest.fn()}
+            />
+        );
 
         expect(screen.getByText('リモート')).toBeInTheDocument();
         expect(screen.getByText('https://api.example.com/sse')).toBeInTheDocument();
         expect(screen.queryByText('インストール')).not.toBeInTheDocument();
 
-        screen.getByRole('button', { name: /詳細/ }).click();
+        const detailButton = screen.getByRole('button', { name: '詳細を見る' });
+        detailButton.click();
         expect(onSelect).toHaveBeenCalledWith(remoteItem);
     });
 });
