@@ -430,6 +430,52 @@ async def test_delete_server_removes_credentials_when_requested(tmp_path, monkey
 
 
 @pytest.mark.asyncio
+async def test_revoke_credentials_clears_token_and_sets_auth_required(tmp_path, monkeypatch) -> None:
+    """認証解除で資格情報が削除され status=AUTH_REQUIRED になること。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    service = _make_service(tmp_path)
+
+    server = await service.register_server(
+        catalog_item_id="cat-revoke",
+        name="RevokeMe",
+        endpoint="https://api.example.com/sse",
+    )
+
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    cred = CredentialRecord(
+        credential_key="cred-revoke",
+        token_ref={"type": "plaintext", "value": "secret"},
+        scopes=["scope"],
+        expires_at=expires,
+        server_id=server.server_id,
+        oauth_token_url="https://auth.example.com/token",
+        oauth_client_id="client-id",
+        created_by="tester",
+    )
+    service.state_store.save_credential(cred)
+    await service.set_status(
+        server_id=server.server_id,
+        status=RemoteServerStatus.AUTHENTICATED,
+        credential_key=cred.credential_key,
+    )
+
+    updated = await service.revoke_credentials(
+        server_id=server.server_id, correlation_id="corr-revoke"
+    )
+
+    assert updated.status == RemoteServerStatus.AUTH_REQUIRED
+    assert updated.credential_key is None
+    assert service.state_store.get_credential("cred-revoke") is None
+
+    logs = service.state_store.get_recent_audit_logs()
+    assert any(
+        log.event_type == "credentials_revoked"
+        and log.metadata.get("server_id") == server.server_id
+        for log in logs
+    )
+
+
+@pytest.mark.asyncio
 async def test_connect_uses_semaphore_and_rejects_when_busy(tmp_path, monkeypatch) -> None:
     """同時接続上限を超えると TooManyConnectionsError を返す。"""
     monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
