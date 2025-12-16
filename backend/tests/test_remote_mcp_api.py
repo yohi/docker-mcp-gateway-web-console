@@ -129,6 +129,34 @@ def _create_authenticated_server(service: RemoteMcpService, endpoint: str) -> st
     return server.server_id
 
 
+def _create_expired_credential(service: RemoteMcpService, endpoint: str) -> str:
+    server = _run(
+        service.register_server(
+            catalog_item_id="cat-expired", name="RemoteExpired", endpoint=endpoint
+        )
+    )
+    expired = datetime.now(timezone.utc) - timedelta(minutes=5)
+    credential = CredentialRecord(
+        credential_key="cred-expired",
+        token_ref={"type": "plaintext", "value": "token"},
+        scopes=["sse"],
+        expires_at=expired,
+        server_id=server.server_id,
+        oauth_token_url="https://auth.example.com/token",
+        oauth_client_id="client-id",
+        created_by="tester",
+    )
+    service.state_store.save_credential(credential)
+    _run(
+        service.set_status(
+            server_id=server.server_id,
+            status=RemoteServerStatus.AUTHENTICATED,
+            credential_key=credential.credential_key,
+        )
+    )
+    return server.server_id
+
+
 def test_connect_endpoint_returns_capabilities(remote_service, monkeypatch) -> None:
     """POST /api/remote-servers/{id}/connect が capabilities を返す。"""
 
@@ -162,6 +190,82 @@ def test_connect_endpoint_requires_credentials(remote_service, monkeypatch) -> N
     assert response.status_code == 401
     body = response.json()
     assert body["error_code"] == "credential_missing"
+
+
+def test_connect_endpoint_rejects_disabled(remote_service, monkeypatch) -> None:
+    """無効化されたサーバーは 400 server_disabled を返す。"""
+
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    server_id = _create_authenticated_server(
+        remote_service, "https://api.example.com/sse"
+    )
+
+    _run(remote_service.disable_server(server_id))
+
+    response = client.post(f"/api/remote-servers/{server_id}/connect")
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error_code"] == "server_disabled"
+    persisted = _run(remote_service.get_server(server_id))
+    assert persisted is not None
+    assert persisted.status == RemoteServerStatus.DISABLED
+
+
+def test_connect_endpoint_rejects_expired_credential(remote_service, monkeypatch) -> None:
+    """期限切れ資格情報は 401 credential_expired を返し、再認証を促す。"""
+
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    server_id = _create_expired_credential(
+        remote_service, "https://api.example.com/sse"
+    )
+
+    response = client.post(f"/api/remote-servers/{server_id}/connect")
+
+    assert response.status_code == 401
+    body = response.json()
+    assert body["error_code"] == "credential_expired"
+    assert "再認証" in body["message"]
+    persisted = _run(remote_service.get_server(server_id))
+    assert persisted is not None
+    assert persisted.status == RemoteServerStatus.AUTH_REQUIRED
+    assert persisted.credential_key is None
+
+
+def test_connect_endpoint_handles_network_error(remote_service, monkeypatch) -> None:
+    """ネットワークエラーは再試行可能な 502 を返し、登録情報は保持される。"""
+
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+    server_id = _create_authenticated_server(
+        remote_service, "https://api.example.com/sse"
+    )
+
+    class _FaultyTransport:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: D401
+            return False
+
+        async def connect(self):
+            raise remote_api.httpx.ConnectError("network down")
+
+    def _faulty_factory(endpoint: str, headers: dict | None = None, client=None):
+        return _FaultyTransport()
+
+    remote_service._sse_client_factory = _faulty_factory
+
+    response = client.post(f"/api/remote-servers/{server_id}/connect")
+
+    assert response.status_code == 502
+    body = response.json()
+    assert body["error_code"] == "remote_connect_failed"
+    assert "network" in body["message"]
+
+    persisted = _run(remote_service.get_server(server_id))
+    assert persisted is not None
+    assert persisted.server_id == server_id
+    assert persisted.status == RemoteServerStatus.ERROR
 
 
 def test_test_endpoint_reports_reachability(remote_service, monkeypatch) -> None:

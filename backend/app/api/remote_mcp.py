@@ -2,6 +2,7 @@
 
 import logging
 
+import httpx
 from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import JSONResponse
 
@@ -14,10 +15,13 @@ from ..models.remote import (
 )
 from ..services.oauth import CredentialNotFoundError, RemoteServerNotFoundError
 from ..services.remote_mcp import (
+    CredentialExpiredError,
     DuplicateRemoteServerError,
     EndpointNotAllowedError,
+    RemoteConnectionError,
     RemoteMcpError,
     RemoteMcpService,
+    ServerDisabledError,
     TooManyConnectionsError,
 )
 
@@ -183,10 +187,15 @@ async def disable_remote_server(
         )
 
 
-@router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{server_id}",
+    status_code=status.HTTP_200_OK,
+    response_class=Response,
+    response_model=None,
+)
 async def delete_remote_server(
     server_id: str, request: Request, delete_credentials: bool = False
-) -> Response | JSONResponse:
+) -> Response:
     """サーバーを削除する。必要に応じて資格情報も削除する。"""
     correlation_id = _get_correlation_id(request)
     try:
@@ -257,6 +266,27 @@ async def connect_remote_server(
             message=str(exc),
             correlation_id=correlation_id,
         )
+    except ServerDisabledError as exc:
+        return _error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="server_disabled",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+    except CredentialExpiredError as exc:
+        return _error_response(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code="credential_expired",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+    except RemoteConnectionError as exc:
+        return _error_response(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            error_code="remote_connect_failed",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
     except RemoteMcpError as exc:
         return _error_response(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -278,7 +308,7 @@ async def connect_remote_server(
 async def test_remote_server(
     server_id: str, request: Request
 ) -> RemoteTestResponse | JSONResponse:
-    """到達性と認証状態を検証する。"""
+    """接続テストを実行し、到達性と認証状態を返す。"""
     correlation_id = _get_correlation_id(request)
     try:
         result = await remote_service.test_connection(server_id)
@@ -294,6 +324,13 @@ async def test_remote_server(
         return _error_response(
             status_code=status.HTTP_401_UNAUTHORIZED,
             error_code="credential_missing",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+    except CredentialExpiredError as exc:
+        return _error_response(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code="credential_expired",
             message=str(exc),
             correlation_id=correlation_id,
         )
