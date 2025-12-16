@@ -135,4 +135,24 @@ describe('CatalogCard', () => {
         card.click();
         expect(onSelect).toHaveBeenCalledWith(mockItem);
     });
+
+    it('renders remote catalog item with remote badge and endpoint', () => {
+        const remoteItem = {
+            ...mockItem,
+            docker_image: '',
+            remote_endpoint: 'https://api.example.com/sse',
+            is_remote: true,
+            server_type: 'remote',
+        };
+        const onSelect = jest.fn();
+
+        render(<CatalogCard item={remoteItem} onInstall={jest.fn()} onSelect={onSelect} />);
+
+        expect(screen.getByText('リモート')).toBeInTheDocument();
+        expect(screen.getByText('https://api.example.com/sse')).toBeInTheDocument();
+        expect(screen.queryByText('インストール')).not.toBeInTheDocument();
+
+        screen.getByRole('button', { name: /詳細/ }).click();
+        expect(onSelect).toHaveBeenCalledWith(remoteItem);
+    });
 });

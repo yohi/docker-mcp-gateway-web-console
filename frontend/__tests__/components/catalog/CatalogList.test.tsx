@@ -77,6 +77,24 @@ const mockItems: CatalogItem[] = [
   },
 ];
 
+const remoteItem: CatalogItem = {
+  id: 'remote-1',
+  name: 'Remote Server',
+  description: 'Remote endpoint catalog entry',
+  category: 'remote',
+  docker_image: '',
+  remote_endpoint: 'https://api.example.com/sse',
+  is_remote: true,
+  server_type: 'remote',
+  default_env: {},
+  required_envs: [],
+  required_secrets: [],
+  vendor: 'remote-vendor',
+  icon_url: '',
+  required_scopes: [],
+  verify_signatures: true,
+};
+
 describe('CatalogList', () => {
   const mockOnInstall = jest.fn();
   const catalogSource = 'http://test.com/catalog.json';
@@ -125,10 +143,7 @@ describe('CatalogList', () => {
 
     expect(screen.getByText('Server One')).toBeInTheDocument();
     expect(screen.getByText('Server Two')).toBeInTheDocument();
-    // Use regex to match split text
-    expect(screen.getByText(/Showing/)).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument();
-    expect(screen.getByText(/servers/)).toBeInTheDocument();
+    expect(screen.getByText(/読み込み済み/)).toBeInTheDocument();
   });
 
   it('renders empty state', () => {
@@ -200,7 +215,7 @@ describe('CatalogList', () => {
       mutate: jest.fn(),
     });
 
-    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} />);
+    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
 
     // Check if categories are passed to the mock search bar (rendered as options)
     // Scope to the select element to avoid matching badges in ServerCard
@@ -209,5 +224,53 @@ describe('CatalogList', () => {
     // We can check if options exist
     expect(screen.getAllByText('utility').find(el => el.tagName === 'OPTION')).toBeInTheDocument();
     expect(screen.getAllByText('ai').find(el => el.tagName === 'OPTION')).toBeInTheDocument();
+  });
+
+  it('renders remote catalog items with badge and endpoint', () => {
+    mockUseSWR.mockReturnValue({
+      data: { servers: [remoteItem], cached: false },
+      error: undefined,
+      isLoading: false,
+      mutate: jest.fn(),
+    });
+
+    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
+
+    expect(screen.getByText('Remote Server')).toBeInTheDocument();
+    expect(screen.getByText('リモート')).toBeInTheDocument();
+    expect(screen.getByText('https://api.example.com/sse')).toBeInTheDocument();
+    expect(screen.queryByText('インストール')).not.toBeInTheDocument();
+  });
+
+  it('falls back to cached data when fetching fails after a success', async () => {
+    mockUseSWR
+      .mockImplementationOnce(() => ({
+        data: { servers: mockItems, cached: false },
+        error: undefined,
+        isLoading: false,
+        mutate: jest.fn(),
+      }))
+      .mockImplementation(() => ({
+        data: undefined,
+        error: new Error('Network error'),
+        isLoading: false,
+        mutate: jest.fn(),
+      }));
+
+    const { rerender } = render(
+      <CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />
+    );
+
+    expect(screen.getByText('Server One')).toBeInTheDocument();
+
+    rerender(
+      <CatalogList catalogSource={`${catalogSource}?v=2`} onInstall={mockOnInstall} onSelect={mockOnSelect} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Server One')).toBeInTheDocument();
+      expect(screen.getByText(/最後に成功したカタログ/)).toBeInTheDocument();
+      expect(screen.getByText('Network error')).toBeInTheDocument();
+    });
   });
 });
