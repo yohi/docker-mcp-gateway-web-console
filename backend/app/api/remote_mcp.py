@@ -51,9 +51,19 @@ def _error_response(
 
 
 @router.get("", response_model=list[RemoteServer])
-async def list_remote_servers() -> list[RemoteServer]:
+async def list_remote_servers(request: Request) -> list[RemoteServer] | JSONResponse:
     """登録済みリモートサーバーを一覧する。"""
-    return await remote_service.list_servers()
+    correlation_id = _get_correlation_id(request)
+    try:
+        return await remote_service.list_servers()
+    except Exception:
+        logger.exception("予期せぬエラーでリモートサーバー一覧取得に失敗しました")
+        return _error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_code="internal_error",
+            message="リモートサーバーの一覧取得に失敗しました。",
+            correlation_id=correlation_id,
+        )
 
 
 @router.post("", response_model=RemoteServer, status_code=status.HTTP_201_CREATED)
@@ -106,15 +116,28 @@ async def get_remote_server(
 ) -> RemoteServer | JSONResponse:
     """server_id でリモートサーバーを取得する。"""
     correlation_id = _get_correlation_id(request)
-    server = await remote_service.get_server(server_id)
-    if server is None:
+    try:
+        server = await remote_service.get_server(server_id)
+        if server is None:
+            return _error_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                error_code="remote_server_not_found",
+                message="指定されたリモートサーバーが見つかりません。",
+                correlation_id=correlation_id,
+            )
+        return server
+    except Exception as exc:
+        logger.exception(
+            "予期せぬエラーでリモートサーバー取得に失敗しました: server_id=%s, correlation_id=%s",
+            server_id,
+            correlation_id,
+        )
         return _error_response(
-            status_code=status.HTTP_404_NOT_FOUND,
-            error_code="remote_server_not_found",
-            message="指定されたリモートサーバーが見つかりません。",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_code="remote_service_error",
+            message="リモートサーバーの取得に失敗しました。",
             correlation_id=correlation_id,
         )
-    return server
 
 
 @router.post("/{server_id}/enable", response_model=RemoteServer)
