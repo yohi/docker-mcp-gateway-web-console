@@ -208,7 +208,7 @@
   - _Requirements: 6.1, 6.4_
 
 ## 9. マイグレーションと統合
-- [ ] 9.1 データベースマイグレーションの実装
+- [x] 9.1 データベースマイグレーションの実装
   - Phase 1: StateStore スキーマ追加（remote_servers, oauth_states）— 既存テーブルへの影響なし
   - Phase 2: CatalogItem モデル拡張（オプショナルフィールド追加）— 後方互換
   - Phase 3: OAuthService state 永続化 — メモリ管理と並行稼働

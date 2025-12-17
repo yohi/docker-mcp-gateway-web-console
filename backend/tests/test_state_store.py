@@ -1,6 +1,7 @@
 """永続化ストアのTDDテスト。"""
 
 import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -43,6 +44,65 @@ def test_schema_created(store: StateStore) -> None:
         "auth_sessions",
     }
     assert expected.issubset(tables)
+
+
+def test_init_schema_migrates_legacy_db_and_is_idempotent(tmp_path: Path) -> None:
+    """既存DBから新テーブル・カラムを追加しつつデータを保持できることを検証する。"""
+    db_path = tmp_path / "legacy.db"
+    now = datetime.now(timezone.utc)
+
+    # 旧スキーマ: credentials のみ（新カラムなし）
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE credentials (
+                credential_key TEXT PRIMARY KEY,
+                token_ref TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                server_id TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO credentials (
+                credential_key, token_ref, scopes, expires_at,
+                server_id, created_by, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "cred-1",
+                json.dumps({"type": "encrypted", "key": "legacy"}),
+                json.dumps(["scope:a"]),
+                now.isoformat(),
+                "srv-1",
+                "tester",
+                now.isoformat(),
+            ),
+        )
+        conn.commit()
+
+    store = StateStore(str(db_path))
+
+    # 1回目で新規テーブル・カラムを追加、2回目もエラーなく通ることを確認
+    store.init_schema()
+    store.init_schema()
+
+    tables = set(store.list_tables())
+    assert {"remote_servers", "oauth_states", "credentials"}.issubset(tables)
+
+    # credentials に新カラムが追加され、既存データが保持されていること
+    with store._connect() as conn:  # type: ignore[attr-defined]
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(credentials)")}
+    assert {"oauth_token_url", "oauth_client_id"}.issubset(columns)
+
+    credential = store.get_credential("cred-1")
+    assert credential is not None
+    assert credential.token_ref["key"] == "legacy"
+    assert credential.oauth_client_id is None
 
 
 def test_remote_servers_table_schema(store: StateStore) -> None:
