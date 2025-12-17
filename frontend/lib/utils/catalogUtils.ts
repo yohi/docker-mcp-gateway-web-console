@@ -8,7 +8,6 @@ import type { CatalogItem } from '@/lib/types/catalog';
 export function isRemoteCatalogItem(item: CatalogItem): boolean {
   const hasDockerImage = Boolean(item.docker_image && item.docker_image.trim());
   if (item.is_remote || item.server_type === 'remote') return true;
-  if (!hasDockerImage) return true; // docker イメージがなければリモート扱い
   return Boolean(item.remote_endpoint) && !hasDockerImage;
 }
 
