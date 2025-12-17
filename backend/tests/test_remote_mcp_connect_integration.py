@@ -82,7 +82,7 @@ def setup_services(monkeypatch, tmp_path):
 
     original_gethostbyname = socket.gethostbyname
 
-    def mock_gethostbyname(hostname: str) -> str:  # noqa: ANN001
+    def mock_gethostbyname(hostname: str) -> str:
         if hostname in ("auth.example.com", "api.example.com"):
             return "93.184.216.34"
         return original_gethostbyname(hostname)
@@ -158,7 +158,7 @@ def load_test_services(monkeypatch, tmp_path):
 
     original_gethostbyname = socket.gethostbyname
 
-    def mock_gethostbyname(hostname: str) -> str:  # noqa: ANN001
+    def mock_gethostbyname(hostname: str) -> str:
         if hostname in ("auth.example.com", "api.example.com"):
             return "93.184.216.34"
         return original_gethostbyname(hostname)
@@ -183,11 +183,11 @@ def load_test_services(monkeypatch, tmp_path):
     session = _DummySession()
     heartbeat_entered = asyncio.Event()
 
-    async def _slow_heartbeat(*args):
+    async def _slow_heartbeat(*args):  # Accept session arg for _run_heartbeat compatibility
         heartbeat_entered.set()
         await asyncio.sleep(0.2)
 
-    async def _fast_try_acquire():  # noqa: ANN001
+    async def _fast_try_acquire():
         try:
             await asyncio.wait_for(remote_service._connection_semaphore.acquire(), timeout=0.05)  # type: ignore[attr-defined]
         except asyncio.TimeoutError as exc:
