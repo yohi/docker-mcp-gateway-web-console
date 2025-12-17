@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { CatalogItem } from '@/lib/types/catalog';
 import type { ContainerInfo } from '@/lib/types/containers';
+import type { RemoteServer } from '@/lib/types/remote';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
 import { useToast } from '@/contexts/ToastContext';
@@ -13,11 +14,20 @@ type Props = {
   containers: ContainerInfo[];
   isContainersLoading: boolean;
   onContainersRefresh: () => void;
+  remoteServer?: RemoteServer;
   onInstall: (item: CatalogItem) => void;
   onSelect: (item: CatalogItem) => void;
 };
 
-const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh, onInstall, onSelect }: Props) => {
+const CatalogRow = ({
+  item,
+  containers,
+  isContainersLoading,
+  onContainersRefresh,
+  onInstall,
+  onSelect,
+  remoteServer,
+}: Props) => {
   const { showSuccess, showError } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
   const isRemote = isRemoteCatalogItem(item);
@@ -30,9 +40,23 @@ const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh
     return container || null;
   }, [containers, isContainersLoading, isRemote, item]);
 
+  const remoteStatus = remoteServer?.status;
+  const remoteStatusLabel =
+    remoteStatus === 'registered'
+      ? '登録済み'
+      : remoteStatus === 'auth_required'
+        ? '要認証'
+        : remoteStatus === 'authenticated'
+          ? '認証済み'
+          : remoteStatus === 'disabled'
+            ? '無効'
+            : remoteStatus === 'error'
+              ? 'エラー'
+              : '未登録';
+
   const status =
     isRemote
-      ? 'remote'
+      ? remoteStatus || 'remote'
       : matchedContainer === 'loading'
         ? 'loading'
         : matchedContainer
@@ -90,12 +114,17 @@ const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh
             {item.vendor ? (
               <span className="text-xs text-gray-500">by {item.vendor}</span>
             ) : null}
-            {status === 'running' && (
+            {isRemote && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                {remoteStatusLabel}
+              </span>
+            )}
+            {!isRemote && status === 'running' && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
                 実行中
               </span>
             )}
-            {status === 'installed' && (
+            {!isRemote && status === 'installed' && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
                 インストール済み
               </span>
@@ -122,7 +151,7 @@ const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh
           <button
             type="button"
             onClick={handleUninstall}
-            disabled={isDeleting || status === 'loading'}
+            disabled={isDeleting}
             className="px-3 py-1.5 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 transition disabled:opacity-60"
           >
             {isDeleting ? '削除中...' : 'アンインストール'}

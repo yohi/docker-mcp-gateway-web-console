@@ -8,6 +8,8 @@ import SearchBar from './SearchBar';
 import CatalogCard from './CatalogCard'; // Changed import
 import CatalogRow from './CatalogRow';
 import { useContainers } from '@/hooks/useContainers';
+import { fetchRemoteServers } from '@/lib/api/remoteServers';
+import { RemoteServer } from '@/lib/types/remote';
 
 const DEFAULT_PAGE_SIZE = 8;
 const BACKEND_PAGE_SIZE = 8;
@@ -21,6 +23,10 @@ interface CatalogListProps {
 
 export default function CatalogList({ catalogSource, warning, onInstall, onSelect }: CatalogListProps) {
   const { containers, refresh: refreshContainers, isLoading: isContainersLoading } = useContainers(0); // no polling
+  const { data: remoteServers } = useSWR<RemoteServer[]>('remote-servers-catalog', fetchRemoteServers, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategory] = useState('');
   const [page, setPage] = useState(1);
@@ -82,7 +88,7 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
       setCombinedServers((prev) => {
         const existingIds = new Set(prev.map((s) => s.id));
         const merged = [...prev];
-        active.servers.forEach((s) => {
+        active.servers.forEach((s: CatalogItem) => {
           if (!existingIds.has(s.id)) merged.push(s);
         });
         return merged;
@@ -201,6 +207,15 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
   }
 
   const servers = combinedServers;
+  const remoteStatusByCatalogId = useMemo(() => {
+    const map = new Map<string, RemoteServer>();
+    (remoteServers || []).forEach((srv: RemoteServer) => {
+      if (srv.catalog_item_id) {
+        map.set(srv.catalog_item_id, srv);
+      }
+    });
+    return map;
+  }, [remoteServers]);
   const isCached = activeData?.cached || false;
   const warningMessage = usingFallbackCache
     ? `最新のカタログ取得に失敗しましたが、最後に成功したカタログを表示しています。`
@@ -351,6 +366,7 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
                 containers={containers}
                 isContainersLoading={isContainersLoading}
                 onContainersRefresh={refreshContainers}
+                remoteServer={remoteStatusByCatalogId.get(item.id)}
                 onInstall={onInstall}
                 onSelect={onSelect}
               />
@@ -365,6 +381,7 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
                 containers={containers}
                 isContainersLoading={isContainersLoading}
                 onContainersRefresh={refreshContainers}
+                remoteServer={remoteStatusByCatalogId.get(item.id)}
                 onInstall={onInstall}
                 onSelect={onSelect}
               />

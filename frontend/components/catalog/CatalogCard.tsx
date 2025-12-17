@@ -3,6 +3,7 @@
 import { KeyboardEvent, useMemo, useState, type MouseEvent } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
 import type { ContainerInfo } from '@/lib/types/containers';
+import type { RemoteServer } from '@/lib/types/remote';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
 import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
@@ -12,6 +13,7 @@ interface CatalogCardProps {
     containers?: ContainerInfo[];
     isContainersLoading?: boolean;
     onContainersRefresh?: () => void;
+    remoteServer?: RemoteServer;
     onInstall: (item: CatalogItem) => void;
     onSelect?: (item: CatalogItem) => void;
 }
@@ -22,6 +24,7 @@ export default function CatalogCard({
     isContainersLoading = false,
     onContainersRefresh = () => {},
     onInstall,
+    remoteServer,
     onSelect,
 }: CatalogCardProps) {
     const isRemote = isRemoteCatalogItem(item);
@@ -38,16 +41,30 @@ export default function CatalogCard({
         return container || null;
     }, [containers, isContainersLoading, isRemote, item]);
 
+    const remoteStatus = remoteServer?.status;
+    const remoteStatusLabel =
+        remoteStatus === 'registered'
+            ? '登録済み'
+            : remoteStatus === 'auth_required'
+              ? '要認証'
+              : remoteStatus === 'authenticated'
+                ? '認証済み'
+                : remoteStatus === 'disabled'
+                  ? '無効'
+                  : remoteStatus === 'error'
+                    ? 'エラー'
+                    : '未登録';
+
     const status =
         isRemote
-            ? 'remote'
+            ? remoteStatus || 'remote'
             : matchedContainer === 'loading'
-              ? 'loading'
-              : matchedContainer
-                  ? matchedContainer.status === 'running'
-                      ? 'running'
-                      : 'installed'
-                  : 'not_installed';
+                ? 'loading'
+                : matchedContainer
+                    ? matchedContainer.status === 'running'
+                        ? 'running'
+                        : 'installed'
+                    : 'not_installed';
 
     const handleSelect = () => {
         if (onSelect) {
@@ -153,6 +170,11 @@ export default function CatalogCard({
                     {item.verify_signatures === false && (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
                             署名検証無効
+                        </span>
+                    )}
+                    {isRemote && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {remoteStatusLabel}
                         </span>
                     )}
                     {allowStatus && (
