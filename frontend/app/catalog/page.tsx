@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { mutate } from 'swr';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { MainLayout } from '@/components/layout';
 import CatalogList from '@/components/catalog/CatalogList';
@@ -135,6 +136,7 @@ export default function CatalogPage() {
     setIsRegisteringRemote(true);
     try {
       await createRemoteServer(remoteConfirmItem.id);
+      await mutate('remote-servers');
       showSuccess(`リモートサーバー「${remoteConfirmItem.name}」を登録しました`);
       setRemoteConfirmItem(null);
     } catch (err: unknown) {
