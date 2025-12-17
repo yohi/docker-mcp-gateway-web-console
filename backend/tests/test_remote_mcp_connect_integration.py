@@ -414,3 +414,62 @@ async def test_connect_returns_429_when_connection_limit_exceeded(
 
         assert first_resp.status_code == 200
         assert second.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_oauth_state_persisted_and_deleted_after_callback(
+    monkeypatch, setup_services
+):
+    """state が永続化され、コールバック後に単一使用で削除されることを検証する。"""
+
+    code_verifier = "state-lifecycle-verifier-1234567890"
+    code_challenge = OAuthService._compute_code_challenge(code_verifier)
+
+    # OAuthService 内の httpx.AsyncClient をスタブに差し替える
+    monkeypatch.setattr("app.services.oauth.httpx.AsyncClient", DummyTokenClient)
+
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        register_resp = await ac.post(
+            "/api/remote-servers",
+            json={
+                "catalog_item_id": "cat-state",
+                "name": "StateServer",
+                "endpoint": "https://api.example.com/sse",
+            },
+        )
+        assert register_resp.status_code == 201
+        server_id = register_resp.json()["server_id"]
+
+        start_resp = await ac.post(
+            "/api/oauth/start",
+            json={
+                "server_id": server_id,
+                "scopes": ["repo:read"],
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            },
+        )
+        assert start_resp.status_code == 200
+        state = start_resp.json()["state"]
+
+        # state が SQLite に保存されていることを確認
+        persisted_state = setup_services["oauth_service"].state_store.get_oauth_state(state)
+        assert persisted_state is not None
+        assert persisted_state.server_id == server_id
+        assert persisted_state.code_challenge == code_challenge
+
+        callback_resp = await ac.get(
+            "/api/oauth/callback",
+            params={
+                "code": "auth-code-state",
+                "state": state,
+                "server_id": server_id,
+                "code_verifier": code_verifier,
+            },
+        )
+        assert callback_resp.status_code == 200
+        callback_body = callback_resp.json()
+        assert callback_body["success"] is True
+
+        # コールバック後は state が単一使用として削除されていることを確認
+        assert setup_services["oauth_service"].state_store.get_oauth_state(state) is None
