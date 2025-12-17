@@ -284,11 +284,11 @@ export default function CatalogDetailModal({
           <button
             type="button"
             onClick={() => onInstall(item)}
-            disabled={status !== 'not_installed' || isRemote}
+            disabled={status !== 'not_installed'}
             className="rounded bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
           >
             {isRemote
-              ? 'リモートサーバー（インストール対象外）'
+              ? 'リモートサーバーを登録'
               : status === 'running'
                 ? '実行中 (インストール済み)'
                 : status === 'installed'

@@ -12,7 +12,7 @@ env:
 jobs:
   backend-unit:
     name: Backend Unit (Pytest)
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 25
 
     steps:
@@ -70,7 +70,7 @@ PY
 
   frontend-unit:
     name: Frontend Unit (Jest)
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
