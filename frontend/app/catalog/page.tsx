@@ -29,16 +29,20 @@ function RemoteRegisterModal({
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const requiresOAuth = useMemo(() => {
+    return Boolean(
+      item?.oauth_authorize_url ||
+      item?.oauth_token_url ||
+      item?.oauth_client_id ||
+      item?.oauth_config,
+    );
+  }, [item]);
+
   if (!isOpen || !item) return null;
 
   const scopes = item.required_scopes ?? [];
   const endpoint = item.remote_endpoint || '未設定';
   const allowlistHint = item.allowlist_hint;
-  const requiresOAuth = useMemo(
-    () =>
-      Boolean(item.oauth_authorize_url || item.oauth_token_url || item.oauth_client_id || item.oauth_config),
-    [item],
-  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

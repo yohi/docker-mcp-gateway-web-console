@@ -80,6 +80,7 @@ export default function CatalogDetailModal({
           showError(
             `このリモートサーバーは既に登録されています（${duplicate.name}）。重複登録はできません。`
           );
+          setIsRegistering(false);
           return;
         }
 
