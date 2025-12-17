@@ -3,15 +3,18 @@
 import { KeyboardEvent, useMemo, useState, type MouseEvent } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
 import type { ContainerInfo } from '@/lib/types/containers';
+import { type RemoteServer, RemoteServerStatus } from '@/lib/types/remote';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
 import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
+import { getRemoteStatusLabel } from '@/lib/utils/remoteStatusUtils';
 
 interface CatalogCardProps {
     item: CatalogItem;
     containers?: ContainerInfo[];
     isContainersLoading?: boolean;
     onContainersRefresh?: () => void;
+    remoteServer?: RemoteServer;
     onInstall: (item: CatalogItem) => void;
     onSelect?: (item: CatalogItem) => void;
 }
@@ -20,8 +23,9 @@ export default function CatalogCard({
     item,
     containers = [],
     isContainersLoading = false,
-    onContainersRefresh = () => {},
+    onContainersRefresh = () => { },
     onInstall,
+    remoteServer,
     onSelect,
 }: CatalogCardProps) {
     const isRemote = isRemoteCatalogItem(item);
@@ -38,16 +42,19 @@ export default function CatalogCard({
         return container || null;
     }, [containers, isContainersLoading, isRemote, item]);
 
+    const remoteStatus = remoteServer?.status;
+    const remoteStatusLabel = getRemoteStatusLabel(remoteStatus);
+
     const status =
         isRemote
-            ? 'remote'
+            ? remoteStatus || RemoteServerStatus.UNREGISTERED
             : matchedContainer === 'loading'
-              ? 'loading'
-              : matchedContainer
-                  ? matchedContainer.status === 'running'
-                      ? 'running'
-                      : 'installed'
-                  : 'not_installed';
+                ? 'loading'
+                : matchedContainer
+                    ? matchedContainer.status === 'running'
+                        ? 'running'
+                        : 'installed'
+                    : 'not_installed';
 
     const handleSelect = () => {
         if (onSelect) {
@@ -138,9 +145,8 @@ export default function CatalogCard({
                         {item.category}
                     </span>
                     <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
-                        }`}
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
+                            }`}
                     >
                         {isRemote ? 'remote' : 'Docker'}
                     </span>
@@ -155,15 +161,19 @@ export default function CatalogCard({
                             署名検証無効
                         </span>
                     )}
+                    {isRemote && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {remoteStatusLabel}
+                        </span>
+                    )}
                     {allowStatus && (
                         <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                allowStatus === 'allowed'
-                                    ? 'bg-green-100 text-green-800'
-                                    : allowStatus === 'pending'
-                                        ? 'bg-yellow-100 text-yellow-800'
-                                        : 'bg-red-100 text-red-800'
-                            }`}
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${allowStatus === 'allowed'
+                                ? 'bg-green-100 text-green-800'
+                                : allowStatus === 'pending'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}
                         >
                             allowlist: {allowStatus}
                         </span>
