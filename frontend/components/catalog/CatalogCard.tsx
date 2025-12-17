@@ -3,7 +3,7 @@
 import { KeyboardEvent, useMemo, useState, type MouseEvent } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
 import type { ContainerInfo } from '@/lib/types/containers';
-import type { RemoteServer } from '@/lib/types/remote';
+import { type RemoteServer, RemoteServerStatus } from '@/lib/types/remote';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
 import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
@@ -47,7 +47,7 @@ export default function CatalogCard({
 
     const status =
         isRemote
-            ? remoteStatus || 'remote'
+            ? remoteStatus || RemoteServerStatus.UNREGISTERED
             : matchedContainer === 'loading'
                 ? 'loading'
                 : matchedContainer
@@ -169,10 +169,10 @@ export default function CatalogCard({
                     {allowStatus && (
                         <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${allowStatus === 'allowed'
-                                    ? 'bg-green-100 text-green-800'
-                                    : allowStatus === 'pending'
-                                        ? 'bg-yellow-100 text-yellow-800'
-                                        : 'bg-red-100 text-red-800'
+                                ? 'bg-green-100 text-green-800'
+                                : allowStatus === 'pending'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-red-100 text-red-800'
                                 }`}
                         >
                             allowlist: {allowStatus}
