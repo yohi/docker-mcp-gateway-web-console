@@ -32,6 +32,21 @@ export interface RemoteOAuthStartResponse {
   required_scopes: string[];
 }
 
+export async function createRemoteServer(catalogItemId: string): Promise<RemoteServer> {
+  const response = await fetch(`${API_BASE_URL}/api/remote-servers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ catalog_item_id: catalogItemId }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'リモートサーバーの登録に失敗しました' }));
+    throw new Error(error.message || 'リモートサーバーの登録に失敗しました');
+  }
+
+  return response.json();
+}
+
 export async function startRemoteOAuth(params: {
   serverId: string;
   codeChallenge: string;

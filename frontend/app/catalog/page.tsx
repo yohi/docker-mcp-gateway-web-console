@@ -8,6 +8,9 @@ import InstallModal from '@/components/catalog/InstallModal';
 import CatalogDetailModal from '@/components/catalog/CatalogDetailModal';
 import OAuthModal from '@/components/catalog/OAuthModal';
 import { CatalogItem } from '@/lib/types/catalog';
+import { isRemoteCatalogItem } from '@/lib/utils/catalogUtils';
+import { createRemoteServer } from '@/lib/api/remoteServers';
+import { useToast } from '@/contexts/ToastContext';
 
 const DEFAULT_CATALOG_URL =
   process.env.NEXT_PUBLIC_CATALOG_URL ||
@@ -20,9 +23,26 @@ export default function CatalogPage() {
   const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
   const [detailItem, setDetailItem] = useState<CatalogItem | null>(null);
   const [oauthItem, setOauthItem] = useState<CatalogItem | null>(null);
+  const [isRegisteringRemote, setIsRegisteringRemote] = useState(false);
+  const { showSuccess, showError } = useToast();
 
-  const handleInstall = (item: CatalogItem) => {
+  const handleInstall = async (item: CatalogItem) => {
     setDetailItem(null);
+    if (isRemoteCatalogItem(item)) {
+      if (isRegisteringRemote) return;
+      setIsRegisteringRemote(true);
+      try {
+        await createRemoteServer(item.id);
+        showSuccess(`リモートサーバー「${item.name}」を登録しました`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'リモートサーバーの登録に失敗しました';
+        showError(message);
+      } finally {
+        setIsRegisteringRemote(false);
+      }
+      return;
+    }
+
     setSelectedItem(item);
   };
 
