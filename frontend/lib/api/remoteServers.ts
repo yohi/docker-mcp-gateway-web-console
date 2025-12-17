@@ -72,8 +72,8 @@ export async function registerRemoteServer(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'リモートサーバーの登録に失敗しました' }));
-    throw new Error(error.message || 'リモートサーバーの登録に失敗しました');
+    const error = await response.json().catch(() => ({ message: 'Failed to register remote server' }));
+    throw new Error(error.message || 'Failed to register remote server');
   }
 
   return response.json();
@@ -85,8 +85,8 @@ export async function testRemoteServer(serverId: string): Promise<RemoteTestResu
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: '接続テストに失敗しました' }));
-    throw new Error(error.message || '接続テストに失敗しました');
+    const error = await response.json().catch(() => ({ message: 'Failed to test remote server connection' }));
+    throw new Error(error.message || 'Failed to test remote server connection');
   }
 
   return response.json();

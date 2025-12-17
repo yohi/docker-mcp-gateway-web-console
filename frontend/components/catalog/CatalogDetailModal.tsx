@@ -5,7 +5,7 @@ import { CatalogItem } from '@/lib/types/catalog';
 import { useContainers } from '@/hooks/useContainers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
-import { registerRemoteServer } from '@/lib/api/remoteServers';
+import { registerRemoteServer, fetchRemoteServers } from '@/lib/api/remoteServers';
 import { useToast } from '@/contexts/ToastContext';
 import SessionExecutionPanel from './SessionExecutionPanel';
 
@@ -25,7 +25,7 @@ export default function CatalogDetailModal({
   onOAuth,
 }: CatalogDetailModalProps) {
   const isRemote = item ? isRemoteCatalogItem(item) : false;
-  const { containers, isLoading } = useContainers();
+  const { containers, isLoading, refresh: refreshContainers } = useContainers();
   const { showSuccess, showError } = useToast();
   const [isRegistering, setIsRegistering] = useState(false);
 
@@ -55,14 +55,47 @@ export default function CatalogDetailModal({
         return;
       }
 
+      // エンドポイントのURL形式を検証
+      try {
+        const url = new URL(endpoint);
+        if (!url.protocol || !url.host) {
+          showError('エンドポイントは有効なURL（プロトコルとホストを含む）である必要があります。');
+          return;
+        }
+      } catch (err) {
+        showError('エンドポイントは有効なURL形式である必要があります（例: https://example.com）。');
+        return;
+      }
+
       setIsRegistering(true);
       try {
+        // 重複チェック: 既存のリモートサーバーリストを取得
+        const existingServers = await fetchRemoteServers();
+        const duplicate = existingServers.find(
+          (server) => server.catalog_item_id === item.id || server.endpoint === endpoint
+        );
+        if (duplicate) {
+          showError(
+            `このリモートサーバーは既に登録されています（${duplicate.name}）。重複登録はできません。`
+          );
+          return;
+        }
+
+        // リモートサーバー登録
         await registerRemoteServer({
           catalog_item_id: item.id,
           name: item.name,
           endpoint,
         });
         showSuccess(`リモートサーバー ${item.name} が登録されました`);
+
+        // コンテナリストを更新（InstallModalと同じ処理）
+        try {
+          await refreshContainers();
+        } catch {
+          // リスト更新失敗は致命的ではない
+        }
+
         onClose();
       } catch (err: any) {
         showError(err.message || 'リモートサーバーの登録に失敗しました');
@@ -144,10 +177,10 @@ export default function CatalogDetailModal({
                   {item.allowlist_status && (
                     <span
                       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${item.allowlist_status === 'allowed'
-                          ? 'bg-green-100 text-green-800'
-                          : item.allowlist_status === 'pending'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
+                        ? 'bg-green-100 text-green-800'
+                        : item.allowlist_status === 'pending'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-red-100 text-red-800'
                         }`}
                     >
                       allowlist: {item.allowlist_status}
