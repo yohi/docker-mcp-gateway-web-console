@@ -2,7 +2,6 @@
 
 import asyncio
 import base64
-from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -12,7 +11,6 @@ from app.api import oauth as oauth_api
 from app.api import remote_mcp
 from app.main import app
 from app.models.remote import RemoteServerStatus
-from app.models.state import CredentialRecord
 from app.services.oauth import OAuthService
 from app.services.remote_mcp import RemoteMcpService, TooManyConnectionsError
 from app.services.state_store import StateStore
@@ -185,7 +183,7 @@ def load_test_services(monkeypatch, tmp_path):
     session = _DummySession()
     heartbeat_entered = asyncio.Event()
 
-    async def _slow_heartbeat(*_args):  # noqa: ANN002
+    async def _slow_heartbeat(*args):
         heartbeat_entered.set()
         await asyncio.sleep(0.2)
 
