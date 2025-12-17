@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useSWRConfig } from 'swr';
 import { CatalogItem } from '@/lib/types/catalog';
 import { useContainers } from '@/hooks/useContainers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
@@ -27,6 +28,7 @@ export default function CatalogDetailModal({
   const isRemote = item ? isRemoteCatalogItem(item) : false;
   const { containers, isLoading, refresh: refreshContainers } = useContainers();
   const { showSuccess, showError } = useToast();
+  const { mutate } = useSWRConfig();
   const [isRegistering, setIsRegistering] = useState(false);
 
   const status = useMemo<'loading' | 'running' | 'installed' | 'not_installed'>(() => {
@@ -88,6 +90,9 @@ export default function CatalogDetailModal({
           endpoint,
         });
         showSuccess(`リモートサーバー ${item.name} が登録されました`);
+
+        // リモートサーバーリストのSWRキャッシュを再検証
+        await mutate('remote-servers');
 
         // コンテナリストを更新（InstallModalと同じ処理）
         try {
