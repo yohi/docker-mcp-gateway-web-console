@@ -86,7 +86,7 @@ class TestCatalogService:
         assert catalog_service.warning is None
 
     def test_filter_keeps_missing_docker_and_remote(self, catalog_service):
-        """docker_image も remote_endpoint も無くても除外しない（OAuth対応で許容）。"""
+        """docker_image も remote_endpoint も無くても除外しない(OAuth対応で許容)。"""
         item = CatalogItem(
             id="no-image-remote",
             name="No Image Remote",
