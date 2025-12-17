@@ -1,10 +1,12 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
 import { useContainers } from '@/hooks/useContainers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
+import { registerRemoteServer } from '@/lib/api/remoteServers';
+import { useToast } from '@/contexts/ToastContext';
 import SessionExecutionPanel from './SessionExecutionPanel';
 
 interface CatalogDetailModalProps {
@@ -24,6 +26,8 @@ export default function CatalogDetailModal({
 }: CatalogDetailModalProps) {
   const isRemote = item ? isRemoteCatalogItem(item) : false;
   const { containers, isLoading } = useContainers();
+  const { showSuccess, showError } = useToast();
+  const [isRegistering, setIsRegistering] = useState(false);
 
   const status = useMemo<'loading' | 'running' | 'installed' | 'not_installed'>(() => {
     if (isLoading) return 'loading';
@@ -39,6 +43,37 @@ export default function CatalogDetailModal({
   if (!isOpen || !item) {
     return null;
   }
+
+  const handleInstallClick = async () => {
+    if (!item) return;
+
+    if (isRemote) {
+      // リモートアイテムの場合は直接リモートサーバー登録APIを呼び出す
+      const endpoint = getRemoteEndpoint(item);
+      if (!endpoint) {
+        showError('リモートエンドポイントが設定されていません。');
+        return;
+      }
+
+      setIsRegistering(true);
+      try {
+        await registerRemoteServer({
+          catalog_item_id: item.id,
+          name: item.name,
+          endpoint,
+        });
+        showSuccess(`リモートサーバー ${item.name} が登録されました`);
+        onClose();
+      } catch (err: any) {
+        showError(err.message || 'リモートサーバーの登録に失敗しました');
+      } finally {
+        setIsRegistering(false);
+      }
+    } else {
+      // Dockerアイテムの場合は従来通りInstallModalを開く
+      onInstall(item);
+    }
+  };
 
   const envEntries = Object.entries(item.default_env || {});
 
@@ -87,9 +122,8 @@ export default function CatalogDetailModal({
                     {item.category}
                   </span>
                   <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
-                    }`}
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
+                      }`}
                   >
                     {isRemote ? 'リモート' : 'Docker'}
                   </span>
@@ -109,13 +143,12 @@ export default function CatalogDetailModal({
                   )}
                   {item.allowlist_status && (
                     <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        item.allowlist_status === 'allowed'
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${item.allowlist_status === 'allowed'
                           ? 'bg-green-100 text-green-800'
                           : item.allowlist_status === 'pending'
                             ? 'bg-yellow-100 text-yellow-800'
                             : 'bg-red-100 text-red-800'
-                      }`}
+                        }`}
                     >
                       allowlist: {item.allowlist_status}
                     </span>
@@ -156,7 +189,7 @@ export default function CatalogDetailModal({
             </div>
           )}
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="rounded-lg border border-gray-200 p-4">
               <p className="text-xs font-medium text-gray-500">
                 {isRemote ? 'リモートエンドポイント' : 'Dockerイメージ'}
@@ -283,12 +316,17 @@ export default function CatalogDetailModal({
           </button>
           <button
             type="button"
-            onClick={() => onInstall(item)}
-            disabled={status !== 'not_installed'}
-            className="rounded bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
+            onClick={handleInstallClick}
+            disabled={status !== 'not_installed' || isRegistering}
+            className="flex items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
           >
+            {isRegistering && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-b-transparent"></span>
+            )}
             {isRemote
-              ? 'リモートサーバーを登録'
+              ? isRegistering
+                ? '登録中...'
+                : 'リモートサーバーを登録'
               : status === 'running'
                 ? '実行中 (インストール済み)'
                 : status === 'installed'

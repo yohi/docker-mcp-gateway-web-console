@@ -6,6 +6,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { useInstallation } from '@/hooks/useInstallation';
 import { useContainers } from '@/hooks/useContainers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
+import { isRemoteCatalogItem } from '@/lib/utils/catalogUtils';
 import SecretReferenceInput from '../config/SecretReferenceInput';
 
 interface InstallModalProps {
@@ -53,6 +54,11 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
   }, [isOpen, item]);
 
   if (!isOpen || !item) {
+    return null;
+  }
+
+  // リモートアイテムの場合は早期リターン（このモーダルは使用されない想定）
+  if (isRemoteCatalogItem(item)) {
     return null;
   }
 
@@ -149,11 +155,10 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
         <div className="p-6 overflow-y-auto">
           {(installStatus === 'installed' || installStatus === 'running') && (
             <div
-              className={`mb-4 rounded-md border px-3 py-2 text-sm ${
-                installStatus === 'running'
+              className={`mb-4 rounded-md border px-3 py-2 text-sm ${installStatus === 'running'
                   ? 'border-green-200 bg-green-50 text-green-800'
                   : 'border-gray-200 bg-gray-50 text-gray-800'
-              }`}
+                }`}
             >
               {installStatus === 'running'
                 ? 'このサーバーは既に実行中です。重複インストールは不要です。'
@@ -184,8 +189,8 @@ export default function InstallModal({ isOpen, item, onClose }: InstallModalProp
                         }
                         error={
                           item.required_envs.includes(key) &&
-                          !formData[key] &&
-                          (touched[key] || submitAttempted)
+                            !formData[key] &&
+                            (touched[key] || submitAttempted)
                             ? '必須項目です'
                             : undefined
                         }
