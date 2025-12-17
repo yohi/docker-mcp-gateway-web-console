@@ -1,11 +1,13 @@
 """SQLite ベースの永続化ストア実装。"""
 
+import os
 import json
 import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 from ..config import settings
 from ..models.state import (
@@ -13,9 +15,11 @@ from ..models.state import (
     AuthSessionRecord,
     ContainerConfigRecord,
     CredentialRecord,
+    RemoteServerRecord,
     GatewayAllowEntry,
     JobRecord,
     GitHubTokenRecord,
+    OAuthStateRecord,
     SessionRecord,
     SignaturePolicyRecord,
 )
@@ -46,6 +50,7 @@ class StateStore:
         """SQLite 接続を取得する。"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
     def init_schema(self) -> None:
@@ -64,6 +69,34 @@ class StateStore:
                     created_by TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS remote_servers (
+                    server_id TEXT PRIMARY KEY,
+                    catalog_item_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    endpoint TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    credential_key TEXT REFERENCES credentials(credential_key) ON DELETE SET NULL,
+                    last_connected_at TEXT,
+                    error_message TEXT,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_remote_servers_catalog_item_id
+                    ON remote_servers(catalog_item_id);
+                CREATE TABLE IF NOT EXISTS oauth_states (
+                    state TEXT PRIMARY KEY,
+                    server_id TEXT NOT NULL,
+                    code_challenge TEXT,
+                    code_challenge_method TEXT,
+                    scopes TEXT NOT NULL,
+                    authorize_url TEXT NOT NULL,
+                    token_url TEXT NOT NULL,
+                    client_id TEXT NOT NULL,
+                    redirect_uri TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_oauth_states_expires_at
+                    ON oauth_states(expires_at);
                 CREATE TABLE IF NOT EXISTS sessions (
                     session_id TEXT PRIMARY KEY,
                     server_id TEXT NOT NULL,
@@ -239,6 +272,139 @@ class StateStore:
             conn.execute(
                 "DELETE FROM credentials WHERE credential_key=?",
                 (credential_key,),
+            )
+            conn.commit()
+
+    # Remote server operations
+    def save_remote_server(self, record: RemoteServerRecord) -> None:
+        """リモートサーバーレコードを保存する。"""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO remote_servers (
+                    server_id, catalog_item_id, name, endpoint, status,
+                    credential_key, last_connected_at, error_message, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.server_id,
+                    record.catalog_item_id,
+                    record.name,
+                    record.endpoint,
+                    record.status,
+                    record.credential_key,
+                    _to_iso(record.last_connected_at) if record.last_connected_at else None,
+                    record.error_message,
+                    _to_iso(record.created_at),
+                ),
+            )
+            conn.commit()
+
+    def get_remote_server(self, server_id: str) -> Optional[RemoteServerRecord]:
+        """リモートサーバーレコードを取得する。"""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM remote_servers WHERE server_id=?",
+                (server_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return RemoteServerRecord(
+            server_id=row["server_id"],
+            catalog_item_id=row["catalog_item_id"],
+            name=row["name"],
+            endpoint=row["endpoint"],
+            status=row["status"],
+            credential_key=row["credential_key"],
+            last_connected_at=_from_iso(row["last_connected_at"]) if row["last_connected_at"] else None,
+            error_message=row["error_message"],
+            created_at=_from_iso(row["created_at"]),
+        )
+
+    def list_remote_servers(self) -> List[RemoteServerRecord]:
+        """リモートサーバーレコードを全件取得する。"""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM remote_servers").fetchall()
+        records: List[RemoteServerRecord] = []
+        for row in rows:
+            records.append(
+                RemoteServerRecord(
+                    server_id=row["server_id"],
+                    catalog_item_id=row["catalog_item_id"],
+                    name=row["name"],
+                    endpoint=row["endpoint"],
+                    status=row["status"],
+                    credential_key=row["credential_key"],
+                    last_connected_at=_from_iso(row["last_connected_at"]) if row["last_connected_at"] else None,
+                    error_message=row["error_message"],
+                    created_at=_from_iso(row["created_at"]),
+                )
+            )
+        return records
+
+    def delete_remote_server(self, server_id: str) -> None:
+        """リモートサーバーレコードを削除する。存在しない場合は何もしない。"""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM remote_servers WHERE server_id=?", (server_id,))
+            conn.commit()
+
+    # OAuth state operations
+    def save_oauth_state(self, record: OAuthStateRecord) -> None:
+        """OAuth state レコードを保存する。"""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO oauth_states (
+                    state, server_id, code_challenge, code_challenge_method, scopes,
+                    authorize_url, token_url, client_id, redirect_uri, expires_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.state,
+                    record.server_id,
+                    record.code_challenge,
+                    record.code_challenge_method,
+                    json.dumps(record.scopes),
+                    record.authorize_url,
+                    record.token_url,
+                    record.client_id,
+                    record.redirect_uri,
+                    _to_iso(record.expires_at),
+                    _to_iso(record.created_at),
+                ),
+            )
+            conn.commit()
+
+    def get_oauth_state(self, state: str) -> Optional[OAuthStateRecord]:
+        """OAuth state レコードを取得する。"""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM oauth_states WHERE state=?",
+                (state,),
+            ).fetchone()
+
+        if row is None:
+            return None
+        return OAuthStateRecord(
+            state=row["state"],
+            server_id=row["server_id"],
+            code_challenge=row["code_challenge"],
+            code_challenge_method=row["code_challenge_method"],
+            scopes=json.loads(row["scopes"]),
+            authorize_url=row["authorize_url"],
+            token_url=row["token_url"],
+            client_id=row["client_id"],
+            redirect_uri=row["redirect_uri"],
+            expires_at=_from_iso(row["expires_at"]),
+            created_at=_from_iso(row["created_at"]),
+        )
+
+    def delete_oauth_state(self, state: str) -> None:
+        """OAuth state レコードを削除する。存在しない場合は何もしない。"""
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM oauth_states WHERE state=?",
+                (state,),
             )
             conn.commit()
 
@@ -586,6 +752,48 @@ class StateStore:
             )
             conn.commit()
 
+    def is_endpoint_allowed(self, url: str) -> bool:
+        """
+        REMOTE_MCP_ALLOWED_DOMAINS に基づきエンドポイント URL を検証する。
+
+        空リストは deny-all とし、IPv6 リテラルはセキュリティ理由で拒否する。
+        """
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if not host:
+            return False
+        if ":" in host:
+            return False
+
+        scheme = (parsed.scheme or "").lower()
+        port = parsed.port or (443 if scheme == "https" else 80)
+
+        raw_allowlist = os.getenv("REMOTE_MCP_ALLOWED_DOMAINS", "")
+        allowlist = [entry.strip().lower() for entry in raw_allowlist.split(",") if entry.strip()]
+        if not allowlist:
+            return False
+
+        for entry in allowlist:
+            entry_host = entry
+            entry_port = None
+            if ":" in entry:
+                entry_host, entry_port_str = entry.rsplit(":", 1)
+                try:
+                    entry_port = int(entry_port_str)
+                except ValueError:
+                    continue
+            else:
+                entry_port = 443 if scheme == "https" else 80
+
+            if entry_host.startswith("*."):
+                suffix = entry_host[2:]
+                if host.endswith("." + suffix) and entry_port == port:
+                    return True
+            elif host == entry_host and entry_port == port:
+                return True
+
+        return False
+
     def get_recent_audit_logs(self, limit: int = 20) -> List[AuditLogEntry]:
         """最近の監査ログを取得する。"""
         with self._connect() as conn:
@@ -652,6 +860,12 @@ class StateStore:
             )
             auth_session_deleted = cur.rowcount
 
+            cur.execute(
+                "DELETE FROM oauth_states WHERE expires_at < ?",
+                (_to_iso(now),),
+            )
+            oauth_state_deleted = cur.rowcount
+
             conn.commit()
 
         return {
@@ -659,6 +873,7 @@ class StateStore:
             "sessions": session_deleted,
             "jobs": job_deleted,
             "auth_sessions": auth_session_deleted,
+            "oauth_states": oauth_state_deleted,
         }
 
     def _sanitize_metadata(self, metadata: Dict[str, object]) -> Dict[str, object]:

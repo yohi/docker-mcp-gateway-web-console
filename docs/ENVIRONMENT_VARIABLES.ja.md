@@ -44,6 +44,9 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 | `SECRET_CACHE_TTL_SECONDS` | シークレットキャッシュの生存時間 | `1800` | `3600` |
 | `MAX_LOG_LINES` | ストリーミングする最大ログ行数 | `1000` | `5000` |
 | `CATALOG_DEFAULT_URL` | デフォルトのカタログURL | - | `https://example.com/catalog.json` |
+| `REMOTE_MCP_ALLOWED_DOMAINS` | 許可するリモートMCPサーバーのドメイン（カンマ区切り）。空の場合はすべて拒否。 | `""` | `api.example.com,*.trusted.com` |
+| `REMOTE_MCP_MAX_CONNECTIONS` | リモートサーバーへの最大同時SSE接続数 | `20` | `5` |
+| `ALLOW_INSECURE_ENDPOINT` | HTTP/localhost エンドポイントを許可（開発環境のみ） | `false` | `true` |
 
 ### `.env` の例
 
@@ -62,6 +65,11 @@ SESSION_TIMEOUT_MINUTES=30
 # Catalog Configuration
 CATALOG_CACHE_TTL_SECONDS=3600
 CATALOG_DEFAULT_URL=https://raw.githubusercontent.com/example/mcp-catalog/main/catalog.json
+
+# Remote MCP Configuration
+REMOTE_MCP_ALLOWED_DOMAINS=api.example.com,*.trusted.com
+REMOTE_MCP_MAX_CONNECTIONS=20
+ALLOW_INSECURE_ENDPOINT=false
 
 # Security
 CORS_ORIGINS=http://localhost:3000

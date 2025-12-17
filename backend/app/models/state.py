@@ -25,6 +25,36 @@ class CredentialRecord(BaseModel):
     created_at: datetime = Field(default_factory=_now_utc)
 
 
+class OAuthStateRecord(BaseModel):
+    """OAuth state の永続化レコード。"""
+
+    state: str
+    server_id: str
+    code_challenge: Optional[str]
+    code_challenge_method: Optional[str]
+    scopes: List[str]
+    authorize_url: str
+    token_url: str
+    client_id: str
+    redirect_uri: str
+    expires_at: datetime
+    created_at: datetime = Field(default_factory=_now_utc)
+
+
+class RemoteServerRecord(BaseModel):
+    """リモート MCP サーバーの永続化レコード。"""
+
+    server_id: str
+    catalog_item_id: str
+    name: str
+    endpoint: str
+    status: str
+    credential_key: Optional[str] = None
+    last_connected_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+    created_at: datetime = Field(default_factory=_now_utc)
+
+
 class GitHubTokenRecord(BaseModel):
     """GitHub パーソナルアクセストークンの永続化レコード。"""
 

@@ -32,18 +32,23 @@ if parsed.scheme != "https":
 
 OAuth URLのドメインは、設定された許可リストに含まれている必要があります。
 
-**デフォルト許可ドメイン**: `github.com`
+**デフォルト動作**: 空文字列（すべてのドメインを拒否）
+
+**セキュリティ原則**: 本番環境では必ず `OAUTH_ALLOWED_DOMAINS` を明示的に設定してください。未設定の場合、すべてのOAuth URLが拒否されます。
 
 **環境変数設定**:
 ```bash
 # カンマ区切りで複数のドメインを指定可能
 OAUTH_ALLOWED_DOMAINS=github.com,gitlab.com,example.com
+
+# 本番環境では必須
+OAUTH_ALLOWED_DOMAINS=github.com
 ```
 
 **設定ファイル**: backend/app/config.py
 ```python
 oauth_allowed_domains: str = Field(
-    default="github.com", validation_alias="OAUTH_ALLOWED_DOMAINS"
+    default="", validation_alias="OAUTH_ALLOWED_DOMAINS"
 )
 ```
 
@@ -71,9 +76,10 @@ WARNING: OAuth URL rejected: domain not in allowlist. url=https://malicious.com/
 
 ### 本番環境の設定
 
-1. **OAUTH_ALLOWED_DOMAINS を厳格に設定**
+1. **OAUTH_ALLOWED_DOMAINS を必ず設定（必須）**
    ```bash
-   OAUTH_ALLOWED_DOMAINS=github.com  # 必要なドメインのみ
+   # 未設定の場合はすべてのOAuth URLが拒否されます
+   OAUTH_ALLOWED_DOMAINS=github.com  # 必要なドメインのみを明示的に指定
    ```
 
 2. **OAUTH_ALLOW_OVERRIDE は無効化**

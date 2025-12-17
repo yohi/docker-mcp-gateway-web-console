@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     # Bitwarden Configuration
     bitwarden_cli_path: str = "/usr/local/bin/bw"
@@ -44,6 +46,8 @@ class Settings(BaseSettings):
     catalog_default_url: str = "https://api.github.com/repos/docker/mcp-registry/contents/servers"
     # GitHub API のレート制限回避用トークン(任意)
     github_token: str = ""
+    # 開発用途でのみ HTTP/localhost を許可するフラグ
+    allow_insecure_endpoint: bool = Field(default=False, validation_alias="ALLOW_INSECURE_ENDPOINT")
 
     # CORS Configuration
     cors_origins: str = "http://localhost:3000"
@@ -59,9 +63,9 @@ class Settings(BaseSettings):
     oauth_request_timeout_seconds: int = 10
     # サーバーごとに OAuth エンドポイント等を上書きできるか(カタログ/クライアント由来の値を使用するため慎重に運用する)
     oauth_allow_override: bool = Field(default=False, validation_alias="OAUTH_ALLOW_OVERRIDE")
-    # OAuth URL の許可ドメインリスト(カンマ区切り)。空の場合は GitHub のみ許可。
+    # OAuth URL の許可ドメインリスト(カンマ区切り)。空の場合はすべてのドメインを拒否（本番環境では必ず明示的に設定すること）。
     oauth_allowed_domains: str = Field(
-        default="github.com", validation_alias="OAUTH_ALLOWED_DOMAINS"
+        default="", validation_alias="OAUTH_ALLOWED_DOMAINS"
     )
     # アクセス/リフレッシュトークンの暗号化キー(Fernet)。必ず環境変数 OAUTH_TOKEN_ENCRYPTION_KEY で本番用のキーを指定すること。
     oauth_token_encryption_key: str = Field(
@@ -70,6 +74,13 @@ class Settings(BaseSettings):
     )
     oauth_token_encryption_key_id: str = Field(
         default="default", validation_alias="OAUTH_TOKEN_ENCRYPTION_KEY_ID"
+    )
+    # Credential Encryption (AES-GCM) for OAuth トークンの代替暗号鍵
+    credential_encryption_key: str = Field(
+        default="", validation_alias="CREDENTIAL_ENCRYPTION_KEY"
+    )
+    credential_encryption_key_id: str = Field(
+        default="credential", validation_alias="CREDENTIAL_ENCRYPTION_KEY_ID"
     )
     # 暗号鍵の永続化パス (env > file > generate の順で利用)
     oauth_token_key_file: str = Field(

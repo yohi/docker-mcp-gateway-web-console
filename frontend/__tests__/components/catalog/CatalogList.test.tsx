@@ -21,6 +21,15 @@ jest.mock('../../../hooks/useContainers', () => ({
   }),
 }));
 
+// Mock ToastContext
+jest.mock('../../../contexts/ToastContext', () => ({
+  useToast: () => ({
+    showSuccess: jest.fn(),
+    showError: jest.fn(),
+  }),
+  ToastProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 // Mock SearchBar to avoid timer issues and simplify testing
 jest.mock('../../../components/catalog/SearchBar', () => {
   return function MockSearchBar({ onSearch, categories, initialQuery, initialCategory }: any) {
@@ -77,10 +86,39 @@ const mockItems: CatalogItem[] = [
   },
 ];
 
+const remoteItem: CatalogItem = {
+  id: 'remote-1',
+  name: 'Remote Server',
+  description: 'Remote endpoint catalog entry',
+  category: 'remote',
+  docker_image: '',
+  remote_endpoint: 'https://api.example.com/sse',
+  is_remote: true,
+  server_type: 'remote',
+  default_env: {},
+  required_envs: [],
+  required_secrets: [],
+  vendor: 'remote-vendor',
+  icon_url: '',
+  required_scopes: [],
+  verify_signatures: true,
+};
+
+// Mock IntersectionObserver for jsdom environment
+const mockIntersectionObserver = jest.fn(() => ({
+  observe: jest.fn(),
+  disconnect: jest.fn(),
+  unobserve: jest.fn(),
+}));
+
 describe('CatalogList', () => {
   const mockOnInstall = jest.fn();
   const catalogSource = 'http://test.com/catalog.json';
   const mockOnSelect = jest.fn();
+
+  beforeAll(() => {
+    (global as any).IntersectionObserver = mockIntersectionObserver;
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -115,7 +153,7 @@ describe('CatalogList', () => {
 
   it('renders list of servers', () => {
     mockUseSWR.mockReturnValue({
-      data: { servers: mockItems, cached: false },
+      data: { servers: mockItems, cached: false, total: mockItems.length, page_size: mockItems.length },
       error: undefined,
       isLoading: false,
       mutate: jest.fn(),
@@ -125,15 +163,12 @@ describe('CatalogList', () => {
 
     expect(screen.getByText('Server One')).toBeInTheDocument();
     expect(screen.getByText('Server Two')).toBeInTheDocument();
-    // Use regex to match split text
-    expect(screen.getByText(/Showing/)).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument();
-    expect(screen.getByText(/servers/)).toBeInTheDocument();
+    expect(screen.getByText(/読み込み済み/)).toBeInTheDocument();
   });
 
   it('renders empty state', () => {
     mockUseSWR.mockReturnValue({
-      data: { servers: [], cached: false },
+      data: { servers: [], cached: false, total: 0, page_size: 10 },
       error: undefined,
       isLoading: false,
       mutate: jest.fn(),
@@ -147,7 +182,7 @@ describe('CatalogList', () => {
 
   it('handles install click', () => {
     mockUseSWR.mockReturnValue({
-      data: { servers: mockItems, cached: false },
+      data: { servers: mockItems, cached: false, total: mockItems.length, page_size: mockItems.length },
       error: undefined,
       isLoading: false,
       mutate: jest.fn(),
@@ -194,13 +229,13 @@ describe('CatalogList', () => {
 
   it('extracts and passes categories to SearchBar', () => {
     mockUseSWR.mockReturnValue({
-      data: { servers: mockItems, cached: false },
+      data: { servers: mockItems, cached: false, total: mockItems.length, page_size: mockItems.length },
       error: undefined,
       isLoading: false,
       mutate: jest.fn(),
     });
 
-    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} />);
+    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
 
     // Check if categories are passed to the mock search bar (rendered as options)
     // Scope to the select element to avoid matching badges in ServerCard
@@ -209,5 +244,53 @@ describe('CatalogList', () => {
     // We can check if options exist
     expect(screen.getAllByText('utility').find(el => el.tagName === 'OPTION')).toBeInTheDocument();
     expect(screen.getAllByText('ai').find(el => el.tagName === 'OPTION')).toBeInTheDocument();
+  });
+
+  it('renders remote catalog items with badge and endpoint', () => {
+    mockUseSWR.mockReturnValue({
+      data: { servers: [remoteItem], cached: false, total: 1, page_size: 1 },
+      error: undefined,
+      isLoading: false,
+      mutate: jest.fn(),
+    });
+
+    render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
+
+    expect(screen.getByText('Remote Server')).toBeInTheDocument();
+    expect(screen.getByText('リモート')).toBeInTheDocument();
+    expect(screen.getByText(/api\.example\.com\/sse/)).toBeInTheDocument();
+    expect(screen.queryByText('インストール')).not.toBeInTheDocument();
+  });
+
+  it('falls back to cached data when fetching fails after a success', async () => {
+    mockUseSWR
+      .mockReturnValueOnce({
+        data: { servers: mockItems, cached: false, total: mockItems.length, page_size: mockItems.length },
+        error: undefined,
+        isLoading: false,
+        mutate: jest.fn(),
+      })
+      .mockReturnValue({
+        data: undefined,
+        error: new Error('Network error'),
+        isLoading: false,
+        mutate: jest.fn(),
+      });
+
+    const { rerender } = render(
+      <CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />
+    );
+
+    // First render shows fetched data
+    expect(screen.getByText('Server One')).toBeInTheDocument();
+
+    // Second render simulates fetch failure, should show cached data + warning
+    rerender(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Server One')).toBeInTheDocument();
+      expect(screen.getByText(/最後に成功したカタログ/)).toBeInTheDocument();
+      expect(screen.getByText('Network error')).toBeInTheDocument();
+    });
   });
 });

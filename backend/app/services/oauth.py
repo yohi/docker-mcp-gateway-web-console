@@ -17,9 +17,11 @@ from urllib.parse import urlencode
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from ..config import OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER, settings
-from ..models.state import CredentialRecord
+from ..models.state import CredentialRecord, OAuthStateRecord
+from .metrics import MetricsRecorder
 from .state_store import StateStore
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,7 @@ class OAuthState:
     token_url: str
     client_id: str
     redirect_uri: str
+    expires_at: datetime
 
 
 def _is_private_or_local_ip(hostname: str) -> bool:
@@ -55,10 +58,14 @@ def _is_private_or_local_ip(hostname: str) -> bool:
             return True
 
         return False
-    except (socket.gaierror, ValueError):
-        # DNS解決失敗またはIPアドレス変換失敗の場合は安全側に倒す（拒否）
-        # 攻撃者がDNSを制御してSSRFをバイパスすることを防ぐため、fail-closedとしてTrueを返す
+    except socket.gaierror:
+        # DNS解決に失敗した場合はfail-closed（安全側に倒す）:
+        # 一時的なDNS障害やDNS rebinding攻撃の可能性があり、
+        # 安全性を優先してプライベートとみなし、アクセスを拒否する
         return True
+    except ValueError:
+        # IP形式への変換ができない場合はプライベート判定できないため非プライベートとみなす
+        return False
 
 
 def _normalize_oauth_url(value: str, *, field_name: str) -> str:
@@ -69,20 +76,26 @@ def _normalize_oauth_url(value: str, *, field_name: str) -> str:
 
     parsed = urlparse(url)
 
-    # HTTPSスキームのみ許可(HTTPは拒否)
-    if parsed.scheme != "https":
+    # HTTPSスキームのみ許可。ただしローカル開発用途の http://localhost 系のみ許容
+    hostname = parsed.hostname or parsed.netloc.split(":")[0]
+    if parsed.scheme == "http":
+        if hostname not in {"localhost", "127.0.0.1", "::1"}:
+            logger.warning(
+                "OAuth URL rejected: non-HTTPS scheme. field=%s url=%s",
+                field_name,
+                url,
+            )
+            raise OAuthError(f"{field_name} は HTTPS スキームである必要があります: {url}")
+    elif parsed.scheme != "https":
         logger.warning(
-            "OAuth URL rejected: non-HTTPS scheme. field=%s url=%s",
+            "OAuth URL rejected: unsupported scheme. field=%s url=%s",
             field_name,
             url,
         )
-        raise OAuthError(f"{field_name} は HTTPS スキームである必要があります: {url}")
+        raise OAuthError(f"{field_name} のスキームが不正です: {url}")
 
     if not parsed.netloc:
         raise OAuthError(f"{field_name} が不正です: {url}")
-
-    # ホスト名を抽出(ポート番号を除く)
-    hostname = parsed.hostname or parsed.netloc.split(":")[0]
 
     # IPアドレス形式をチェック
     try:
@@ -95,7 +108,9 @@ def _normalize_oauth_url(value: str, *, field_name: str) -> str:
                 url,
                 hostname,
             )
-            raise OAuthError(f"{field_name} にプライベート/ローカルIPは使用できません")
+            # ローカル開発用途の http + localhost 以外は拒否
+            if not (parsed.scheme == "http" and hostname in {"127.0.0.1", "::1"}):
+                raise OAuthError(f"{field_name} にプライベート/ローカルIPは使用できません")
 
         # クラウドメタデータエンドポイントを拒否
         if str(ip) == "169.254.169.254":
@@ -107,18 +122,18 @@ def _normalize_oauth_url(value: str, *, field_name: str) -> str:
             raise OAuthError(f"{field_name} にメタデータエンドポイントは使用できません")
     except ValueError:
         # IPアドレスではなくホスト名の場合
-        # ローカルホスト名を拒否
+        # ローカルホスト名は HTTP スキームの開発用途のみ許容
         if hostname.lower() in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}:
-            logger.warning(
-                "OAuth URL rejected: localhost. field=%s url=%s hostname=%s",
-                field_name,
-                url,
-                hostname,
-            )
-            raise OAuthError(f"{field_name} に localhost は使用できません")
-
+            if parsed.scheme != "http":
+                logger.warning(
+                    "OAuth URL rejected: localhost. field=%s url=%s hostname=%s",
+                    field_name,
+                    url,
+                    hostname,
+                )
+                raise OAuthError(f"{field_name} に localhost は使用できません")
         # DNS解決してプライベートIPをチェック
-        if _is_private_or_local_ip(hostname):
+        elif _is_private_or_local_ip(hostname):
             logger.warning(
                 "OAuth URL rejected: resolves to private IP. field=%s url=%s hostname=%s",
                 field_name,
@@ -146,6 +161,7 @@ def _is_github_oauth_endpoints(authorize_url: str, token_url: str) -> bool:
 
 def _is_domain_allowed(url: str, allowed_domains: list[str]) -> bool:
     """URLのドメインが許可リストに含まれているかチェックする。"""
+    # 許可ドメイン指定なしの場合は拒否（本番環境で明示的な設定を要求）
     if not allowed_domains:
         return False
 
@@ -180,9 +196,24 @@ class TokenCipher:
     """トークンを暗号化・復号するユーティリティ。"""
 
     def __init__(self, key: str, key_id: str = "default", algorithm: str = "fernet") -> None:
-        self._algo = algorithm
+        self._algo = algorithm or "fernet"
         self._key_id = key_id
-        self._fernet = Fernet(key.encode("utf-8") if isinstance(key, str) else key)
+        self._fernet: Optional[Fernet] = None
+        self._aesgcm: Optional[AESGCM] = None
+
+        if self._algo == "fernet":
+            self._fernet = Fernet(key.encode("utf-8") if isinstance(key, str) else key)
+        elif self._algo == "aes-gcm":
+            key_bytes = key.encode("utf-8") if isinstance(key, str) else key
+            try:
+                key_bytes = base64.urlsafe_b64decode(key_bytes)
+            except Exception as exc:
+                raise ValueError("invalid AES-GCM key encoding") from exc
+            if len(key_bytes) != 32:
+                raise ValueError("AES-GCM key must be 32 bytes (256-bit)")
+            self._aesgcm = AESGCM(key_bytes)
+        else:
+            raise ValueError(f"unsupported algorithm: {self._algo}")
 
     @property
     def metadata(self) -> Dict[str, str]:
@@ -191,8 +222,23 @@ class TokenCipher:
 
     def encrypt(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """ペイロードを暗号化し token_ref 用の辞書を返す。"""
-        blob = self._fernet.encrypt(json.dumps(payload).encode("utf-8")).decode("utf-8")
-        return {"type": "encrypted", "algo": self._algo, "key_id": self._key_id, "blob": blob}
+        message = json.dumps(payload).encode("utf-8")
+        if self._algo == "fernet" and self._fernet:
+            blob = self._fernet.encrypt(message).decode("utf-8")
+            return {"type": "encrypted", "algo": self._algo, "key_id": self._key_id, "blob": blob}
+
+        if self._algo == "aes-gcm" and self._aesgcm:
+            nonce = secrets.token_bytes(12)
+            ciphertext = self._aesgcm.encrypt(nonce, message, associated_data=None)
+            return {
+                "type": "encrypted",
+                "algo": self._algo,
+                "key_id": self._key_id,
+                "blob": base64.urlsafe_b64encode(ciphertext).decode("utf-8"),
+                "nonce": base64.urlsafe_b64encode(nonce).decode("utf-8"),
+            }
+
+        raise ValueError("cipher is not initialized")
 
     def decrypt(self, token_ref: Dict[str, Any]) -> Dict[str, Any]:
         """token_ref から平文ペイロードを復号する。"""
@@ -206,16 +252,33 @@ class TokenCipher:
         if key_id and key_id != self._key_id:
             raise ValueError(f"unsupported key id: {key_id}")
 
-        blob = token_ref.get("blob")
-        if not blob:
-            raise ValueError("token_ref missing blob")
+        if self._algo == "fernet" and self._fernet:
+            blob = token_ref.get("blob")
+            if not blob:
+                raise ValueError("token_ref missing blob")
+            try:
+                decrypted = self._fernet.decrypt(blob.encode("utf-8"))
+            except InvalidToken as exc:
+                raise ValueError("token_ref decrypt failed") from exc
+            return json.loads(decrypted.decode("utf-8"))
 
-        try:
-            decrypted = self._fernet.decrypt(blob.encode("utf-8"))
-        except InvalidToken as exc:
-            raise ValueError("token_ref decrypt failed") from exc
+        if self._algo == "aes-gcm" and self._aesgcm:
+            blob = token_ref.get("blob")
+            nonce = token_ref.get("nonce")
+            if not blob or not nonce:
+                raise ValueError("token_ref missing blob or nonce")
+            try:
+                ciphertext = base64.urlsafe_b64decode(blob)
+                nonce_bytes = base64.urlsafe_b64decode(nonce)
+            except Exception as exc:
+                raise ValueError("token_ref base64 decode failed") from exc
+            try:
+                decrypted = self._aesgcm.decrypt(nonce_bytes, ciphertext, associated_data=None)
+            except Exception as exc:
+                raise ValueError("token_ref decrypt failed") from exc
+            return json.loads(decrypted.decode("utf-8"))
 
-        return json.loads(decrypted.decode("utf-8"))
+        raise ValueError("cipher is not initialized")
 
 
 class OAuthError(Exception):
@@ -224,6 +287,10 @@ class OAuthError(Exception):
 
 class OAuthStateMismatchError(OAuthError):
     """state 不一致時の例外。"""
+
+
+class PkceVerificationError(OAuthError):
+    """PKCE 検証失敗時の例外。"""
 
 
 class OAuthProviderError(OAuthError):
@@ -244,6 +311,10 @@ class ScopeNotAllowedError(OAuthError):
 
 class CredentialNotFoundError(OAuthError):
     """credential_key が見つからない場合の例外。"""
+
+
+class RemoteServerNotFoundError(OAuthError):
+    """server_id に対応するリモートサーバーが存在しない場合の例外。"""
 
 
 class ConfigurationError(OAuthError):
@@ -299,6 +370,7 @@ class OAuthService:
         refresh_backoff_schedule: Optional[List[float]] = None,
         permitted_scopes: Optional[List[str]] = None,
         credential_creator: str = "system",
+        metrics: Optional[MetricsRecorder] = None,
     ) -> None:
         # state 管理（メモリ）と永続ストア
         self._state_store_mem: Dict[str, OAuthState] = {}
@@ -308,26 +380,17 @@ class OAuthService:
             self._state_store.init_schema()
         except Exception:
             logger.debug("state store init skipped", exc_info=True)
+        self._state_ttl = timedelta(minutes=10)
         self._backoff_schedule = backoff_schedule or [1.0, 2.0, 4.0]
         self._refresh_backoff_schedule = refresh_backoff_schedule or [2.0, 4.0]
         self._refresh_threshold = timedelta(minutes=15)
         self._scope_policy = ScopePolicyService(permitted_scopes or [])
         self._credential_creator = credential_creator
         self._client_secret = settings.oauth_client_secret.strip() or None
-        encryption_key = settings.oauth_token_encryption_key
-        if (
-            not encryption_key
-            or encryption_key.strip() == ""
-            or encryption_key == OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER
-        ):
-            raise ConfigurationError(
-                "oauth_token_encryption_key が未設定またはプレースホルダーのままです。環境変数 OAUTH_TOKEN_ENCRYPTION_KEY に有効な Fernet キーを設定してください。"
-            )
-        self._token_cipher = TokenCipher(
-            encryption_key, settings.oauth_token_encryption_key_id
-        )
+        self._token_cipher = self._build_token_cipher()
         self._secret_store: Dict[str, Dict[str, object]] = {}
         self._load_persisted_credentials()
+        self.metrics = metrics or MetricsRecorder()
 
     def _load_persisted_credentials(self) -> None:
         """永続ストアから暗号化済みトークンを復元する。失敗時は再認可させるため削除する。"""
@@ -384,6 +447,28 @@ class OAuthService:
             "scope": scopes,
         }
 
+    def _build_token_cipher(self) -> TokenCipher:
+        """暗号化方式を選択して TokenCipher を構築する。"""
+        cred_key = settings.credential_encryption_key.strip()
+        if cred_key:
+            return TokenCipher(
+                cred_key,
+                settings.credential_encryption_key_id,
+                algorithm="aes-gcm",
+            )
+
+        fernet_key = settings.oauth_token_encryption_key
+        if fernet_key and fernet_key.strip() and fernet_key != OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER:
+            return TokenCipher(
+                fernet_key,
+                settings.oauth_token_encryption_key_id,
+                algorithm="fernet",
+            )
+
+        raise ConfigurationError(
+            "credential_encryption_key もしくは oauth_token_encryption_key を設定してください。"
+        )
+
     @staticmethod
     def _parse_expires_in(raw_value: object) -> int:
         """expires_in を安全に整数秒へ変換する。"""
@@ -410,6 +495,11 @@ class OAuthService:
         code_challenge_method: str = "S256",
     ) -> dict:
         """state を生成し、クライアント指定の code_challenge で認可 URL を返す。"""
+        # server_id の存在確認（リモートサーバーが登録済みであることが前提）
+        server_record = self._state_store.get_remote_server(server_id)
+        if server_record is None:
+            raise RemoteServerNotFoundError("server_id が存在しません")
+
         use_authorize_url = authorize_url or settings.oauth_authorize_url
         use_token_url = token_url or settings.oauth_token_url
         use_client_id = client_id or settings.oauth_client_id
@@ -487,8 +577,10 @@ class OAuthService:
             )
             raise ScopeNotAllowedError(missing)
 
-        if code_challenge and code_challenge_method not in {"S256", "plain"}:
-            raise OAuthError("未対応の code_challenge_method です。S256 もしくは plain を指定してください。")
+        if not code_challenge:
+            raise OAuthError("code_challenge が指定されていません")
+        if code_challenge_method != "S256":
+            raise OAuthError("code_challenge_method は S256 のみサポートします")
 
         scope_value = " ".join(scopes) if scopes else ""
         query = {
@@ -504,16 +596,20 @@ class OAuthService:
 
         auth_url = f"{use_authorize_url}?{urlencode(query)}"
 
-        self._state_store_mem[state] = OAuthState(
+        expires_at = datetime.now(timezone.utc) + self._state_ttl
+        oauth_state = OAuthState(
             server_id=server_id,
             code_challenge=code_challenge,
-            code_challenge_method=code_challenge_method if code_challenge else None,
+            code_challenge_method=code_challenge_method,
             scopes=scopes,
             authorize_url=use_authorize_url,
             token_url=use_token_url,
             client_id=use_client_id,
             redirect_uri=use_redirect_uri,
+            expires_at=expires_at,
         )
+        self._state_store_mem[state] = oauth_state
+        self._persist_state(state, oauth_state)
 
         logger.info("OAuth 認可開始: server_id=%s state=%s", server_id, state)
         return {
@@ -521,6 +617,22 @@ class OAuthService:
             "state": state,
             "required_scopes": scopes,
         }
+
+    def _persist_state(self, state: str, oauth_state: OAuthState) -> None:
+        """state を永続化し、単一使用・TTL を担保する。"""
+        record = OAuthStateRecord(
+            state=state,
+            server_id=oauth_state.server_id,
+            code_challenge=oauth_state.code_challenge,
+            code_challenge_method=oauth_state.code_challenge_method,
+            scopes=oauth_state.scopes,
+            authorize_url=oauth_state.authorize_url,
+            token_url=oauth_state.token_url,
+            client_id=oauth_state.client_id,
+            redirect_uri=oauth_state.redirect_uri,
+            expires_at=oauth_state.expires_at,
+        )
+        self._state_store.save_oauth_state(record)
 
     def update_permitted_scopes(
         self, scopes: List[str], is_admin: bool, correlation_id: Optional[str] = None
@@ -545,33 +657,61 @@ class OAuthService:
             metadata={"permitted_scopes": scopes},
         )
 
+    def _load_state(self, state: str, server_id: Optional[str] = None) -> OAuthState:
+        """永続ストアまたはメモリから state を取得し、必要に応じ server_id を検証する。"""
+        now = datetime.now(timezone.utc)
+        record = self._state_store.get_oauth_state(state)
+        if record:
+            self._state_store.delete_oauth_state(state)
+            if record.expires_at < now:
+                raise OAuthStateMismatchError("state の有効期限が切れています。再認可を実施してください")
+            if server_id and record.server_id != server_id:
+                raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
+            return OAuthState(
+                server_id=record.server_id,
+                code_challenge=record.code_challenge,
+                code_challenge_method=record.code_challenge_method,
+                scopes=record.scopes,
+                authorize_url=record.authorize_url,
+                token_url=record.token_url,
+                client_id=record.client_id,
+                redirect_uri=record.redirect_uri,
+                expires_at=record.expires_at,
+            )
+
+        oauth_state = self._state_store_mem.pop(state, None)
+        if oauth_state:
+            if oauth_state.expires_at < now:
+                raise OAuthStateMismatchError("state の有効期限が切れています。再認可を実施してください")
+            if server_id and oauth_state.server_id != server_id:
+                raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
+            return oauth_state
+
+        raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
+
     async def exchange_token(
         self,
         code: str,
         state: str,
-        server_id: str,
+        server_id: Optional[str] = None,
         code_verifier: Optional[str] = None,
     ) -> dict:
         """認可コードをトークンに交換する。"""
-        if state not in self._state_store_mem:
-            raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
+        oauth_state = self._load_state(state, server_id)
 
-        oauth_state = self._state_store_mem.get(state)
-        if oauth_state is None:
-            raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
-        if oauth_state.server_id != server_id:
-            raise OAuthStateMismatchError("state 不一致のため再認可を実施してください")
-        oauth_state = self._state_store_mem.pop(state)
+        # state から復元した server_id が現在も有効か確認
+        server_record = self._state_store.get_remote_server(oauth_state.server_id)
+        if server_record is None:
+            raise RemoteServerNotFoundError("server_id が存在しません")
 
         if oauth_state.code_challenge:
             if not code_verifier:
-                raise OAuthError("code_verifier が指定されていません")
-            if oauth_state.code_challenge_method == "S256":
-                computed_challenge = self._compute_code_challenge(code_verifier)
-            else:
-                computed_challenge = code_verifier
+                raise PkceVerificationError("code_verifier が指定されていません")
+            if oauth_state.code_challenge_method and oauth_state.code_challenge_method != "S256":
+                raise PkceVerificationError("code_challenge_method が不正です")
+            computed_challenge = self._compute_code_challenge(code_verifier)
             if oauth_state.code_challenge != computed_challenge:
-                raise OAuthError("code_verifier が一致しません")
+                raise PkceVerificationError("code_verifier が一致しません")
 
         request_data = {
             "grant_type": "authorization_code",
@@ -604,12 +744,17 @@ class OAuthService:
                     oauth_token_url=oauth_state.token_url,
                     oauth_client_id=oauth_state.client_id,
                 )
+                self.metrics.increment(
+                    "oauth_flow_success_total", {"result": "exchange_token"}
+                )
                 return {
+                    "success": True,
                     "status": "authorized",
                     "scope": scope_list,
                     "expires_in": payload.get("expires_in"),
                     "credential_key": credential["credential_key"],
                     "expires_at": credential["expires_at"],
+                    "server_id": oauth_state.server_id,
                 }
             except OAuthProviderUnavailableError as exc:
                 last_error = exc
@@ -627,6 +772,10 @@ class OAuthService:
                 break
 
         if last_error:
+            self.metrics.increment(
+                "oauth_flow_failure_total",
+                {"error": last_error.__class__.__name__, "result": "exchange_token"},
+            )
             raise last_error
 
         raise OAuthProviderUnavailableError("プロバイダ障害。時間を置いて再試行してください")

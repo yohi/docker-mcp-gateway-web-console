@@ -6,14 +6,16 @@ import json
 import logging
 import re
 import contextvars
+from urllib.parse import urlparse
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 import yaml
+from pydantic import ValidationError
 
 from ..config import settings
-from ..models.catalog import Catalog, CatalogItem
+from ..models.catalog import Catalog, CatalogItem, OAuthConfig
 from ..schemas.catalog import RegistryItem
 from .github_token import GitHubTokenError, GitHubTokenService
 
@@ -77,14 +79,80 @@ class CatalogService:
         self._warning_var.set(f"{current}\n{msg}")
 
     def _filter_items_missing_image(self, items: List[CatalogItem]) -> List[CatalogItem]:
-        """docker_image が未定義(空/空白)の項目を除外し、必要に応じて警告を設定する。"""
-        filtered = [item for item in items if (item.docker_image or "").strip()]
-        removed = len(items) - len(filtered)
-        if removed > 0:
+        """
+        docker_image が未定義、または無効なリモートエンドポイントを持つ項目を除外し、必要に応じて警告を設定する。
+
+        remote_endpoint が有効な場合は docker_image が無くても残す。
+        """
+        filtered: List[CatalogItem] = []
+        removed_missing = 0
+        removed_invalid_remote = 0
+        allow_insecure = getattr(settings, "allow_insecure_endpoint", False)
+
+        for item in items:
+            docker_image = (item.docker_image or "").strip()
+            remote_endpoint = item.remote_endpoint
+
+            if docker_image:
+                filtered.append(item)
+            else:
+                remote_valid = False
+                if remote_endpoint:
+                    remote_valid = self._is_valid_remote_endpoint(
+                        str(remote_endpoint), allow_insecure=allow_insecure
+                    )
+                    if remote_valid:
+                        filtered.append(item)
+                    else:
+                        removed_invalid_remote += 1
+                else:
+                    removed_missing += 1
+
+        if removed_missing > 0:
             self._append_warning(
-                f"Dockerイメージが未定義のカタログ項目 {removed} 件を表示から除外しました。"
+                f"Dockerイメージが未定義のカタログ項目 {removed_missing} 件を表示から除外しました。"
             )
+        if removed_invalid_remote > 0:
+            self._append_warning(
+                "無効なリモートエンドポイントのカタログ項目 "
+                f"{removed_invalid_remote} 件を表示から除外しました。\n\n"
+                "HTTPS を必須とし、開発用途で http を利用する場合は "
+                "ALLOW_INSECURE_ENDPOINT=true を設定の上、localhost/127.0.0.1 のみに限定してください。"
+            )
+
         return filtered
+
+    def _is_valid_remote_endpoint(self, endpoint: str, allow_insecure: bool) -> bool:
+        """
+        リモートエンドポイントのスキーム・ホストを検証する。
+
+        HTTPS を必須とし、ALLOW_INSECURE_ENDPOINT=true の場合のみ
+        localhost/127.0.0.1 への HTTP を許可する。
+        """
+        # Validate endpoint is a non-empty string
+        if not isinstance(endpoint, str) or not endpoint.strip():
+            return False
+
+        try:
+            parsed = urlparse(endpoint)
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Failed to parse endpoint URL: {e}")
+            return False
+
+        scheme = (parsed.scheme or "").lower()
+        host = (parsed.hostname or "").lower()
+        if not scheme or not host:
+            return False
+
+        if scheme == "https":
+            return True
+
+        if scheme == "http":
+            if not allow_insecure:
+                return False
+            return host in {"localhost", "127.0.0.1"}
+
+        return False
 
     @staticmethod
     def _is_secret_env(key: str) -> bool:
@@ -552,9 +620,30 @@ class CatalogService:
 
         title = item.get("title") or item.get("name") or "unknown"
         slug = item.get("slug") or item.get("id") or _slug(title)
-        image = item.get("image") or item.get("container") or ""
+        image = (
+            item.get("image")
+            or item.get("container")
+            or item.get("docker_image")
+            or ""
+        )
         vendor = item.get("owner") or item.get("publisher") or ""
         description = item.get("description") or ""
+        remote_endpoint = item.get("remote_endpoint")
+        server_type = item.get("server_type")
+
+        # Parse and validate oauth_config if present
+        oauth_config: Optional[OAuthConfig] = None
+        oauth_config_dict = item.get("oauth_config")
+        if oauth_config_dict is not None:
+            try:
+                oauth_config = OAuthConfig(**oauth_config_dict)
+            except ValidationError as e:
+                logger.warning(
+                    f"Invalid oauth_config for item '{slug}': {e}. "
+                    f"Expected fields: client_id (str), scopes (list[str]). "
+                    f"Received: {oauth_config_dict}"
+                )
+                oauth_config = None
 
         secrets = item.get("secrets", [])
         required_envs: List[str] = []
@@ -585,6 +674,9 @@ class CatalogService:
             oauth_token_url=item.get("oauth_token_url"),
             oauth_client_id=item.get("oauth_client_id"),
             oauth_redirect_uri=item.get("oauth_redirect_uri"),
+            remote_endpoint=remote_endpoint,
+            server_type=server_type,
+            oauth_config=oauth_config,
         )
 
     async def get_cached_catalog(self, source_url: str) -> Optional[List[CatalogItem]]:

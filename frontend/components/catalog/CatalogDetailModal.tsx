@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { CatalogItem } from '@/lib/types/catalog';
 import { useContainers } from '@/hooks/useContainers';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
+import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
 import SessionExecutionPanel from './SessionExecutionPanel';
 
 interface CatalogDetailModalProps {
@@ -21,6 +22,7 @@ export default function CatalogDetailModal({
   onInstall,
   onOAuth,
 }: CatalogDetailModalProps) {
+  const isRemote = item ? isRemoteCatalogItem(item) : false;
   const { containers, isLoading } = useContainers();
 
   const status = useMemo<'loading' | 'running' | 'installed' | 'not_installed'>(() => {
@@ -83,6 +85,13 @@ export default function CatalogDetailModal({
                 <div className="mt-1 flex flex-wrap gap-2">
                   <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
                     {item.category}
+                  </span>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {isRemote ? 'リモート' : 'Docker'}
                   </span>
                   {item.required_secrets.length > 0 && (
                     <span className="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800">
@@ -147,10 +156,14 @@ export default function CatalogDetailModal({
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="rounded-lg border border-gray-200 p-4">
-              <p className="text-xs font-medium text-gray-500">Dockerイメージ</p>
-              <p className="mt-1 font-mono text-sm text-gray-900">{item.docker_image}</p>
+              <p className="text-xs font-medium text-gray-500">
+                {isRemote ? 'リモートエンドポイント' : 'Dockerイメージ'}
+              </p>
+              <p className="mt-1 font-mono text-sm text-gray-900 break-words">
+                {isRemote ? getRemoteEndpoint(item) || '未設定' : item.docker_image || '未設定'}
+              </p>
             </div>
 
             <div className="rounded-lg border border-gray-200 p-4">
@@ -236,17 +249,19 @@ export default function CatalogDetailModal({
             </div>
           </div>
 
-          <div className="rounded-lg border border-gray-200 p-4">
-            <p className="text-sm font-semibold text-gray-900">Session/Execution パネル</p>
-            <p className="text-xs text-gray-600 mb-3">
-              ゲートウェイ状態を確認し、mcp-exec を同期/非同期で実行できます。
-            </p>
-            <SessionExecutionPanel
-              serverId={item.id}
-              image={item.docker_image}
-              defaultEnv={item.default_env}
-            />
-          </div>
+          {!isRemote && item.docker_image && (
+            <div className="rounded-lg border border-gray-200 p-4">
+              <p className="text-sm font-semibold text-gray-900">Session/Execution パネル</p>
+              <p className="text-xs text-gray-600 mb-3">
+                ゲートウェイ状態を確認し、mcp-exec を同期/非同期で実行できます。
+              </p>
+              <SessionExecutionPanel
+                serverId={item.id}
+                image={item.docker_image}
+                defaultEnv={item.default_env}
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
@@ -269,16 +284,18 @@ export default function CatalogDetailModal({
           <button
             type="button"
             onClick={() => onInstall(item)}
-            disabled={status !== 'not_installed'}
+            disabled={status !== 'not_installed' || isRemote}
             className="rounded bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
           >
-            {status === 'running'
-              ? '実行中 (インストール済み)'
-              : status === 'installed'
-                ? 'インストール済み'
-                : status === 'loading'
-                  ? '判定中...'
-                  : 'インストール'}
+            {isRemote
+              ? 'リモートサーバー（インストール対象外）'
+              : status === 'running'
+                ? '実行中 (インストール済み)'
+                : status === 'installed'
+                  ? 'インストール済み'
+                  : status === 'loading'
+                    ? '判定中...'
+                    : 'インストール'}
           </button>
         </div>
       </div>

@@ -44,6 +44,9 @@ Create a `.env` file in the `backend/` directory:
 | `SECRET_CACHE_TTL_SECONDS` | Secret cache time-to-live | `1800` | `3600` |
 | `MAX_LOG_LINES` | Maximum log lines to stream | `1000` | `5000` |
 | `CATALOG_DEFAULT_URL` | Default catalog URL | - | `https://example.com/catalog.json` |
+| `REMOTE_MCP_ALLOWED_DOMAINS` | Allowed remote MCP server domains (comma-separated). Empty means deny-all. | `""` | `api.example.com,*.trusted.com` |
+| `REMOTE_MCP_MAX_CONNECTIONS` | Maximum concurrent SSE connections to remote servers | `20` | `5` |
+| `ALLOW_INSECURE_ENDPOINT` | Allow HTTP/localhost endpoints (Dev only) | `false` | `true` |
 
 ### Example `.env`
 
@@ -62,6 +65,11 @@ SESSION_TIMEOUT_MINUTES=30
 # Catalog Configuration
 CATALOG_CACHE_TTL_SECONDS=3600
 CATALOG_DEFAULT_URL=https://raw.githubusercontent.com/example/mcp-catalog/main/catalog.json
+
+# Remote MCP Configuration
+REMOTE_MCP_ALLOWED_DOMAINS=api.example.com,*.trusted.com
+REMOTE_MCP_MAX_CONNECTIONS=20
+ALLOW_INSECURE_ENDPOINT=false
 
 # Security
 CORS_ORIGINS=http://localhost:3000

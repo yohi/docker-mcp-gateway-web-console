@@ -1,5 +1,7 @@
 """永続化ストアのTDDテスト。"""
 
+import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -10,6 +12,7 @@ from app.models.state import (
     CredentialRecord,
     GatewayAllowEntry,
     JobRecord,
+    OAuthStateRecord,
     SessionRecord,
     SignaturePolicyRecord,
 )
@@ -30,6 +33,8 @@ def test_schema_created(store: StateStore) -> None:
     tables = store.list_tables()
     expected = {
         "credentials",
+        "remote_servers",
+        "oauth_states",
         "sessions",
         "jobs",
         "signature_policies",
@@ -39,6 +44,153 @@ def test_schema_created(store: StateStore) -> None:
         "auth_sessions",
     }
     assert expected.issubset(tables)
+
+
+def test_init_schema_migrates_legacy_db_and_is_idempotent(tmp_path: Path) -> None:
+    """既存DBから新テーブル・カラムを追加しつつデータを保持できることを検証する。"""
+    db_path = tmp_path / "legacy.db"
+    now = datetime.now(timezone.utc)
+
+    # 旧スキーマ: credentials のみ（新カラムなし）
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE credentials (
+                credential_key TEXT PRIMARY KEY,
+                token_ref TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                server_id TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO credentials (
+                credential_key, token_ref, scopes, expires_at,
+                server_id, created_by, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "cred-1",
+                json.dumps({"type": "encrypted", "key": "legacy"}),
+                json.dumps(["scope:a"]),
+                now.isoformat(),
+                "srv-1",
+                "tester",
+                now.isoformat(),
+            ),
+        )
+        conn.commit()
+
+    store = StateStore(str(db_path))
+
+    # 1回目で新規テーブル・カラムを追加、2回目もエラーなく通ることを確認
+    store.init_schema()
+    store.init_schema()
+
+    tables = set(store.list_tables())
+    assert {"remote_servers", "oauth_states", "credentials"}.issubset(tables)
+
+    # credentials に新カラムが追加され、既存データが保持されていること
+    with store._connect() as conn:  # type: ignore[attr-defined]
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(credentials)")}
+    assert {"oauth_token_url", "oauth_client_id"}.issubset(columns)
+
+    credential = store.get_credential("cred-1")
+    assert credential is not None
+    assert credential.token_ref["key"] == "legacy"
+    assert credential.oauth_client_id is None
+
+
+def test_remote_servers_table_schema(store: StateStore) -> None:
+    """remote_servers テーブルのスキーマが期待通りであることを検証する。"""
+    with store._connect() as conn:
+        rows = conn.execute("PRAGMA table_info(remote_servers)").fetchall()
+    columns = {row["name"] for row in rows}
+    expected_columns = {
+        "server_id",
+        "catalog_item_id",
+        "name",
+        "endpoint",
+        "status",
+        "credential_key",
+        "last_connected_at",
+        "error_message",
+        "created_at",
+    }
+
+    assert expected_columns.issubset(columns)
+    pk_columns = [row["name"] for row in rows if row["pk"]]
+    assert pk_columns == ["server_id"]
+
+
+def test_oauth_states_table_schema(store: StateStore) -> None:
+    """oauth_states テーブルのスキーマとインデックスを検証する。"""
+    with store._connect() as conn:
+        rows = conn.execute("PRAGMA table_info(oauth_states)").fetchall()
+        indexes = conn.execute("PRAGMA index_list('oauth_states')").fetchall()
+        index_info = conn.execute(
+            "PRAGMA index_info('idx_oauth_states_expires_at')"
+        ).fetchall()
+
+    columns = {row["name"] for row in rows}
+    expected_columns = {
+        "state",
+        "server_id",
+        "code_challenge",
+        "code_challenge_method",
+        "scopes",
+        "authorize_url",
+        "token_url",
+        "client_id",
+        "redirect_uri",
+        "expires_at",
+        "created_at",
+    }
+
+    assert expected_columns.issubset(columns)
+    pk_columns = [row["name"] for row in rows if row["pk"]]
+    assert pk_columns == ["state"]
+    index_names = {row["name"] for row in indexes}
+    assert "idx_oauth_states_expires_at" in index_names
+    assert any(info["name"] == "expires_at" for info in index_info)
+
+
+def test_oauth_state_roundtrip(store: StateStore) -> None:
+    """oauth_states が保存・取得・削除できることを検証する。"""
+    now = datetime.now(timezone.utc)
+    record = OAuthStateRecord(
+        state="state-123",
+        server_id="srv-1",
+        code_challenge="challenge",
+        code_challenge_method="S256",
+        scopes=["scope:a", "scope:b"],
+        authorize_url="https://auth.example.com/authorize",
+        token_url="https://auth.example.com/token",
+        client_id="client-123",
+        redirect_uri="https://app.example.com/callback",
+        expires_at=now + timedelta(minutes=10),
+        created_at=now,
+    )
+
+    store.save_oauth_state(record)
+
+    fetched = store.get_oauth_state("state-123")
+    assert fetched is not None
+    assert fetched.server_id == "srv-1"
+    assert fetched.code_challenge == "challenge"
+    assert fetched.code_challenge_method == "S256"
+    assert fetched.scopes == ["scope:a", "scope:b"]
+    assert fetched.authorize_url.endswith("/authorize")
+    assert fetched.token_url.endswith("/token")
+    assert fetched.client_id == "client-123"
+    assert fetched.redirect_uri.endswith("/callback")
+
+    store.delete_oauth_state("state-123")
+    assert store.get_oauth_state("state-123") is None
 
 
 def test_credential_gc(store: StateStore) -> None:
@@ -138,6 +290,67 @@ def test_auth_session_gc_by_expires_at(store: StateStore) -> None:
     assert removed["auth_sessions"] == 1
     assert store.get_auth_session("auth-expired") is None
     assert store.get_auth_session("auth-active") is not None
+
+
+def test_oauth_states_gc(store: StateStore) -> None:
+    """expires_at を過ぎた oauth_states レコードが GC されることを検証する。"""
+    now = datetime.now(timezone.utc)
+    expired_at = now - timedelta(minutes=1)
+    valid_at = now + timedelta(minutes=10)
+
+    with store._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO oauth_states (
+                state, server_id, code_challenge, code_challenge_method, scopes,
+                authorize_url, token_url, client_id, redirect_uri, expires_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "state-expired",
+                "server-1",
+                "challenge",
+                "S256",
+                json.dumps(["scope:a"]),
+                "https://auth.example.com/authorize",
+                "https://auth.example.com/token",
+                "client-123",
+                "https://app.example.com/callback",
+                expired_at.isoformat(),
+                (now - timedelta(minutes=5)).isoformat(),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO oauth_states (
+                state, server_id, code_challenge, code_challenge_method, scopes,
+                authorize_url, token_url, client_id, redirect_uri, expires_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "state-valid",
+                "server-2",
+                "challenge2",
+                "S256",
+                json.dumps(["scope:b"]),
+                "https://auth.example.com/authorize",
+                "https://auth.example.com/token",
+                "client-456",
+                "https://app.example.com/callback",
+                valid_at.isoformat(),
+                (now - timedelta(minutes=2)).isoformat(),
+            ),
+        )
+        conn.commit()
+
+    removed = store.gc_expired(now=now)
+
+    assert removed["oauth_states"] == 1
+    with store._connect() as conn:
+        rows = conn.execute("SELECT state FROM oauth_states").fetchall()
+    remaining_states = {row["state"] for row in rows}
+    assert "state-expired" not in remaining_states
+    assert "state-valid" in remaining_states
 
 
 def test_auth_session_roundtrip(store: StateStore) -> None:
@@ -243,6 +456,57 @@ def test_gateway_allowlist_roundtrip(store: StateStore) -> None:
 
     assert len(entries) == 1
     assert entries[0].value == "example.com"
+
+
+def test_is_endpoint_allowed_exact_match_and_default_port(
+    store: StateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ドメイン単位の許可がデフォルトポートのみ許可することを検証する。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com")
+
+    assert store.is_endpoint_allowed("https://api.example.com/sse") is True
+    # ポート指定なしの許可は標準ポートのみ許可する
+    assert store.is_endpoint_allowed("https://api.example.com:8443/sse") is False
+
+
+def test_is_endpoint_allowed_port_specific(
+    store: StateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ポート番号を含む許可リストが厳密にマッチすることを検証する。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "api.example.com:8443")
+
+    assert store.is_endpoint_allowed("https://api.example.com:8443/sse") is True
+    assert store.is_endpoint_allowed("https://api.example.com:8080/sse") is False
+
+
+def test_is_endpoint_allowed_wildcard_subdomain(
+    store: StateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ワイルドカードがサブドメインのみにマッチすることを検証する。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "*.example.com")
+
+    assert store.is_endpoint_allowed("https://api.example.com/sse") is True
+    assert store.is_endpoint_allowed("https://v2.api.example.com/sse") is True
+    # ルートドメインはワイルドカードにマッチしない
+    assert store.is_endpoint_allowed("https://example.com/sse") is False
+
+
+def test_is_endpoint_allowed_ipv6_is_rejected(
+    store: StateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """IPv6 リテラルは許可リストに含まれていても拒否されることを検証する。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "2001:db8::1")
+
+    assert store.is_endpoint_allowed("https://[2001:db8::1]/sse") is False
+
+
+def test_is_endpoint_allowed_empty_allowlist_denies_all(
+    store: StateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """許可リストが空の場合はすべて拒否されることを検証する。"""
+    monkeypatch.setenv("REMOTE_MCP_ALLOWED_DOMAINS", "")
+
+    assert store.is_endpoint_allowed("https://api.example.com/sse") is False
 
 
 def test_audit_log_sanitizes_tokens(store: StateStore) -> None:

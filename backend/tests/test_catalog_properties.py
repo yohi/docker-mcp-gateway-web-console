@@ -18,7 +18,7 @@ def catalog_items():
         name=st.text(min_size=1),
         description=st.text(),
         category=st.text(min_size=1),
-        docker_image=st.text(min_size=1),
+        docker_image=st.from_regex(r"\S+", fullmatch=True),
         default_env=st.dictionaries(st.text(min_size=1), st.text()),
         required_secrets=st.lists(st.text(min_size=1))
     )
@@ -164,4 +164,3 @@ class TestCatalogProperties:
             assert item.category == category
             # Condition 2: Keyword match
             assert keyword_lower in item.name.lower() or keyword_lower in item.description.lower()
-

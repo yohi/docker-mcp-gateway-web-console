@@ -147,6 +147,8 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
   }, [data]);
 
   const activeData = data || cachedData;
+  const loadError = error as Error | undefined;
+  const usingFallbackCache = !!loadError && !!cachedData && !data;
 
   // Loading state (initial only)
   if (!activeData && isLoading) {
@@ -160,8 +162,8 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
     );
   }
 
-  // Error state
-  if (error) {
+  // Error state without any cached data to show
+  if (loadError && !activeData) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <div className="flex">
@@ -184,7 +186,7 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
               Failed to load catalog
             </h3>
             <p className="mt-1 text-sm text-red-700">
-              {error.message || 'An error occurred while fetching the catalog.'}
+              {loadError.message || 'An error occurred while fetching the catalog.'}
             </p>
             <button
               onClick={() => mutate()}
@@ -200,7 +202,9 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
 
   const servers = combinedServers;
   const isCached = activeData?.cached || false;
-  const warningMessage = warning || activeData?.warning;
+  const warningMessage = usingFallbackCache
+    ? `最新のカタログ取得に失敗しましたが、最後に成功したカタログを表示しています。`
+    : (warning || activeData?.warning);
   const total = combinedTotal || activeData?.total || 0;
   const pageSize = activeData?.page_size || DEFAULT_PAGE_SIZE;
   const currentPage = page;
@@ -211,6 +215,36 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
 
   return (
     <div className="space-y-6">
+      {/* Error fallback notice when using cached data */}
+      {usingFallbackCache && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+          <div className="flex items-start gap-3">
+            <svg
+              className="h-5 w-5 text-red-400 mt-0.5"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-red-800">最新のカタログ取得に失敗しました</p>
+              <p className="text-sm text-red-700">{loadError?.message || 'ネットワークエラーが発生しました。'}</p>
+              <button
+                onClick={() => mutate()}
+                className="text-sm font-medium text-red-800 hover:text-red-900 underline"
+              >
+                再試行
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Warning */}
       {warningMessage && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex gap-3">
