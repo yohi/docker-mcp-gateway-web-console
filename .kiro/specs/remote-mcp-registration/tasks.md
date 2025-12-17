@@ -215,7 +215,7 @@
   - IF NOT EXISTS パターンでロールバック可能性を確保
   - _Requirements: 2.1, 3.2, 3.3_
 
-- [ ] 9.2 環境変数とドキュメントの更新
+- [x] 9.2 環境変数とドキュメントの更新
   - REMOTE_MCP_ALLOWED_DOMAINS, REMOTE_MCP_MAX_CONNECTIONS, ALLOW_INSECURE_ENDPOINT の追加
   - 開発環境・本番環境の推奨設定例をドキュメントに記載
   - _Requirements: 8.1, 8.2, 8.3_
