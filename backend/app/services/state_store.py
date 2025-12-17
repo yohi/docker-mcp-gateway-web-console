@@ -50,6 +50,7 @@ class StateStore:
         """SQLite 接続を取得する。"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
     def init_schema(self) -> None:
@@ -74,7 +75,7 @@ class StateStore:
                     name TEXT NOT NULL,
                     endpoint TEXT NOT NULL,
                     status TEXT NOT NULL,
-                    credential_key TEXT,
+                    credential_key TEXT REFERENCES credentials(credential_key) ON DELETE SET NULL,
                     last_connected_at TEXT,
                     error_message TEXT,
                     created_at TEXT NOT NULL

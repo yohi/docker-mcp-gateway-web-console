@@ -111,6 +111,7 @@ describe('OAuthCallbackPage', () => {
       )
     );
     expect(replace).not.toHaveBeenCalled();
+    expect(localStorage.getItem('oauth:pkce:state-popup')).toBeNull();
     closeSpy.mockRestore();
   });
 

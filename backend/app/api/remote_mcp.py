@@ -189,7 +189,7 @@ async def disable_remote_server(
 
 @router.delete(
     "/{server_id}",
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
     response_model=None,
 )

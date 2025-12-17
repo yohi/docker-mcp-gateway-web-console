@@ -207,7 +207,7 @@ class TokenCipher:
             key_bytes = key.encode("utf-8") if isinstance(key, str) else key
             try:
                 key_bytes = base64.urlsafe_b64decode(key_bytes)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise ValueError("invalid AES-GCM key encoding") from exc
             if len(key_bytes) != 32:
                 raise ValueError("AES-GCM key must be 32 bytes (256-bit)")
@@ -258,7 +258,7 @@ class TokenCipher:
                 raise ValueError("token_ref missing blob")
             try:
                 decrypted = self._fernet.decrypt(blob.encode("utf-8"))
-            except InvalidToken as exc:  # noqa: BLE001
+            except InvalidToken as exc:
                 raise ValueError("token_ref decrypt failed") from exc
             return json.loads(decrypted.decode("utf-8"))
 
@@ -270,11 +270,11 @@ class TokenCipher:
             try:
                 ciphertext = base64.urlsafe_b64decode(blob)
                 nonce_bytes = base64.urlsafe_b64decode(nonce)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise ValueError("token_ref base64 decode failed") from exc
             try:
                 decrypted = self._aesgcm.decrypt(nonce_bytes, ciphertext, associated_data=None)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise ValueError("token_ref decrypt failed") from exc
             return json.loads(decrypted.decode("utf-8"))
 
