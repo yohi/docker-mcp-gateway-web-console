@@ -4,6 +4,7 @@ import '@testing-library/jest-dom';
 import CatalogList from '../../../components/catalog/CatalogList';
 import useSWR from 'swr';
 import { CatalogItem } from '../../../lib/types/catalog';
+import { RemoteServer, RemoteServerStatus } from '../../../lib/types/remote';
 
 // Mock SWR
 jest.mock('swr', () => ({
@@ -104,6 +105,18 @@ const remoteItem: CatalogItem = {
   verify_signatures: true,
 };
 
+const remoteServerRecord: RemoteServer = {
+  server_id: 'remote-1-id',
+  catalog_item_id: 'remote-1',
+  name: 'Remote Server',
+  endpoint: 'https://api.example.com/sse',
+  status: RemoteServerStatus.REGISTERED,
+  credential_key: null,
+  last_connected_at: null,
+  error_message: null,
+  created_at: new Date().toISOString(),
+};
+
 // Mock IntersectionObserver for jsdom environment
 const mockIntersectionObserver = jest.fn(() => ({
   observe: jest.fn(),
@@ -115,6 +128,30 @@ describe('CatalogList', () => {
   const mockOnInstall = jest.fn();
   const catalogSource = 'http://test.com/catalog.json';
   const mockOnSelect = jest.fn();
+  const emptyRemoteResponse = {
+    data: [],
+    error: undefined,
+    isLoading: false,
+    mutate: jest.fn(),
+    isValidating: false,
+  };
+
+  const setMockSWRResponses = (catalogResponse: any, remoteResponse: any = emptyRemoteResponse) => {
+    mockUseSWR.mockImplementation((key: string) => {
+      if (typeof key === 'string' && key.startsWith('catalog|')) {
+        return catalogResponse;
+      }
+      if (key === 'remote-servers-catalog') {
+        return remoteResponse;
+      }
+      return {
+        data: undefined,
+        error: undefined,
+        isLoading: false,
+        mutate: jest.fn(),
+      };
+    });
+  };
 
   beforeAll(() => {
     (global as any).IntersectionObserver = mockIntersectionObserver;
@@ -125,7 +162,7 @@ describe('CatalogList', () => {
   });
 
   it('renders loading state', () => {
-    mockUseSWR.mockReturnValue({
+    setMockSWRResponses({
       data: undefined,
       error: undefined,
       isLoading: true,
@@ -138,7 +175,7 @@ describe('CatalogList', () => {
   });
 
   it('renders error state', () => {
-    mockUseSWR.mockReturnValue({
+    setMockSWRResponses({
       data: undefined,
       error: new Error('Failed to fetch'),
       isLoading: false,
@@ -152,7 +189,7 @@ describe('CatalogList', () => {
   });
 
   it('renders list of servers', () => {
-    mockUseSWR.mockReturnValue({
+    setMockSWRResponses({
       data: { servers: mockItems, cached: false, total: mockItems.length, page_size: mockItems.length },
       error: undefined,
       isLoading: false,
@@ -167,7 +204,7 @@ describe('CatalogList', () => {
   });
 
   it('renders empty state', () => {
-    mockUseSWR.mockReturnValue({
+    setMockSWRResponses({
       data: { servers: [], cached: false, total: 0, page_size: 10 },
       error: undefined,
       isLoading: false,
@@ -181,7 +218,7 @@ describe('CatalogList', () => {
   });
 
   it('handles install click', () => {
-    mockUseSWR.mockReturnValue({
+    setMockSWRResponses({
       data: { servers: mockItems, cached: false, total: mockItems.length, page_size: mockItems.length },
       error: undefined,
       isLoading: false,
@@ -197,7 +234,7 @@ describe('CatalogList', () => {
   });
 
   it('updates SWR key on search', async () => {
-    mockUseSWR.mockReturnValue({
+    setMockSWRResponses({
       data: { servers: mockItems, cached: false },
       error: undefined,
       isLoading: false,
@@ -228,7 +265,7 @@ describe('CatalogList', () => {
   });
 
   it('extracts and passes categories to SearchBar', () => {
-    mockUseSWR.mockReturnValue({
+    setMockSWRResponses({
       data: { servers: mockItems, cached: false, total: mockItems.length, page_size: mockItems.length },
       error: undefined,
       isLoading: false,
@@ -247,35 +284,54 @@ describe('CatalogList', () => {
   });
 
   it('renders remote catalog items with badge and endpoint', () => {
-    mockUseSWR.mockReturnValue({
-      data: { servers: [remoteItem], cached: false, total: 1, page_size: 1 },
-      error: undefined,
-      isLoading: false,
-      mutate: jest.fn(),
-    });
+    setMockSWRResponses(
+      {
+        data: { servers: [remoteItem], cached: false, total: 1, page_size: 1 },
+        error: undefined,
+        isLoading: false,
+        mutate: jest.fn(),
+      },
+      {
+        data: [remoteServerRecord],
+        error: undefined,
+        isLoading: false,
+        mutate: jest.fn(),
+        isValidating: false,
+      }
+    );
 
     render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
 
     expect(screen.getByText('Remote Server')).toBeInTheDocument();
     expect(screen.getByText('remote')).toBeInTheDocument();
     expect(screen.getByText(/api\.example\.com\/sse/)).toBeInTheDocument();
+    // ステータスバッジ
+    expect(screen.getByText('登録済み')).toBeInTheDocument();
     expect(screen.queryByText('インストール')).not.toBeInTheDocument();
   });
 
   it('falls back to cached data when fetching fails after a success', async () => {
     mockUseSWR
-      .mockReturnValueOnce({
-        data: { servers: mockItems, cached: false, total: mockItems.length, page_size: mockItems.length },
-        error: undefined,
-        isLoading: false,
-        mutate: jest.fn(),
-      })
-      .mockReturnValue({
-        data: undefined,
-        error: new Error('Network error'),
-        isLoading: false,
-        mutate: jest.fn(),
-      });
+      .mockImplementationOnce((key: string) =>
+        key.startsWith('catalog|')
+          ? {
+              data: { servers: mockItems, cached: false, total: mockItems.length, page_size: mockItems.length },
+              error: undefined,
+              isLoading: false,
+              mutate: jest.fn(),
+            }
+          : emptyRemoteResponse
+      )
+      .mockImplementation((key: string) =>
+        key.startsWith('catalog|')
+          ? {
+              data: undefined,
+              error: new Error('Network error'),
+              isLoading: false,
+              mutate: jest.fn(),
+            }
+          : emptyRemoteResponse
+      );
 
     const { rerender } = render(
       <CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />
