@@ -129,6 +129,10 @@ export default function CatalogCard({
                     {item.description}
                 </p>
 
+                <div className="text-xs text-gray-700 mb-2" data-testid="connection-type">
+                    接続方式: {isRemote ? 'リモート' : 'Docker イメージ'}
+                </div>
+
                 <div className="flex flex-wrap gap-2 mb-3">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                         {item.category}
@@ -138,7 +142,7 @@ export default function CatalogCard({
                             isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
                         }`}
                     >
-                        {isRemote ? 'リモート' : 'Docker'}
+                        {isRemote ? 'remote' : 'Docker'}
                     </span>
 
                     {item.required_secrets.length > 0 && (

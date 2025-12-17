@@ -257,7 +257,7 @@ describe('CatalogList', () => {
     render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
 
     expect(screen.getByText('Remote Server')).toBeInTheDocument();
-    expect(screen.getByText('リモート')).toBeInTheDocument();
+    expect(screen.getByText('remote')).toBeInTheDocument();
     expect(screen.getByText(/api\.example\.com\/sse/)).toBeInTheDocument();
     expect(screen.queryByText('インストール')).not.toBeInTheDocument();
   });

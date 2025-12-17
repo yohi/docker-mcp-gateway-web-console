@@ -80,38 +80,27 @@ class CatalogService:
 
     def _filter_items_missing_image(self, items: List[CatalogItem]) -> List[CatalogItem]:
         """
-        docker_image が未定義、または無効なリモートエンドポイントを持つ項目を除外し、必要に応じて警告を設定する。
+        無効なリモートエンドポイントを持つ項目を除外し、必要に応じて警告を設定する。
 
-        remote_endpoint が有効な場合は docker_image が無くても残す。
+        docker_image の有無は問わず、リモートエンドポイントが有効なら残す。
         """
         filtered: List[CatalogItem] = []
-        removed_missing = 0
         removed_invalid_remote = 0
         allow_insecure = getattr(settings, "allow_insecure_endpoint", False)
 
         for item in items:
-            docker_image = (item.docker_image or "").strip()
             remote_endpoint = item.remote_endpoint
 
-            if docker_image:
-                filtered.append(item)
-            else:
-                remote_valid = False
-                if remote_endpoint:
-                    remote_valid = self._is_valid_remote_endpoint(
-                        str(remote_endpoint), allow_insecure=allow_insecure
-                    )
-                    if remote_valid:
-                        filtered.append(item)
-                    else:
-                        removed_invalid_remote += 1
-                else:
-                    removed_missing += 1
+            if remote_endpoint:
+                remote_valid = self._is_valid_remote_endpoint(
+                    str(remote_endpoint), allow_insecure=allow_insecure
+                )
+                if not remote_valid:
+                    removed_invalid_remote += 1
+                    continue
 
-        if removed_missing > 0:
-            self._append_warning(
-                f"Dockerイメージが未定義のカタログ項目 {removed_missing} 件を表示から除外しました。"
-            )
+            filtered.append(item)
+
         if removed_invalid_remote > 0:
             self._append_warning(
                 "無効なリモートエンドポイントのカタログ項目 "

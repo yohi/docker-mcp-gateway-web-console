@@ -85,7 +85,7 @@ const CatalogRow = ({ item, containers, isContainersLoading, onContainersRefresh
                 isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
               }`}
             >
-              {isRemote ? 'リモート' : 'Docker'}
+              {isRemote ? 'remote' : 'Docker'}
             </span>
             {item.vendor ? (
               <span className="text-xs text-gray-500">by {item.vendor}</span>
