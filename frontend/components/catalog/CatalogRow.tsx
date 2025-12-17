@@ -8,6 +8,7 @@ import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
 import { useToast } from '@/contexts/ToastContext';
 import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
+import { getRemoteStatusLabel } from '@/lib/utils/remoteStatusUtils';
 
 type Props = {
   item: CatalogItem;
@@ -41,18 +42,7 @@ const CatalogRow = ({
   }, [containers, isContainersLoading, isRemote, item]);
 
   const remoteStatus = remoteServer?.status;
-  const remoteStatusLabel =
-    remoteStatus === 'registered'
-      ? '登録済み'
-      : remoteStatus === 'auth_required'
-        ? '要認証'
-        : remoteStatus === 'authenticated'
-          ? '認証済み'
-          : remoteStatus === 'disabled'
-            ? '無効'
-            : remoteStatus === 'error'
-              ? 'エラー'
-              : '未登録';
+  const remoteStatusLabel = getRemoteStatusLabel(remoteStatus);
 
   const status =
     isRemote
@@ -105,9 +95,8 @@ const CatalogRow = ({
               {item.category}
             </span>
             <span
-              className={`text-xs px-2 py-0.5 rounded-full ${
-                isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
-              }`}
+              className={`text-xs px-2 py-0.5 rounded-full ${isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
+                }`}
             >
               {isRemote ? 'remote' : 'Docker'}
             </span>

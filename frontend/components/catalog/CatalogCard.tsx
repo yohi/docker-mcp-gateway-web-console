@@ -7,6 +7,7 @@ import type { RemoteServer } from '@/lib/types/remote';
 import { matchCatalogItemContainer } from '@/lib/utils/containerMatch';
 import { deleteContainer } from '@/lib/api/containers';
 import { isRemoteCatalogItem, getRemoteEndpoint } from '@/lib/utils/catalogUtils';
+import { getRemoteStatusLabel } from '@/lib/utils/remoteStatusUtils';
 
 interface CatalogCardProps {
     item: CatalogItem;
@@ -22,7 +23,7 @@ export default function CatalogCard({
     item,
     containers = [],
     isContainersLoading = false,
-    onContainersRefresh = () => {},
+    onContainersRefresh = () => { },
     onInstall,
     remoteServer,
     onSelect,
@@ -42,18 +43,7 @@ export default function CatalogCard({
     }, [containers, isContainersLoading, isRemote, item]);
 
     const remoteStatus = remoteServer?.status;
-    const remoteStatusLabel =
-        remoteStatus === 'registered'
-            ? '登録済み'
-            : remoteStatus === 'auth_required'
-              ? '要認証'
-              : remoteStatus === 'authenticated'
-                ? '認証済み'
-                : remoteStatus === 'disabled'
-                  ? '無効'
-                  : remoteStatus === 'error'
-                    ? 'エラー'
-                    : '未登録';
+    const remoteStatusLabel = getRemoteStatusLabel(remoteStatus);
 
     const status =
         isRemote
@@ -155,9 +145,8 @@ export default function CatalogCard({
                         {item.category}
                     </span>
                     <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
-                        }`}
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isRemote ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
+                            }`}
                     >
                         {isRemote ? 'remote' : 'Docker'}
                     </span>
@@ -179,13 +168,12 @@ export default function CatalogCard({
                     )}
                     {allowStatus && (
                         <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                allowStatus === 'allowed'
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${allowStatus === 'allowed'
                                     ? 'bg-green-100 text-green-800'
                                     : allowStatus === 'pending'
                                         ? 'bg-yellow-100 text-yellow-800'
                                         : 'bg-red-100 text-red-800'
-                            }`}
+                                }`}
                         >
                             allowlist: {allowStatus}
                         </span>
