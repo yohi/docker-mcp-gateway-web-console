@@ -75,7 +75,7 @@
     - エラーハンドリングテスト: `XDG_RUNTIME_DIR=/nonexistent .devcontainer/init-docker-socket.sh` （rootful ソケットも存在しない環境で実行し、exit 1 とエラーメッセージを確認）
   - _Requirements: 1.1, 1.2, 1.4, 2.4_
 
-- [x] 1.4 DevContainer 環境の起動確認
+- [x] 1.4 DevContainer 環境の起動確認スクリプト実装
   - VS Code で DevContainer を起動し、workspace コンテナに接続
   - Python 3.14 および Node.js 22 の実行確認
   - Backend/Frontend の依存関係解決を確認
@@ -93,6 +93,7 @@
     - Frontend 依存関係（Next.js, React, TypeScript）
     - VS Code 拡張機能のインストール状態
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
+
 
 ### 2. Backend の Python 3.14 互換化
 
