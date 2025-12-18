@@ -31,7 +31,7 @@
 * **Node.js アップグレード計画**: Node.js 22 は Maintenance LTS（セキュリティ修正のみ）のため、長期サポートに向けて **Node.js 24（または次期 LTS）への段階的移行**（期限・移行手順・検証項目）を定義する。
 * **Next.js / React の脆弱性対応**: Next.js 15 / React 19 は既知の脆弱性（**CVE-2025-55183**、**CVE-2025-55184**）を踏まえ、**修正版（パッチ適用済みバージョン）の利用を必須**とする。CVE を継続的に監視し、依存関係監視と継続的アップグレード方針（緊急パッチ適用を含む）をポリシー化する。
 
-* **固定バージョンの確定タイミング**: 設計内で例示する Python / Node.js / Next.js のバージョン（例: Python 3.14.0 / Node 22.12.0 / Next 15.1.3）は、実装開始時点で **実在**し、かつ要件（CVE 修正）を満たす **最新版パッチ**に確定する。
+* **固定バージョンの確定タイミングと更新ポリシー**: 設計内で例示する Python / Node.js / Next.js のバージョン（例: Python 3.14.0 / Node 22.12.0 / Next 15.1.3）は、**実装フェーズ開始前（Tasks生成完了時点）に Technical Lead が最終確定**し、実在かつCVE修正済みの最新パッチを選定する。確定後は、**セキュリティパッチ（CVE対応）のみ Technical Lead の承認により適用可能**とし、機能変更を伴う非セキュリティ更新は次期リリースまで禁止する。
 
 ### 3. 開発・テスト環境の制約 (重要)
 
@@ -42,8 +42,10 @@
   * すべての自動テスト（Unit, E2E）は、**必ずDevContainer内（またはDocker Compose環境内）でのみ実行すること**。
   * ホスト環境での直接的なランタイム実行（`python` や `npm` コマンド）は禁止とする。
   * `cc-sdd` ツール自体はホストOS上で稼働し、コンテナ内のテストランナーを起動する。
-  * **主経路**として、`cc-sdd` はホストから `docker compose exec` を直接実行してテストを起動する。
-  * `devcontainer exec` による実行は代替手段として許容するが、標準運用は `docker compose exec` とする。
+  * **標準実行方式は `docker compose exec`** とする。`docker compose exec` はサービスを直接実行するCI/CDやスクリプト自動化に適しており、`devcontainer exec` はIDE連携・ユーザーコンテキスト/SSH鍵転送をサポートするローカル向け方式である。
+  * **`docker compose exec` を標準にする理由**: CI/CD環境およびスクリプト自動化との互換性を確保し、環境非依存のテスト実行を実現するため。
+  * **`devcontainer exec` の許容シナリオ**: ローカルIDE（VS Code）での開発・デバッグ時のみ許可する。CI/CD環境や自動化スクリプトでは使用不可とする。
+  * **実装参照**: `tasks.md` で定義される `scripts/run-tests.sh` は `docker compose exec` を使用しており、本要件との整合性を保つ。
   * **Docker ソケット前提**: 開発者環境が rootless Docker の場合、workspace から Docker を操作するための標準ソケットパスとして `/run/user/$UID/docker.sock` を前提にできること。
 
 ### 4. 機能要件詳細
@@ -90,6 +92,18 @@
 2. The Build/Test Workflow shall ホスト環境での直接的なランタイム実行（`python` や `npm` によるテスト実行）を前提としない
 3. When `cc-sdd` が自動テストを実行するとき, the Build/Test Workflow shall ホストから `docker compose exec` を直接実行してコンテナ内のテストランナーを起動する
 4. When 開発者環境が rootless Docker であるとき, the Build/Test Workflow shall workspace から Docker を操作するために `/run/user/$UID/docker.sock` を標準ソケットパスとして利用できる
+5. When Docker Compose サービス起動に失敗したとき, the Build/Test Workflow shall 以下のフォールバック手順を実行する:
+   - 最大3回まで再起動を試行する（試行間隔: 5秒のバックオフ）
+   - 再起動失敗時は代替実行モード（devcontainer exec による実行）を試行する
+   - すべての試行が失敗した場合は **フェイルビルド** ステータスで終了し、明確なエラーメッセージを出力する
+6. When `docker compose exec` コマンドが失敗したとき, the Build/Test Workflow shall 以下のリトライポリシーを適用する:
+   - 最大3回までコマンドを再試行する（試行間隔: 2秒の固定バックオフ）
+   - 各試行でエラー理由（コンテナ停止、ネットワーク障害等）をログに記録する
+   - 最大試行回数到達後は **フェイルビルド** ステータスで終了し、失敗通知を出力する
+7. When TTY 割り当てエラーが発生したとき, the Build/Test Workflow shall 以下の対応を行う:
+   - CI 環境（環境変数 `CI=true` または `TERM=dumb` を検出）では `-T` フラグを自動付与して TTY なしモードで実行する
+   - ローカル環境では TTY を必須とし、割り当て失敗時は **警告を出力して継続**する（デバッグ出力の見やすさを優先）
+   - TTY 判定ロジックは環境変数および標準入力の isatty チェックにより実装する
 
 ### Requirement 3: Backend の Python 3.14 互換化
 **Objective:** As a 開発者, I want Backend Service が Python 3.14 でビルドおよび起動できる, so that 最新ランタイムで継続的に保守できる
