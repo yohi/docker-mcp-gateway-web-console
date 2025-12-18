@@ -83,7 +83,7 @@ def test_backend_requirements_txt_is_generated_and_covers_transitives() -> None:
     pinned_in = _parse_pinned_requirements(_read_requirements_file(req_in))
     pinned_txt = _parse_pinned_requirements(_read_requirements_file(req_txt))
 
-    for name, version in pinned_in.items():
+    for name, _version in pinned_in.items():
         assert name in pinned_txt, f"{name} from requirements.in not found in requirements.txt"
         # requirements.inで最小バージョン（>=）を指定している場合、requirements.txtでは
         # より新しい具体的なバージョンが解決されている可能性がある
