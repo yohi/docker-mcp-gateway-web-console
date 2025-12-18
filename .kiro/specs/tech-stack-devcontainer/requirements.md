@@ -20,29 +20,34 @@
 
 | 項目 | 内容 |
 | :---- | :---- |
-| Backend 言語 | **Python 3.14** |
-| Frontend 言語 | **Node.js 22 (LTS)** |
-| Frontend フレームワーク | **Next.js 15**, React 19 |
+| バックエンド言語 | **Python 3.14** (本番運用可) |
+| フロントエンド言語 | **Node.js 22** (Maintenance LTS: セキュリティ修正のみ) |
+| フロントエンドフレームワーク | **Next.js 15**, React 19 (要: CVE 修正版の利用) |
 | 開発形態 | 既存改修 (Brownfield) |
 | コンテナランタイム | Docker (DevContainer経由) |
+
+* **バージョン固定**: Python/Node/Next/React は **パッチ番号まで固定**（例: `x.y.z`）し、ロックファイルを必ずコミットする。
+* **Python 3.14 互換性検証**: Python 3.14 は本番運用に耐えるが、C 拡張を含む依存（NumPy、cryptography、Cython/pybind11/PyO3 由来の拡張）の互換性を事前に確認する。採用前に CI で **ネイティブ拡張のビルド + import/実行テスト** を実施する。
+* **Node.js アップグレード計画**: Node.js 22 は Maintenance LTS（セキュリティ修正のみ）のため、長期サポートに向けて **Node.js 24（または次期 LTS）への段階的移行**（期限・移行手順・検証項目）を定義する。
+* **Next.js / React の脆弱性対応**: Next.js 15 / React 19 は既知の脆弱性（**CVE-2025-55183**、**CVE-2025-55184**）を踏まえ、**修正版（パッチ適用済みバージョン）の利用を必須**とする。CVE を継続的に監視し、依存関係監視と継続的アップグレード方針（緊急パッチ適用を含む）をポリシー化する。
 
 ### 3. 開発・テスト環境の制約 (重要)
 
 * **DevContainer要件**: 
-    * プロジェクトルートに `.devcontainer` ディレクトリを作成し、Backend/Frontend 両方の開発が可能な統合環境、もしくはそれぞれのサービスに適した構成を定義すること。
-    * `devcontainer.json` には、VS Code拡張機能（Python, ESLint, Prettier等）の推奨設定を含めること。
+  * プロジェクトルートに `.devcontainer` ディレクトリを作成し、Backend/Frontend 両方の開発が可能な統合環境、もしくはそれぞれのサービスに適した構成を定義すること。
+  * `devcontainer.json` には、VS Code拡張機能（Python, ESLint, Prettier等）の推奨設定を含めること。
 * **テスト実行ポリシー**: 
-    * すべての自動テスト（Unit, E2E）は、**必ずDevContainer内（またはDocker Compose環境内）でのみ実行すること**。
-    * ホスト環境での直接的なランタイム実行（`python` や `npm` コマンド）は禁止とする。
-    * `cc-sdd` ツール自体はホストOS上で稼働し、`docker exec` または `devcontainer exec` コマンドを経由してコンテナ内のテストランナーを呼び出す構成とすること。
+  * すべての自動テスト（Unit, E2E）は、**必ずDevContainer内（またはDocker Compose環境内）でのみ実行すること**。
+  * ホスト環境での直接的なランタイム実行（`python` や `npm` コマンド）は禁止とする。
+  * `cc-sdd` ツール自体はホストOS上で稼働し、`docker exec` または `devcontainer exec` コマンドを経由してコンテナ内のテストランナーを呼び出す構成とすること。
 
 ### 4. 機能要件詳細
 
 #### 4.1. Backend (Python) 更新
 * **ベースイメージの変更**: `backend/Dockerfile` のベースイメージを Python 3.14 系に変更する。
 * **依存関係の更新**: `pyproject.toml` および `requirements.txt` を更新し、Python 3.14 との互換性を確保する。
-    * 主要ライブラリ（FastAPI, Pydantic等）のバージョンアップが必要な場合は実施する。
-    * 3.14未対応のライブラリがある場合は、代替手段の検討または互換性のある最新版を選定する。
+  * 主要ライブラリ（FastAPI, Pydantic等）のバージョンアップが必要な場合は実施する。
+  * 3.14未対応のライブラリがある場合は、代替手段の検討または互換性のある最新版を選定する。
 
 #### 4.2. Frontend (Node.js/Next.js) 更新
 * **ベースイメージの変更**: `frontend/Dockerfile` のベースイメージを Node.js 22 (Alpine等) に変更する。
@@ -51,11 +56,11 @@
 
 #### 4.3. DevContainer環境の構築
 * **設定ファイルの作成**:
-    * `.devcontainer/devcontainer.json`: 開発コンテナの定義。
-    * `.devcontainer/docker-compose.yml` (必要に応じて): 開発用サービス（DB等含む）のオーケストレーション。
+  * `.devcontainer/devcontainer.json`: 開発コンテナの定義。
+  * `.devcontainer/docker-compose.yml` (必要に応じて): 開発用サービス（DB等含む）のオーケストレーション。
 * **開発体験の向上**:
-    * シェル設定（bash/zsh）や、Git設定の引き継ぎ等を考慮する。
-    * 必要なCLIツール（uv, npm等）がプリインストールされた状態にすること。
+  * シェル設定（bash/zsh）や、Git設定の引き継ぎ等を考慮する。
+  * 必要なCLIツール（uv, npm等）がプリインストールされた状態にすること。
 
 ### 5. その他の仕様
 
