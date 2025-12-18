@@ -1,0 +1,4 @@
+debugpy
+ruff
+pytest
+pytest-cov

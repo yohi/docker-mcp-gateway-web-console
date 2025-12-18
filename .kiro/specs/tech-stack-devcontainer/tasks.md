@@ -97,7 +97,7 @@
 
 ### 2. Backend の Python 3.14 互換化
 
-- [ ] 2.1 (P) Backend Dockerfile を Python 3.14 に更新
+- [x] 2.1 (P) Backend Dockerfile を Python 3.14 に更新
   - **マルチステージビルド構成（本番用 Dockerfile）**:
     - **builder ステージ**:
       - ベースイメージ: `python:3.14.0-slim`
@@ -122,14 +122,15 @@
     - **用途**: ローカル開発専用（DevContainer 内で使用）
     - 最終イメージにはdev依存関係を含めない（本番用は runtime ステージで終了）
   - **チェックリスト**:
-    - [ ] builder ステージが明示的に定義され、`FROM python:3.14.0-slim AS builder` で開始する
-    - [ ] builder ステージのビルドパッケージリスト（7個）: `build-essential`, `libffi-dev`, `libssl-dev`, `gcc`, `make`, `pkg-config`, `python3-dev`
-    - [ ] runtime ステージが明示的に定義され、`FROM python:3.14.0-slim AS runtime` で開始する
-    - [ ] runtime ステージのランタイムパッケージリスト（2個）: `libffi8`, `libssl3`
-    - [ ] `COPY --from=builder /wheels /wheels` で成果物をコピーしている
-    - [ ] イメージサイズ比較コマンドを実行し、削減率を記録: `docker build -t backend:before -f Dockerfile.old . && docker build -t backend:after -f Dockerfile . && docker images --format "{{.Repository}}:{{.Tag}} {{.Size}}" | grep backend`
-    - [ ] Dockerfile.dev に dev ステージが定義され、`FROM runtime AS dev` で開始する
-    - [ ] Dockerfile.dev の dev専用パッケージリスト（4個）: `debugpy`, `ruff`, `pytest`, `pytest-cov`
+    - [x] builder ステージが明示的に定義され、`FROM python:3.14.0-slim AS builder` で開始する
+    - [x] builder ステージのビルドパッケージリスト（7個）: `build-essential`, `libffi-dev`, `libssl-dev`, `gcc`, `make`, `pkg-config`, `python3-dev`
+    - [x] runtime ステージが明示的に定義され、`FROM python:3.14.0-slim AS runtime` で開始する
+    - [x] runtime ステージのランタイムパッケージリスト（2個）: `libffi8`, `libssl3`
+    - [x] `COPY --from=builder /wheels /wheels` で成果物をコピーしている
+    - [x] イメージサイズ比較コマンドを実行し、削減率を記録: `docker build -t backend:before -f Dockerfile.old . && docker build -t backend:after -f Dockerfile . && docker images --format "{{.Repository}}:{{.Tag}} {{.Size}}" | grep backend`
+      - 計測結果（backend/ ディレクトリで実行, 2025-12-18）: `backend:before 745MB`, `backend:after 346MB` → **削減率 約54%**
+    - [x] Dockerfile.dev に dev ステージが定義され、`FROM runtime AS dev` で開始する
+    - [x] Dockerfile.dev の dev専用パッケージリスト（4個）: `debugpy`, `ruff`, `pytest`, `pytest-cov`
   - _Requirements: 3.1, 3.4, 6.1, 6.2_
 
 - [ ] 2.2 (P) Backend 依存関係を Python 3.14 互換に更新

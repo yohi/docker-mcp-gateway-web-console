@@ -1,42 +1,70 @@
-# Production Dockerfile for Backend
+# syntax=docker/dockerfile:1.7
 
-FROM python:3.11-slim
+FROM python:3.14.0-slim AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    unzip \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        libffi-dev \
+        libssl-dev \
+        gcc \
+        make \
+        pkg-config \
+        python3-dev \
+        curl \
+        unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Bitwarden CLI
-RUN curl -L https://github.com/bitwarden/clients/releases/download/cli-v2025.11.0/bw-linux-2025.11.0.zip -o bw.zip \
-    && unzip bw.zip \
-    && chmod +x bw \
-    && mv bw /usr/local/bin/ \
-    && rm bw.zip
-
-# Copy requirements
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip wheel --wheel-dir=/wheels -r requirements.txt
 
-# Copy application code
+RUN BITWARDEN_VERSION="2025.11.0" \
+    && BITWARDEN_SHA256="943f0107b3a471e7376b08f118e21a59583afeb49e4eb86f378e3b0d7c79c969" \
+    && curl -fsSL \
+        "https://github.com/bitwarden/clients/releases/download/cli-v${BITWARDEN_VERSION}/bw-linux-${BITWARDEN_VERSION}.zip" \
+        -o /tmp/bw.zip \
+    && echo "${BITWARDEN_SHA256}  /tmp/bw.zip" | sha256sum -c - \
+    && unzip /tmp/bw.zip -d /tmp/bw \
+    && install -m 0755 /tmp/bw/bw /usr/local/bin/bw \
+    && rm -rf /tmp/bw /tmp/bw.zip
+
+
+FROM python:3.14.0-slim AS runtime
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libffi8 \
+        libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/bin/bw /usr/local/bin/bw
+COPY --from=builder /wheels /wheels
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt \
+    && rm -rf /wheels
+
 COPY app/ ./app/
 
-# Create non-root user
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+RUN useradd -m -u 1000 appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
 EXPOSE 8000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2).read()" || exit 1
 
-# Run application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
