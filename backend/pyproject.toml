@@ -7,7 +7,13 @@ python_functions = ["test_*"]
 
 [tool.black]
 line-length = 100
-target-version = ['py311']
+target-version = ['py314']
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.mypy]
+python_version = "3.14"
 
 [tool.isort]
 profile = "black"

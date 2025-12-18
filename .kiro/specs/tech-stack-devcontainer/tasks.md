@@ -133,7 +133,7 @@
     - [x] Dockerfile.dev の dev専用パッケージリスト（4個）: `debugpy`, `ruff`, `pytest`, `pytest-cov`
   - _Requirements: 3.1, 3.4, 6.1, 6.2_
 
-- [ ] 2.2 (P) Backend 依存関係を Python 3.14 互換に更新
+- [x] 2.2 (P) Backend 依存関係を Python 3.14 互換に更新
   - **依存関係の完全固定（2段階アーティファクト管理）**:
     - **(a) requirements.in**: 直接依存のみを厳密なバージョンで記載
       - 形式: `package==x.y.z`（例: `fastapi==0.115.6`, `pydantic==2.10.4`）
