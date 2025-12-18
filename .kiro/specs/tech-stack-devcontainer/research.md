@@ -13,9 +13,9 @@
 ### Python 3.14 互換性調査
 - **Context**: Backend を Python 3.11 から 3.14 へ更新するための互換性確認
 - **Sources Consulted**:
-  - FastAPI Release Notes: https://fastapi.tiangolo.com/release-notes/
-  - Pydantic GitHub Issue #11613: https://github.com/pydantic/pydantic/issues/11613
-  - FastAPI Docker Guide: https://fastapi.tiangolo.com/deployment/docker/
+  - FastAPI Release Notes: [FastAPI Release Notes](https://fastapi.tiangolo.com/release-notes/)
+  - Pydantic GitHub Issue #11613: [Pydantic GitHub Issue #11613](https://github.com/pydantic/pydantic/issues/11613)
+  - FastAPI Docker Guide: [FastAPI Docker Guide](https://fastapi.tiangolo.com/deployment/docker/)
 - **Findings**:
   - FastAPI は Python 3.14 サポートを追加済み（PR #14165）
   - Pydantic v2 は Python 3.14 サポートを進行中（PEP 649/749 対応）
@@ -29,10 +29,10 @@
 ### Next.js 15 / React 19 破壊的変更調査
 - **Context**: Frontend を Next.js 14 → 15、React 18 → 19 へ更新するための互換性確認
 - **Sources Consulted**:
-  - Next.js 15 Upgrade Guide: https://nextjs.org/docs/app/guides/upgrading/version-15
-  - Next.js 15 Blog: https://nextjs.org/blog/next-15
-  - Dynamic APIs are Asynchronous: https://nextjs.org/docs/messages/sync-dynamic-apis
-  - GitHub Issue #70899: https://github.com/vercel/next.js/issues/70899
+  - Next.js 15 Upgrade Guide: [Next.js 15 Upgrade Guide](https://nextjs.org/docs/app/guides/upgrading/version-15)
+  - Next.js 15 Blog: [Next.js Blog](https://nextjs.org/blog/next-15)
+  - Dynamic APIs are Asynchronous: [Next.js Dynamic APIs](https://nextjs.org/docs/messages/sync-dynamic-apis)
+  - GitHub Issue #70899: [GitHub Issue #70899](https://github.com/vercel/next.js/issues/70899)
 - **Findings**:
   - **Critical Breaking Change**: `params`, `searchParams`, `cookies()`, `headers()`, `draftMode()` が非同期 API に変更
   - 既存コードで同期的に `params.containerId` のようにアクセスしている箇所は修正が必要
@@ -48,8 +48,8 @@
 ### DevContainer 構成調査
 - **Context**: Backend/Frontend 両方の開発をサポートする DevContainer 環境の設計
 - **Sources Consulted**:
-  - VS Code DevContainer Docs: https://code.visualstudio.com/docs/devcontainers/create-dev-container
-  - Connect to multiple containers: https://code.visualstudio.com/remote/advancedcontainers/connect-multiple-containers
+  - VS Code DevContainer Docs: [VS Code DevContainer Docs](https://code.visualstudio.com/docs/devcontainers/create-dev-container)
+  - Connect to multiple containers: [Connect to multiple containers](https://code.visualstudio.com/remote/advancedcontainers/connect-multiple-containers)
   - Stack Overflow: docker-compose DevContainer patterns
 - **Findings**:
   - docker-compose ベースの DevContainer は `dockerComposeFile` プロパティで定義
@@ -65,7 +65,7 @@
 ### Node.js 22 調査
 - **Context**: Node.js 18 → 22 への更新影響確認
 - **Sources Consulted**:
-  - Node.js Release Schedule: https://nodejs.org/en/about/releases/
+  - Node.js Release Schedule: [Node.js Release Schedule](https://nodejs.org/en/about/releases/)
 - **Findings**:
   - Node.js 22 は 2024年10月より Maintenance LTS（セキュリティ修正のみ）
   - Node.js 24 が次期 Active LTS 候補（2025年10月予定）
