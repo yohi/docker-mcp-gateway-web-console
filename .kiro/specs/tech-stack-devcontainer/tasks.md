@@ -230,7 +230,7 @@
   - standalone 出力の生成を確認
   - _Requirements: 4.1, 4.4, 6.1_
 
-- [ ] 3.2 (P) Frontend 依存関係を Next.js 15 / React 19 に更新
+- [x] 3.2 (P) Frontend 依存関係を Next.js 15 / React 19 に更新
   - **package.json の依存関係を更新**:
     - `next`: **15.1.11 以降**（15.1.11 or later）
       - **重要**: CVE-2025-55184 の最初のパッチ（15.1.3）は不完全であり、**CVE-2025-67779 に完全対処するためには 15.1.11 以降が必須**
