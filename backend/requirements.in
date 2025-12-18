@@ -1,17 +1,17 @@
 # 直接依存のみ（パッチレベルまで固定）
 # 依存関係の追加・更新はこのファイルに対してのみ実施すること。
 
-fastapi==0.124.0
+fastapi==0.115.6
 uvicorn[standard]==0.27.1
-pydantic==2.12.5
-pydantic-settings==2.12.0
-email-validator==2.3.0
+pydantic==2.10.4
+pydantic-settings==2.6.1
+email-validator==2.1.1
 python-dotenv==1.0.1
 docker==7.0.0
-# requests 2.32.2+ で Docker socket 回帰が修正済み、かつ CVE-2024-35195 の脆弱性を回避
-requests>=2.32.2
+# Docker ソケット回帰と既知の CVE 回避のために requests を厳密ピンニング
+requests==2.31.0
 httpx==0.27.0
-cryptography==46.0.3
+cryptography==44.0.1
 
 # Test dependencies
 pytest==8.1.1

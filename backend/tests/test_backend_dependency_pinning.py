@@ -20,6 +20,25 @@ def _repo_root() -> Path:
 _REQ_LINE_RE = re.compile(
     r"^(?P<name>[A-Za-z0-9_.-]+)(?:\[[^\]]+\])?(?P<op>==|>=|>|<=|<|!=)(?P<version>[^\s;]+)"
 )
+_REQ_LINE_STRICT_RE = re.compile(
+    r"^(?P<name>[A-Za-z0-9_.-]+(?:\[[^\]]+\])?)(?P<op>==)(?P<version>[^\s;]+)"
+)
+
+EXPECTED_DIRECT_REQUIREMENTS = {
+    "fastapi": "0.115.6",
+    "uvicorn[standard]": "0.27.1",
+    "pydantic": "2.10.4",
+    "pydantic-settings": "2.6.1",
+    "email-validator": "2.1.1",
+    "python-dotenv": "1.0.1",
+    "docker": "7.0.0",
+    "requests": "2.31.0",
+    "httpx": "0.27.0",
+    "cryptography": "44.0.1",
+    "pytest": "8.1.1",
+    "pytest-asyncio": "0.23.5",
+    "hypothesis": "6.98.15",
+}
 
 
 def _read_requirements_file(path: Path) -> list[str]:
@@ -52,6 +71,19 @@ def _parse_pinned_requirements(lines: list[str]) -> dict[str, str]:
     return pinned
 
 
+def _parse_strictly_pinned_requirements(lines: list[str]) -> dict[str, str]:
+    """==のみを許容し、extras付きパッケージも含めて厳密に取得する。"""
+    pinned: dict[str, str] = {}
+    for line in lines:
+        match = _REQ_LINE_STRICT_RE.match(line)
+        assert match, (
+            f"Requirement must be pinned with '==': {line!r}. "
+            "Remove caret/range specifiers and pin to an exact version."
+        )
+        pinned[match.group("name").lower()] = match.group("version")
+    return pinned
+
+
 def test_backend_requirements_in_exists_and_is_fully_pinned() -> None:
     """requirements.inが存在し、すべての依存関係にバージョン指定があることを確認する。
 
@@ -64,6 +96,17 @@ def test_backend_requirements_in_exists_and_is_fully_pinned() -> None:
     lines = _read_requirements_file(req_in)
     assert lines, "backend/requirements.in must not be empty"
     _parse_pinned_requirements(lines)
+
+
+def test_backend_requirements_in_matches_expected_direct_dependencies() -> None:
+    """直接依存が==で厳密に固定され、設計で合意したバージョンと一致することを確認する。"""
+    req_in = _repo_root() / "backend" / "requirements.in"
+    pinned = _parse_strictly_pinned_requirements(_read_requirements_file(req_in))
+    expected = {name.lower(): version for name, version in EXPECTED_DIRECT_REQUIREMENTS.items()}
+    assert pinned == expected, (
+        "backend/requirements.in must pin the agreed direct dependencies with exact versions "
+        f"(expected {expected}, got {pinned})"
+    )
 
 
 def test_backend_requirements_txt_is_generated_and_covers_transitives() -> None:
@@ -90,6 +133,25 @@ def test_backend_requirements_txt_is_generated_and_covers_transitives() -> None:
         # そのため、バージョン完全一致のチェックはスキップする
 
     assert len(pinned_txt) > len(pinned_in), "requirements.txt must include transitive dependencies"
+
+
+def test_backend_requirements_txt_aligns_with_direct_pins_and_python314() -> None:
+    """requirements.txtが==のみを使用し、Python 3.14で生成され、直接依存とバージョンが揃うことを確認する。"""
+    req_txt = _repo_root() / "backend" / "requirements.txt"
+    assert req_txt.exists(), "Missing backend/requirements.txt"
+
+    header = req_txt.read_text(encoding="utf-8").splitlines()[:5]
+    header_text = "\n".join(header).lower()
+    assert "python 3.14" in header_text, "requirements.txt should be generated with Python 3.14"
+
+    pinned_txt = _parse_strictly_pinned_requirements(_read_requirements_file(req_txt))
+    expected = {name.lower(): version for name, version in EXPECTED_DIRECT_REQUIREMENTS.items()}
+
+    for name, version in expected.items():
+        assert name in pinned_txt, f"{name} from requirements.in missing in requirements.txt"
+        assert pinned_txt[name] == version, (
+            f"{name} version mismatch: expected {version}, got {pinned_txt[name]}"
+        )
 
 
 def test_python_tooling_targets_python_314() -> None:
