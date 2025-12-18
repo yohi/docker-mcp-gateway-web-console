@@ -1,44 +1,25 @@
-'use client';
+import { notFound } from 'next/navigation';
+import InspectorPageClient from '@/app/inspector/[containerId]/InspectorPageClient';
+import {
+  InspectorParamsInput,
+  InspectorSearchParamsInput,
+  resolveInspectorRouteParams,
+} from '@/app/inspector/[containerId]/routeParams';
 
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { InspectorPanel } from '../../../components/inspector';
-import ProtectedRoute from '../../../components/auth/ProtectedRoute';
-import { MainLayout } from '../../../components/layout';
+type InspectorPageProps = {
+  params: InspectorParamsInput;
+  searchParams?: InspectorSearchParamsInput;
+};
 
-export default function InspectorPage() {
-  const params = useParams();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  
-  const containerId = params.containerId as string;
-  const containerName = searchParams.get('name') || undefined;
+export default async function InspectorPage({
+  params,
+  searchParams,
+}: InspectorPageProps) {
+  const { containerId, containerName } = await resolveInspectorRouteParams(params, searchParams);
 
-  const handleClose = () => {
-    router.push('/dashboard');
-  };
+  if (!containerId) {
+    notFound();
+  }
 
-  return (
-    <ProtectedRoute>
-      <MainLayout>
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-6">
-            <button
-              onClick={handleClose}
-              className="text-blue-600 hover:text-blue-800 flex items-center gap-2 font-medium"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              ダッシュボードに戻る
-            </button>
-          </div>
-          <InspectorPanel
-            containerId={containerId}
-            containerName={containerName}
-            onClose={handleClose}
-          />
-        </div>
-      </MainLayout>
-    </ProtectedRoute>
-  );
+  return <InspectorPageClient containerId={containerId} containerName={containerName} />;
 }
