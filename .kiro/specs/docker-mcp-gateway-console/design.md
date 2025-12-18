@@ -834,7 +834,8 @@ describe('Catalog Search', () => {
 ```bash
 # Backend
 BITWARDEN_CLI_PATH=/usr/local/bin/bw
-DOCKER_HOST=unix:///var/run/docker.sock
+DOCKER_HOST=unix:///var/run/docker.sock  # Standard: rootful Docker socket
+                                          # Override for rootless: unix:///run/user/$UID/docker.sock
 SESSION_TIMEOUT_MINUTES=30
 CATALOG_CACHE_TTL_SECONDS=3600
 

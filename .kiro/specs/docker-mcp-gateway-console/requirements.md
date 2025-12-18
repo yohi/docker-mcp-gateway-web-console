@@ -22,7 +22,7 @@ Docker MCP Gateway Web Consoleは、DockerベースのMCPサーバー群を統�
 ## 共通運用
 
 - **テスト起動の主経路**: `cc-sdd` はホストから `docker compose exec` を直接実行して、コンテナ内のテストランナーを起動することを標準運用とする。
-- **Docker ソケット前提**: 開発者環境が rootless Docker の場合、Docker 操作に用いる標準ソケットパスとして `/run/user/$UID/docker.sock` を前提にできること。
+- **Docker ソケット標準パス**: Docker 操作に用いる標準ソケットパスは `/var/run/docker.sock` (rootful Docker) とする。rootless Docker 環境など代替パスが必要な場合は、環境変数 `DOCKER_HOST` または `DOCKER_SOCKET` でオーバーライド可能とする（例: `unix:///run/user/$UID/docker.sock`）。
 - **固定バージョンの確定タイミング**: 設計内で例示する言語/フレームワークのバージョンは、実装開始時点で **実在**し、かつセキュリティ要件（CVE 修正）を満たす **最新版パッチ**に確定する。
 
 ## 要件

@@ -420,7 +420,7 @@ async def lifespan(app: FastAPI):
 **Location**: `backend/app/services/url_validator.py`
 
 ```python
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from ipaddress import ip_address, IPv4Address, IPv6Address
 from urllib.parse import urlparse
 import socket
@@ -445,7 +445,7 @@ class UrlValidator:
         Args:
             allow_insecure: True の場合、localhost への HTTP を許可
         """
-        ...
+        self.allow_insecure = allow_insecure
 
     def validate_url(self, url: str) -> None:
         """
@@ -454,29 +454,93 @@ class UrlValidator:
         Raises:
             UrlValidationError: 検証失敗時
         """
-        ...
+        parsed = urlparse(url)
+
+        # スキーム検証
+        self._validate_scheme(parsed.scheme)
+
+        # ホスト名解決と IP 検証
+        if parsed.hostname:
+            self._resolve_and_validate_host(parsed.hostname)
 
     def _validate_scheme(self, scheme: str) -> None:
         """スキームを検証する。"""
-        ...
+        if scheme not in ("http", "https"):
+            raise UrlValidationError(
+                f"Unsupported scheme: {scheme}",
+                "invalid_scheme"
+            )
 
     def _resolve_and_validate_host(self, hostname: str) -> List[str]:
         """
         ホスト名を DNS 解決し、全 IP アドレスを検証する。
+        A/AAAA 両方のレコードを解決し、すべての IP を検証する。
+
+        Args:
+            hostname: 解決するホスト名
 
         Returns:
-            解決された IP アドレスのリスト
+            解決された IP アドレスのリスト（すべて検証済み）
+
+        Raises:
+            UrlValidationError: いずれかの IP がブロック対象の場合
         """
-        ...
+        resolved_ips: List[str] = []
+
+        # A レコード (IPv4) を解決
+        try:
+            ipv4_results = socket.getaddrinfo(
+                hostname, None, socket.AF_INET, socket.SOCK_STREAM
+            )
+            for result in ipv4_results:
+                ip = result[4][0]
+                if ip not in resolved_ips:
+                    resolved_ips.append(ip)
+        except socket.gaierror:
+            pass  # IPv4 レコードが存在しない場合は無視
+
+        # AAAA レコード (IPv6) を解決
+        try:
+            ipv6_results = socket.getaddrinfo(
+                hostname, None, socket.AF_INET6, socket.SOCK_STREAM
+            )
+            for result in ipv6_results:
+                ip = result[4][0]
+                if ip not in resolved_ips:
+                    resolved_ips.append(ip)
+        except socket.gaierror:
+            pass  # IPv6 レコードが存在しない場合は無視
+
+        if not resolved_ips:
+            raise UrlValidationError(
+                f"Failed to resolve hostname: {hostname}",
+                "dns_resolution_failed"
+            )
+
+        # すべての IP アドレスを検証
+        for ip in resolved_ips:
+            is_blocked, reason = self._is_blocked_ip(ip)
+            if is_blocked:
+                raise UrlValidationError(
+                    f"Blocked IP address {ip} ({reason}) for hostname {hostname}",
+                    reason
+                )
+
+        return resolved_ips
 
     def _is_blocked_ip(self, ip: str) -> Tuple[bool, str]:
         """
         IP アドレスがブロック対象かを判定する。
+        IPv6 の正規化を行い、テキスト表現の違いを吸収する。
+
+        Args:
+            ip: 検証する IP アドレス文字列
 
         Returns:
             (blocked, reason) のタプル
         """
         addr = ip_address(ip)
+
         if addr.is_private:
             return True, "private_ip"
         if addr.is_loopback:
@@ -487,10 +551,94 @@ class UrlValidator:
             return True, "reserved"
         if addr.is_multicast:
             return True, "multicast"
-        if ip in self.BLOCKED_METADATA_IPS:
-            return True, "metadata_endpoint"
+
+        # メタデータエンドポイントのチェック（正規化して比較）
+        for blocked_ip in self.BLOCKED_METADATA_IPS:
+            blocked_addr = ip_address(blocked_ip)
+            if addr == blocked_addr:
+                return True, "metadata_endpoint"
+
         return False, ""
+
+    def validate_and_connect(
+        self, url: str, timeout: float = 5.0
+    ) -> Tuple[List[str], socket.socket]:
+        """
+        TOCTOU 対策: URL を検証し、検証済み IP で即座に接続する。
+
+        この関数は DNS 解決、検証、接続を原子的に実行し、
+        検証後の DNS 変更リスクを最小化する。
+
+        Args:
+            url: 接続先 URL
+            timeout: 接続タイムアウト秒数
+
+        Returns:
+            (resolved_ips, connected_socket) のタプル
+
+        Raises:
+            UrlValidationError: 検証失敗時
+            socket.error: 接続失敗時
+        """
+        parsed = urlparse(url)
+
+        # スキーム検証
+        self._validate_scheme(parsed.scheme)
+
+        if not parsed.hostname:
+            raise UrlValidationError("Missing hostname", "invalid_url")
+
+        # DNS 解決と IP 検証
+        resolved_ips = self._resolve_and_validate_host(parsed.hostname)
+
+        # 検証済み IP で即座に接続（最初の IP を使用）
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        sock = socket.socket(
+            socket.AF_INET6 if ":" in resolved_ips[0] else socket.AF_INET,
+            socket.SOCK_STREAM
+        )
+        sock.settimeout(timeout)
+
+        try:
+            sock.connect((resolved_ips[0], port))
+            return resolved_ips, sock
+        except Exception:
+            sock.close()
+            raise
 ```
+
+**TOCTOU (Time-of-Check-Time-of-Use) 対策**:
+
+URL 検証には以下の 2 つの使用パターンがあります:
+
+1. **標準的な検証**: `validate_url()` を使用
+   - DNS 解決と IP 検証を行う
+   - 呼び出し元は接続前に再検証する責任がある
+   - 検証から接続までの間に DNS が変更されるリスクが残る
+
+2. **安全な接続**: `validate_and_connect()` を使用（推奨）
+   - DNS 解決、検証、接続を原子的に実行
+   - 検証済み IP で即座に接続するため TOCTOU リスクを最小化
+   - HTTP クライアントでこのソケットを再利用可能
+
+使用例:
+```python
+# パターン 1: 標準的な検証（TOCTOU リスクあり）
+validator = UrlValidator()
+validator.validate_url("https://example.com/image.png")
+# ... 接続処理（別途実装）
+
+# パターン 2: 安全な接続（推奨）
+validator = UrlValidator()
+resolved_ips, sock = validator.validate_and_connect("https://example.com/image.png")
+# sock を使用して HTTP リクエストを送信
+sock.close()
+```
+
+**セキュリティ上の注意**:
+- DNS レスポンスはキャッシュされる可能性があるため、長時間接続を保持する場合は定期的な再検証を検討する
+- IPv6 の正規化により、`fd00:ec2::254` と `fd00:ec2::0:0:0:254` などの表記ゆれを吸収する
+- すべての解決された IP（A および AAAA レコード）を検証し、いずれか一つでもブロック対象なら例外を送出する
 
 ---
 
@@ -618,13 +766,13 @@ class AuditLogEntry(BaseModel): ...
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `redis[hiredis]` | ^5.0.0 | Redis 非同期クライアント |
-| `arq` | ^0.26.0 | asyncio ネイティブタスクキュー |
+| `redis[hiredis]` | ==5.0.8 | Redis 非同期クライアント (CVE-2024-31449 修正済み) |
+| `arq` | ==0.26.1 | asyncio ネイティブタスクキュー (安定版パッチリリース) |
 
 **requirements.txt 追加**:
 ```
-redis[hiredis]>=5.0.0
-arq>=0.26.0
+redis[hiredis]==5.0.8
+arq==0.26.1
 ```
 
 ### 5.2 Infrastructure Changes
