@@ -209,7 +209,7 @@
       - ロールバック計画（問題発生時の切り戻し手順）
   - _Requirements: 3.2, 3.3_
 
-- [ ] 2.3 Backend のビルドおよび起動確認
+- [x] 2.3 Backend のビルドおよび起動確認
   - docker compose で backend サービスをビルド
   - Python 3.14 ランタイム上での起動を確認
   - healthcheck エンドポイント（/health）の動作確認
