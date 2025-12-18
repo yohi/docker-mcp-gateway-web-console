@@ -10,7 +10,7 @@
 
 ### 1. DevContainer 環境の構築
 
-- [ ] 1.1 (P) workspace サービス用 Dockerfile を作成
+- [x] 1.1 (P) workspace サービス用 Dockerfile を作成
   - Python 3.14.0 と Node.js 22.12.0 を含む統合開発イメージを定義
   - 開発ツール（git, curl, docker CLI）をプリインストール
   - リポジトリルートをマウントするための作業ディレクトリ設定
