@@ -31,6 +31,8 @@
 * **Node.js アップグレード計画**: Node.js 22 は Maintenance LTS（セキュリティ修正のみ）のため、長期サポートに向けて **Node.js 24（または次期 LTS）への段階的移行**（期限・移行手順・検証項目）を定義する。
 * **Next.js / React の脆弱性対応**: Next.js 15 / React 19 は既知の脆弱性（**CVE-2025-55183**、**CVE-2025-55184**）を踏まえ、**修正版（パッチ適用済みバージョン）の利用を必須**とする。CVE を継続的に監視し、依存関係監視と継続的アップグレード方針（緊急パッチ適用を含む）をポリシー化する。
 
+* **固定バージョンの確定タイミング**: 設計内で例示する Python / Node.js / Next.js のバージョン（例: Python 3.14.0 / Node 22.12.0 / Next 15.1.3）は、実装開始時点で **実在**し、かつ要件（CVE 修正）を満たす **最新版パッチ**に確定する。
+
 ### 3. 開発・テスト環境の制約 (重要)
 
 * **DevContainer要件**: 
@@ -39,7 +41,10 @@
 * **テスト実行ポリシー**: 
   * すべての自動テスト（Unit, E2E）は、**必ずDevContainer内（またはDocker Compose環境内）でのみ実行すること**。
   * ホスト環境での直接的なランタイム実行（`python` や `npm` コマンド）は禁止とする。
-  * `cc-sdd` ツール自体はホストOS上で稼働し、`docker exec` または `devcontainer exec` コマンドを経由してコンテナ内のテストランナーを呼び出す構成とすること。
+  * `cc-sdd` ツール自体はホストOS上で稼働し、コンテナ内のテストランナーを起動する。
+  * **主経路**として、`cc-sdd` はホストから `docker compose exec` を直接実行してテストを起動する。
+  * `devcontainer exec` による実行は代替手段として許容するが、標準運用は `docker compose exec` とする。
+  * **Docker ソケット前提**: 開発者環境が rootless Docker の場合、workspace から Docker を操作するための標準ソケットパスとして `/run/user/$UID/docker.sock` を前提にできること。
 
 ### 4. 機能要件詳細
 
@@ -83,7 +88,8 @@
 #### Acceptance Criteria
 1. The Build/Test Workflow shall 単体テストおよび E2E テストを DevContainer 内（または Docker Compose 環境内）で実行できる
 2. The Build/Test Workflow shall ホスト環境での直接的なランタイム実行（`python` や `npm` によるテスト実行）を前提としない
-3. When `cc-sdd` が自動テストを実行するとき, the Build/Test Workflow shall `docker exec` または `devcontainer exec` を介してコンテナ内のテストランナーを起動する
+3. When `cc-sdd` が自動テストを実行するとき, the Build/Test Workflow shall ホストから `docker compose exec` を直接実行してコンテナ内のテストランナーを起動する
+4. When 開発者環境が rootless Docker であるとき, the Build/Test Workflow shall workspace から Docker を操作するために `/run/user/$UID/docker.sock` を標準ソケットパスとして利用できる
 
 ### Requirement 3: Backend の Python 3.14 互換化
 **Objective:** As a 開発者, I want Backend Service が Python 3.14 でビルドおよび起動できる, so that 最新ランタイムで継続的に保守できる
