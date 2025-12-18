@@ -37,7 +37,7 @@
 
 ### 2.1 High-Level Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              Docker Compose                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -59,7 +59,7 @@
 
 ### 2.2 Data Flow Boundaries
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           Service Layer                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -646,7 +646,7 @@ sock.close()
 
 ### 4.1 Session Management Flow
 
-```
+```text
 ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
 │  Client  │     │  Backend │     │  Redis   │     │ Bitwarden│
 └────┬─────┘     └────┬─────┘     └────┬─────┘     └────┬─────┘
@@ -675,7 +675,7 @@ sock.close()
 
 ### 4.2 Async Job Flow (Bitwarden Resolve)
 
-```
+```text
 ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
 │  Client  │     │  Backend │     │  Redis   │     │  Worker  │     │ Bitwarden│
 └────┬─────┘     └────┬─────┘     └────┬─────┘     └────┬─────┘     └────┬─────┘
@@ -770,7 +770,7 @@ class AuditLogEntry(BaseModel): ...
 | `arq` | ==0.26.1 | asyncio ネイティブタスクキュー (安定版パッチリリース) |
 
 **requirements.txt 追加**:
-```
+```text
 redis[hiredis]==5.0.8
 arq==0.26.1
 ```
@@ -940,7 +940,7 @@ volumes:
 
 ### 9.1 Redis Key Schema
 
-```
+```text
 session:auth:{session_id}          # Hash: 認証セッション
 session:gateway:{session_id}       # Hash: ゲートウェイセッション
 cache:secret:{session_id}:{key}    # String: シークレットキャッシュ
