@@ -19,6 +19,12 @@ Docker MCP Gateway Web Consoleは、DockerベースのMCPサーバー群を統�
 - **Bitwarden Reference Notation**: Bitwardenのアイテムを参照する記法（例: `{{ bw:item-id:field }}`）
 - **MCP Inspector**: 起動中のMCPサーバーの機能（Tools、Resources、Prompts）を解析・表示する機能
 
+## 共通運用
+
+- **テスト起動の主経路**: `cc-sdd` はホストから `docker compose exec` を直接実行して、コンテナ内のテストランナーを起動することを標準運用とする。
+- **Docker ソケット前提**: 開発者環境が rootless Docker の場合、Docker 操作に用いる標準ソケットパスとして `/run/user/$UID/docker.sock` を前提にできること。
+- **固定バージョンの確定タイミング**: 設計内で例示する言語/フレームワークのバージョンは、実装開始時点で **実在**し、かつセキュリティ要件（CVE 修正）を満たす **最新版パッチ**に確定する。
+
 ## 要件
 
 ### 要件1: Bitwarden認証
