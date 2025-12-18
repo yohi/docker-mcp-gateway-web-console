@@ -23,7 +23,7 @@
   - **検証方法**: `docker build -t workspace:test . && docker images workspace:test --format "{{.Size}}" && docker run --rm workspace:test python --version && docker run --rm workspace:test node --version && docker run --rm workspace:test sh -c "which git && which curl && which docker"`
   - _Requirements: 1.1, 1.4_
 
-- [ ] 1.2 (P) devcontainer.json を作成
+- [x] 1.2 (P) devcontainer.json を作成
   - workspace サービスへの接続設定を定義
   - VS Code 拡張機能の推奨設定（Python, Pylance, Ruff, ESLint, Prettier, Tailwind）を含める
   - ポートフォワーディング設定（3000, 8000）を追加
