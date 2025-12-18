@@ -224,7 +224,7 @@
 
 ### 3. Frontend の Node.js 22 / Next.js 15 / React 19 互換化
 
-- [ ] 3.1 (P) Frontend Dockerfile を Node.js 22 に更新
+- [x] 3.1 (P) Frontend Dockerfile を Node.js 22 に更新
   - 全ステージ（deps, builder, runner）のベースイメージを `node:22.12.0-alpine` に変更（パッチレベル固定）
   - マルチステージビルド構成を維持
   - standalone 出力の生成を確認
