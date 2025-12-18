@@ -25,9 +25,12 @@ COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip wheel --wheel-dir=/wheels -r requirements.txt
 
-RUN curl -fsSL \
-        https://github.com/bitwarden/clients/releases/download/cli-v2025.11.0/bw-linux-2025.11.0.zip \
+RUN BITWARDEN_VERSION="2025.11.0" \
+    && BITWARDEN_SHA256="943f0107b3a471e7376b08f118e21a59583afeb49e4eb86f378e3b0d7c79c969" \
+    && curl -fsSL \
+        "https://github.com/bitwarden/clients/releases/download/cli-v${BITWARDEN_VERSION}/bw-linux-${BITWARDEN_VERSION}.zip" \
         -o /tmp/bw.zip \
+    && echo "${BITWARDEN_SHA256}  /tmp/bw.zip" | sha256sum -c - \
     && unzip /tmp/bw.zip -d /tmp/bw \
     && install -m 0755 /tmp/bw/bw /usr/local/bin/bw \
     && rm -rf /tmp/bw /tmp/bw.zip

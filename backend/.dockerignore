@@ -1,0 +1,60 @@
+# Version Control
+.git/
+.gitignore
+.gitattributes
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+!README.md
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+**/*.pyc
+.venv/
+venv/
+env/
+.pytest_cache/
+**/.pytest_cache/
+.coverage
+htmlcov/
+.hypothesis/
+**/.hypothesis/
+*.egg-info/
+.mypy_cache/
+.tox/
+*.so
+
+# Testing
+tests/
+test-results/
+
+# Runtime data (keep structure but exclude database files)
+data/*.db
+data/*.key
+
+# Development files
+Dockerfile*
+.dockerignore
+docker-compose*.yml
