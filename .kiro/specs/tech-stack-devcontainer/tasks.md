@@ -37,7 +37,7 @@
   - **検証方法**: `jq empty .devcontainer/devcontainer.json && jq '.customizations.vscode.extensions | length >= 6' .devcontainer/devcontainer.json && jq '.forwardPorts | contains([3000, 8000])' .devcontainer/devcontainer.json && jq '.postCreateCommand' .devcontainer/devcontainer.json` およびVS Code での実際の認識確認
   - _Requirements: 1.2, 1.3, 1.4, 6.3_
 
-- [ ] 1.3 (P) docker-compose.devcontainer.yml を作成
+- [x] 1.3 (P) docker-compose.devcontainer.yml を作成
   - workspace サービスを定義し、リポジトリルートをマウント
   - **Docker ソケットマウント（rootless/rootful 両対応）**:
     - **検出優先順位**: `$XDG_RUNTIME_DIR/docker.sock` → `/run/user/$UID/docker.sock` → `/var/run/docker.sock`
