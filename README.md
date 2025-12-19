@@ -17,8 +17,8 @@ A comprehensive web console for managing Docker-based MCP (Model Context Protoco
 
 ## Architecture
 
-- **Frontend**: Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS
-- **Backend**: Python 3.11+, FastAPI, Docker SDK
+- **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS
+- **Backend**: Python 3.14, FastAPI, Docker SDK
 - **Secret Management**: Bitwarden CLI integration with in-memory caching
 - **Container Management**: Docker Engine with real-time log streaming
 - **Communication**: REST API + WebSocket for log streaming
@@ -27,8 +27,8 @@ A comprehensive web console for managing Docker-based MCP (Model Context Protoco
 
 Before you begin, ensure you have the following installed:
 
-- **Node.js 18+**: [Download](https://nodejs.org/)
-- **Python 3.11+**: [Download](https://www.python.org/downloads/)
+- **Node.js 22+**: [Download](https://nodejs.org/)
+- **Python 3.14+**: [Download](https://www.python.org/downloads/)
 - **Docker Engine 20.10+**: [Install Docker](https://docs.docker.com/engine/install/)
 - **Bitwarden CLI 2023.x+**: [Install Bitwarden CLI](https://bitwarden.com/help/cli/)
 - **Docker Compose**: Usually included with Docker Desktop
