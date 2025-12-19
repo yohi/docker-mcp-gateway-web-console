@@ -136,8 +136,7 @@ class TestContainerServiceProperties:
 
             assert call_kwargs['image'] == config.image
             # ContainerService 正規化後の名前を使用するため、正規化結果で比較する
-            from app.services.containers import ContainerService  # import inside to avoid test isolation issues
-            expected_name = ContainerService(mock_secret_manager)._normalize_container_name(config.name)
+            expected_name = container_service._normalize_container_name(config.name)
             assert call_kwargs['name'] == expected_name
             assert call_kwargs['environment'] == config.env
             assert call_kwargs['ports'] == expected_ports
