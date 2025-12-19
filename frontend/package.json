@@ -17,12 +17,12 @@
     "next": "15.1.11",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "swr": "2.2.5"
+    "swr": "^2.3.8"
   },
   "devDependencies": {
     "@playwright/test": "1.57.0",
     "@testing-library/jest-dom": "6.4.2",
-    "@testing-library/react": "14.2.1",
+    "@testing-library/react": "^16.0.0",
     "@types/node": "22.9.0",
     "@types/react": "19.0.0",
     "@types/react-dom": "19.0.0",

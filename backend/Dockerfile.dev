@@ -43,6 +43,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libffi8 \
         libssl3 \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/bin/bw /usr/local/bin/bw
