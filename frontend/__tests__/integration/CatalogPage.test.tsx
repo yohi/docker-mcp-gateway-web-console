@@ -37,34 +37,49 @@ jest.mock('../../components/auth/ProtectedRoute', () => {
     };
 });
 
-// Mock SWR to return data
-jest.mock('swr', () => ({
-    __esModule: true,
-    default: () => ({
-        data: {
-            servers: [{
-                id: '1',
-                name: 'Test Server',
-                description: 'Desc',
-                category: 'cat',
-                docker_image: 'img:fake',
-                required_secrets: [],
-                default_env: { 'E1': 'V1' },
-                vendor: '',
-                icon_url: '',
-                required_envs: [],
-            }],
-            total: 1,
-            page: 1,
-            page_size: 12,
-            cached: false,
-            categories: ['cat']
-        },
+// Mock SWR to return stable data
+jest.mock('swr', () => {
+    const catalogData = {
+        servers: [{
+            id: '1',
+            name: 'Test Server',
+            description: 'Desc',
+            category: 'cat',
+            docker_image: 'img:fake',
+            required_secrets: [],
+            default_env: { 'E1': 'V1' },
+            vendor: '',
+            icon_url: '',
+            required_envs: [],
+        }],
+        total: 1,
+        page: 1,
+        page_size: 12,
+        cached: false,
+        categories: ['cat']
+    };
+    const catalogResponse = {
+        data: catalogData,
         isLoading: false,
+        isValidating: false,
         error: undefined,
-        mutate: jest.fn()
-    }),
-}));
+        mutate: jest.fn(),
+    };
+    const remoteResponse = {
+        data: [],
+        isLoading: false,
+        isValidating: false,
+        error: undefined,
+        mutate: jest.fn(),
+    };
+    const swrConfig = { mutate: jest.fn() };
+
+    return {
+        __esModule: true,
+        useSWRConfig: () => swrConfig,
+        default: (key: any) => (key === 'remote-servers-catalog' ? remoteResponse : catalogResponse),
+    };
+});
 
 // Mock useContainers
 jest.mock('../../hooks/useContainers', () => ({
@@ -76,6 +91,16 @@ const mockShowSuccess = jest.fn();
 jest.mock('../../contexts/ToastContext', () => ({
     useToast: () => ({ showSuccess: mockShowSuccess, showError: jest.fn() })
 }));
+
+const mockIntersectionObserver = jest.fn(() => ({
+    observe: jest.fn(),
+    disconnect: jest.fn(),
+    unobserve: jest.fn(),
+}));
+
+beforeAll(() => {
+    (global as any).IntersectionObserver = mockIntersectionObserver;
+});
 
 describe('Catalog Page Integration', () => {
     beforeEach(() => {

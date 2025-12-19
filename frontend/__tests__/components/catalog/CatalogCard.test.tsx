@@ -231,7 +231,7 @@ describe('CatalogCard', () => {
             />
         );
 
-        expect(screen.getByText('リモート')).toBeInTheDocument();
+        expect(screen.getByText(/接続方式:\s*リモート/)).toBeInTheDocument();
         expect(screen.getByText('https://api.example.com/sse')).toBeInTheDocument();
         expect(screen.queryByText('インストール')).not.toBeInTheDocument();
 
