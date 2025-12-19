@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import List, Optional
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -124,8 +124,8 @@ class RemoteMcpService:
                 "remote_server_connections_rejected_total", {"reason": "not_in_allowlist"}
             )
             self._record_audit(
-                event_type="endpoint_rejected",
-                correlation_id=correlation_id or catalog_item_id,
+                action="endpoint_rejected",
+                target=correlation_id or catalog_item_id,
                 metadata={
                     "catalog_item_id": catalog_item_id,
                     "endpoint": endpoint_norm,
@@ -156,8 +156,8 @@ class RemoteMcpService:
         await self.save_server(server)
 
         self._record_audit(
-            event_type="server_registered",
-            correlation_id=correlation_id or server_id,
+            action="server_registered",
+            target=correlation_id or server_id,
             metadata={
                 "server_id": server_id,
                 "catalog_item_id": catalog_item_id,
@@ -197,8 +197,8 @@ class RemoteMcpService:
                 "remote_server_connections_rejected_total", {"reason": "not_in_allowlist"}
             )
             self._record_audit(
-                event_type="endpoint_rejected",
-                correlation_id=server_id,
+                action="endpoint_rejected",
+                target=server_id,
                 metadata={
                     "server_id": server_id,
                     "endpoint": server.endpoint,
@@ -243,8 +243,8 @@ class RemoteMcpService:
             )
             self.metrics.increment("remote_server_connections_total", {"result": "success"})
             self._record_audit(
-                event_type="server_authenticated",
-                correlation_id=server_id,
+                action="server_authenticated",
+                target=server_id,
                 metadata={"server_id": server_id, "endpoint": server.endpoint},
             )
             return capabilities
@@ -265,8 +265,8 @@ class RemoteMcpService:
                 error_message=str(exc),
             )
             self._record_audit(
-                event_type="connection_failed",
-                correlation_id=server_id,
+                action="connection_failed",
+                target=server_id,
                 metadata={
                     "server_id": server_id,
                     "endpoint": server.endpoint,
@@ -282,8 +282,8 @@ class RemoteMcpService:
                 error_message=str(exc),
             )
             self._record_audit(
-                event_type="connection_failed",
-                correlation_id=server_id,
+                action="connection_failed",
+                target=server_id,
                 metadata={
                     "server_id": server_id,
                     "endpoint": server.endpoint,
@@ -344,8 +344,8 @@ class RemoteMcpService:
 
         self._state_store.delete_remote_server(server_id)
         self._record_audit(
-            event_type="server_deleted",
-            correlation_id=correlation_id or server_id,
+            action="server_deleted",
+            target=correlation_id or server_id,
             metadata={
                 "server_id": server_id,
                 "catalog_item_id": server.catalog_item_id,
@@ -371,8 +371,8 @@ class RemoteMcpService:
         )
 
         self._record_audit(
-            event_type="credentials_revoked",
-            correlation_id=correlation_id or server_id,
+            action="credentials_revoked",
+            target=correlation_id or server_id,
             metadata={
                 "server_id": server_id,
                 "catalog_item_id": server.catalog_item_id,
@@ -405,8 +405,8 @@ class RemoteMcpService:
         )
 
         self._record_audit(
-            event_type="server_enabled",
-            correlation_id=correlation_id or server_id,
+            action="server_enabled",
+            target=correlation_id or server_id,
             metadata={
                 "server_id": server_id,
                 "from_status": previous_status.value,
@@ -435,8 +435,8 @@ class RemoteMcpService:
         )
 
         self._record_audit(
-            event_type="server_disabled",
-            correlation_id=correlation_id or server_id,
+            action="server_disabled",
+            target=correlation_id or server_id,
             metadata={
                 "server_id": server_id,
                 "from_status": previous_status.value,
@@ -534,11 +534,15 @@ class RemoteMcpService:
             created_at=record.created_at,
         )
 
-    def _record_audit(self, event_type: str, correlation_id: str, metadata: dict) -> None:
+    def _record_audit(self, action: str, target: str, metadata: dict) -> None:
         """監査ログを安全に記録する。"""
         try:
             self._state_store.record_audit_log(
-                event_type=event_type, correlation_id=correlation_id, metadata=metadata
+                category="remote_mcp",
+                action=action,
+                actor="system",
+                target=target,
+                metadata=metadata,
             )
         except Exception:
             logger.warning("監査ログの記録に失敗しました", exc_info=True)

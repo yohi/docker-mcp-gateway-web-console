@@ -43,13 +43,21 @@ class _DummyStateStore:
         return self.jobs.get(job_id)
 
     def record_audit_log(
-        self, event_type: str, correlation_id: str, metadata: Dict[str, object], **_: object
+        self,
+        category: str,
+        action: str,
+        actor: str,
+        target: str,
+        metadata: Dict[str, object],
+        **_: object,
     ) -> None:
         """監査ログをメモリに保持する（テスト用）。"""
         self.audit_logs.append(
             {
-                "event_type": event_type,
-                "correlation_id": correlation_id,
+                "category": category,
+                "action": action,
+                "actor": actor,
+                "target": target,
                 "metadata": metadata,
             }
         )
@@ -450,8 +458,8 @@ async def test_signature_verification_records_metrics_and_audit(tmp_path: Path) 
         {"mode": "enforcement", "result": "success"},
     ) == 1
     assert any(
-        log["event_type"] == "signature_verification_success"
-        and log["correlation_id"] == "corr-sig-success"
+        log["action"] == "signature_verification_success"
+        and log["target"] == "corr-sig-success"
         for log in state_store.audit_logs
     )
     assert record.mtls_cert_ref is not None

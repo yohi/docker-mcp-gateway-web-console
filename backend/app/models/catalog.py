@@ -13,7 +13,7 @@ class OAuthConfig(BaseModel):
     token_url: Optional[str] = Field(default=None, description="OAuth token endpoint URL")
     redirect_uri: Optional[str] = Field(default=None, description="OAuth redirect URI")
 
-    def __eq__(self, other: object) -> bool:  # noqa: PLR0911
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, OAuthConfig):
             return super().__eq__(other)
         if isinstance(other, dict):

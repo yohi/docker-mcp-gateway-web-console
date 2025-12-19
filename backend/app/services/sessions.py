@@ -144,8 +144,8 @@ class SessionService:
                         {"mode": mode, "result": "success"},
                     )
                     self._record_signature_audit(
-                        event_type="signature_verification_success",
-                        correlation_id=correlation_id,
+                        action="signature_verification_success",
+                        target=correlation_id,
                         metadata={"image": image, "mode": mode},
                     )
                 except SignatureVerificationError as exc:
@@ -158,8 +158,8 @@ class SessionService:
                         },
                     )
                     self._record_signature_audit(
-                        event_type="signature_verification_failed",
-                        correlation_id=correlation_id,
+                        action="signature_verification_failed",
+                        target=correlation_id,
                         metadata={
                             "error_code": exc.error_code,
                             "message": exc.message,
@@ -481,13 +481,15 @@ class SessionService:
         self.state_store.save_job(job)
 
     def _record_signature_audit(
-        self, *, event_type: str, correlation_id: str, metadata: Dict[str, object]
+        self, *, action: str, target: str, metadata: Dict[str, object]
     ) -> None:
         """署名検証関連の監査ログを書き出す。"""
         try:
             self.state_store.record_audit_log(
-                event_type=event_type,
-                correlation_id=correlation_id,
+                category="sessions",
+                action=action,
+                actor="system",
+                target=target,
                 metadata=metadata,
             )
         except Exception:  # noqa: BLE001
