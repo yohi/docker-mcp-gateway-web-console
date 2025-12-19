@@ -35,7 +35,7 @@ describe('Container Properties', () => {
   it('should correctly display status for any container', () => {
     /**
      * **Feature: docker-mcp-gateway-console, Property 30: ステータス表示**
-     * 
+     *
      * For any container, the system should correctly display its current status
      * (running, stopped, error).
      */
@@ -43,10 +43,10 @@ describe('Container Properties', () => {
       fc.property(containerInfoArbitrary, (container) => {
         cleanup();
         render(
-          <ContainerList 
-            containers={[container]} 
-            onRefresh={() => {}} 
-            onViewLogs={() => {}} 
+          <ContainerList
+            containers={[container]}
+            onRefresh={() => { }}
+            onViewLogs={() => { }}
           />
         );
 
@@ -62,7 +62,7 @@ describe('Container Properties', () => {
         } else if (container.status === 'error') {
           expect(statusElement).toHaveClass('bg-red-100');
         }
-        
+
         cleanup();
       }),
       { numRuns: 10 } // Reduced runs for JSDOM
@@ -73,24 +73,24 @@ describe('Container Properties', () => {
   it('should visually highlight error state containers', () => {
     /**
      * **Feature: docker-mcp-gateway-console, Property 31: エラー状態の強調表示**
-     * 
+     *
      * For any error-state container, the system should visually highlight it.
      */
     fc.assert(
       fc.property(containerInfoArbitrary, (container) => {
         cleanup();
         render(
-          <ContainerList 
-            containers={[container]} 
-            onRefresh={() => {}} 
-            onViewLogs={() => {}} 
+          <ContainerList
+            containers={[container]}
+            onRefresh={() => { }}
+            onViewLogs={() => { }}
           />
         );
 
         // We find the card by text content
         const nameElements = screen.getAllByText(container.name);
         const nameElement = nameElements.find(el => el.tagName === 'H3') || nameElements[0];
-        const card = nameElement.closest('.rounded-lg'); 
+        const card = nameElement.closest('.rounded-lg');
 
         expect(card).toBeInTheDocument();
 
@@ -110,18 +110,18 @@ describe('Container Properties', () => {
   it('should display detailed info for any container', () => {
     /**
      * **Feature: docker-mcp-gateway-console, Property 32: コンテナ詳細情報の取得**
-     * 
-     * For any container, the system should display detailed information 
+     *
+     * For any container, the system should display detailed information
      * (startup time, image, ID, etc.).
      */
     fc.assert(
       fc.property(containerInfoArbitrary, (container) => {
         cleanup();
         render(
-          <ContainerList 
-            containers={[container]} 
-            onRefresh={() => {}} 
-            onViewLogs={() => {}} 
+          <ContainerList
+            containers={[container]}
+            onRefresh={() => { }}
+            onViewLogs={() => { }}
           />
         );
 
@@ -139,7 +139,7 @@ describe('Container Properties', () => {
   it('should display error message when communication fails', () => {
     /**
      * **Feature: docker-mcp-gateway-console, Property 33: Docker通信失敗のエラーハンドリング**
-     * 
+     *
      * If Docker daemon communication fails (simulated by an error object),
      * the system should display the error message.
      */
@@ -147,16 +147,19 @@ describe('Container Properties', () => {
       fc.property(fc.string({ minLength: 1 }).filter(s => s.trim().length > 0), (errorMessage) => {
         // Simulating the error display part of DashboardPage
         const ErrorDisplay = ({ error }: { error: Error }) => (
-            <div className="bg-red-50 text-red-700 px-4 py-3 rounded-md mb-6 border border-red-200">
-              <p className="font-semibold">エラー:</p>
-              <p className="text-sm">{error.message}</p>
-            </div>
+          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-md mb-6 border border-red-200">
+            <p className="font-semibold">エラー:</p>
+            <p className="text-sm">{error.message}</p>
+          </div>
         );
 
         cleanup();
         render(<ErrorDisplay error={new Error(errorMessage)} />);
-        
-        expect(screen.getByText(errorMessage)).toBeInTheDocument();
+
+        // Use a custom matcher without RTL's whitespace normalization
+        expect(
+          screen.getByText((_, node) => node?.textContent === errorMessage)
+        ).toBeInTheDocument();
         expect(screen.getByText('エラー:')).toBeInTheDocument();
 
         cleanup();
