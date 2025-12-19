@@ -47,6 +47,7 @@ services:
     environment:
       - BITWARDEN_CLI_PATH=/usr/local/bin/bw
       - DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/var/run/docker.sock}}
+      - PYTHONPATH=/app
       - SESSION_TIMEOUT_MINUTES=30
       - CATALOG_CACHE_TTL_SECONDS=3600
       - CORS_ORIGINS=http://localhost:3001
