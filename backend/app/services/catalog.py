@@ -1,7 +1,6 @@
 """Catalog Service for MCP server catalog management."""
 
 import asyncio
-import inspect
 import base64
 import json
 import logging
@@ -249,14 +248,10 @@ class CatalogService:
                     source_url,
                     headers=self._github_headers(source_url),
                 )
-                maybe_raise = response.raise_for_status()
-                if inspect.isawaitable(maybe_raise):
-                    await maybe_raise
+                response.raise_for_status()
 
                 # Parse JSON response
                 data = response.json()
-                if inspect.isawaitable(data):
-                    data = await data
 
                 # Validate and parse catalog structure
                 if isinstance(data, list):
@@ -417,8 +412,6 @@ class CatalogService:
 
                 response.raise_for_status()
                 payload = response.json()
-                if inspect.isawaitable(payload):
-                    payload = await payload
                 content = payload.get("content")
                 if not content:
                     return None

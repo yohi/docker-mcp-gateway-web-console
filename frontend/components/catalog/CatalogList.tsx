@@ -152,6 +152,17 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
     return Array.from(cats).sort();
   }, [data]);
 
+  // Map remote servers by catalog_item_id
+  const remoteStatusByCatalogId = useMemo(() => {
+    const map = new Map<string, RemoteServer>();
+    (remoteServers || []).forEach((srv: RemoteServer) => {
+      if (srv.catalog_item_id) {
+        map.set(srv.catalog_item_id, srv);
+      }
+    });
+    return map;
+  }, [remoteServers]);
+
   const activeData = data || cachedData;
   const loadError = error as Error | undefined;
   const usingFallbackCache = !!loadError && !!cachedData && !data;
@@ -207,15 +218,6 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
   }
 
   const servers = combinedServers;
-  const remoteStatusByCatalogId = useMemo(() => {
-    const map = new Map<string, RemoteServer>();
-    (remoteServers || []).forEach((srv: RemoteServer) => {
-      if (srv.catalog_item_id) {
-        map.set(srv.catalog_item_id, srv);
-      }
-    });
-    return map;
-  }, [remoteServers]);
   const isCached = activeData?.cached || false;
   const warningMessage = usingFallbackCache
     ? `最新のカタログ取得に失敗しましたが、最後に成功したカタログを表示しています。`

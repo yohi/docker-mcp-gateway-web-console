@@ -7,8 +7,8 @@ import {
 } from '@/app/inspector/[containerId]/routeParams';
 
 type InspectorPageProps = {
-  params: InspectorParamsInput;
-  searchParams?: InspectorSearchParamsInput;
+  params: Promise<{ containerId?: string | string[] }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 };
 
 export default async function InspectorPage({

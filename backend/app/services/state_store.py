@@ -290,6 +290,7 @@ class StateStore:
             conn.execute("ALTER TABLE audit_logs_migrated RENAME TO audit_logs")
         except Exception:
             logger.debug("Audit log migration failed", exc_info=True)
+            raise
 
     def list_tables(self) -> List[str]:
         """テーブル一覧を返す（テスト用ヘルパー）。"""
