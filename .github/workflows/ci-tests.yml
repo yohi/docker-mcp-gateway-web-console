@@ -9,8 +9,20 @@ env:
 jobs:
   backend-unit:
     name: Backend Unit (Pytest)
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      DOCKER_HOST: tcp://127.0.0.1:2375
+      DOCKER_TLS_CERTDIR: ""
+      DOCKER_CLI_EXPERIMENTAL: "enabled"
+    services:
+      docker:
+        image: docker:27-dind
+        options: --privileged
+        env:
+          DOCKER_TLS_CERTDIR: ""
+        ports:
+          - 2375:2375
 
     steps:
       - name: Checkout code
@@ -41,6 +53,11 @@ jobs:
             sudo curl -sSL "$compose_url" -o /usr/lib/docker/cli-plugins/docker-compose
             sudo chmod +x /usr/lib/docker/cli-plugins/docker-compose
           fi
+          docker_cli_version="27.3.1"
+          tmp_cli="/tmp/docker-${docker_cli_version}.tgz"
+          curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${docker_cli_version}.tgz" -o "${tmp_cli}"
+          sudo tar -xzf "${tmp_cli}" -C /usr/local/bin --strip-components=1 docker/docker
+          rm -f "${tmp_cli}"
           sudo ln -sf /usr/lib/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
           docker --version || true
           docker compose version || true
