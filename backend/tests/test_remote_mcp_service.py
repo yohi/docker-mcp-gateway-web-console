@@ -138,6 +138,19 @@ async def test_set_status_updates_record(tmp_path) -> None:
     )
     await service.save_server(server)
 
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    record = CredentialRecord(
+        credential_key="cred-1",
+        token_ref={"type": "plaintext", "value": "abc"},
+        scopes=["scope1"],
+        expires_at=expires,
+        server_id="srv-status",
+        oauth_token_url="https://auth.example.com/token",
+        oauth_client_id="client-id",
+        created_by="tester",
+    )
+    service.state_store.save_credential(record)
+
     updated = await service.set_status(
         server_id="srv-status",
         status=RemoteServerStatus.AUTHENTICATED,

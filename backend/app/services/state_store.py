@@ -141,11 +141,9 @@ class StateStore:
                 );
                 CREATE TABLE IF NOT EXISTS audit_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    category TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    actor TEXT NOT NULL,
-                    target TEXT,
                     metadata TEXT NOT NULL,
+                    correlation_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS github_tokens (

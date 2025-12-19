@@ -454,7 +454,7 @@ class ContainerService:
 
             docker_kwargs = {
                 "image": config.image,
-                "name": sanitized_name,
+                "name": config.name,
                 "environment": resolved_env,
                 "ports": port_bindings,
                 "volumes": volumes,

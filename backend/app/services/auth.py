@@ -143,6 +143,21 @@ class AuthService:
         
         return True
 
+    async def _invalidate_session(self, session_id: str) -> None:
+        """期限切れ/タイムアウト時にセッションを無効化する。"""
+        session = self._sessions.get(session_id) or self._load_session_from_store(session_id)
+        if session is None:
+            return
+
+        self._sessions.pop(session_id, None)
+        self._delete_persisted_session(session_id)
+
+        if self._on_session_end:
+            try:
+                self._on_session_end(session_id)
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"Error in session end callback for {session_id}: {e}")
+
     async def validate_session(self, session_id: str) -> bool:
         """
         Check if a session is valid and not expired.
@@ -166,15 +181,14 @@ class AuthService:
         # Check if session has expired
         if now >= session.expires_at:
             logger.info(f"Session expired: {session_id}")
-            # Clean up expired session
-            await self.logout(session_id)
+            await self._invalidate_session(session_id)
             return False
         
         # Check for inactivity timeout
         time_since_activity = now - session.last_activity
         if time_since_activity >= self._session_timeout:
             logger.info(f"Session timed out due to inactivity: {session_id}")
-            await self.logout(session_id)
+            await self._invalidate_session(session_id)
             return False
         
         # Update last activity time

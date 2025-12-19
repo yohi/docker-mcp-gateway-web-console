@@ -118,7 +118,7 @@ class TestAuthProperties:
             # Simulate timeout by modifying last_activity
             # Setting it to (timeout + 1 second) ago
             timeout = auth_service._session_timeout
-            session.last_activity = datetime.now() - timeout - timedelta(seconds=1)
+            session.last_activity = datetime.now(timezone.utc) - timeout - timedelta(seconds=1)
 
             # Mock lock (for logout)
             with patch.object(auth_service, '_lock_bitwarden', new_callable=AsyncMock):
@@ -205,7 +205,7 @@ class TestAuthProperties:
             
             # 2. Test Timeout
             timeout = auth_service._session_timeout
-            session.last_activity = datetime.now() - timeout - timedelta(seconds=1)
+            session.last_activity = datetime.now(timezone.utc) - timeout - timedelta(seconds=1)
             
             with patch.object(auth_service, '_lock_bitwarden', new_callable=AsyncMock):
                 await auth_service.validate_session(session.session_id)

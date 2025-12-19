@@ -38,6 +38,7 @@ def clear_auth_sessions() -> None:
     except Exception:
         pass
     store = StateStore()
+    store.init_schema()
     try:
         with store._connect() as conn:  # type: ignore[attr-defined]
             conn.execute("DELETE FROM auth_sessions")

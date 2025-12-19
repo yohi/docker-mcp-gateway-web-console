@@ -17,7 +17,7 @@ class OAuthConfig(BaseModel):
         if isinstance(other, OAuthConfig):
             return super().__eq__(other)
         if isinstance(other, dict):
-            return self.model_dump() == other
+            return self.model_dump(exclude_none=True) == other
         return False
 
 
