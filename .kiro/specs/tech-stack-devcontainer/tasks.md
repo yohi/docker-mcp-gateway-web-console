@@ -11,7 +11,7 @@
 ### 1. DevContainer 環境の構築
 
 - [x] 1.1 (P) workspace サービス用 Dockerfile を作成
-  - Python 3.14.2 と Node.js 22.12.0 を含む統合開発イメージを定義
+  - Python 3.14.2 と Node.js 22.21.1 を含む統合開発イメージを定義
   - 開発ツール（git, curl, docker CLI）をプリインストール
   - リポジトリルートをマウントするための作業ディレクトリ設定
   - **成功基準**:
@@ -225,7 +225,7 @@
 ### 3. Frontend の Node.js 22 / Next.js 15 / React 19 互換化
 
 - [x] 3.1 (P) Frontend Dockerfile を Node.js 22 に更新
-  - 全ステージ（deps, builder, runner）のベースイメージを `node:22.12.0-alpine` に変更（パッチレベル固定）
+  - 全ステージ（deps, builder, runner）のベースイメージを `node:22.21.1-alpine` に変更（パッチレベル固定）
   - マルチステージビルド構成を維持
   - standalone 出力の生成を確認
   - _Requirements: 4.1, 4.4, 6.1_
@@ -796,7 +796,7 @@
         - マルチステージビルドの導入（builder + runtime ステージ）
         - Dockerfile.dev の追加（開発専用イメージ）
       - **Frontend サービスの変更**:
-        - Node.js 22.12.0 ベースイメージへの更新
+        - Node.js 22.21.1 ベースイメージへの更新
         - Next.js 15.1.11 への更新（CVE-2025-67779 対応）
         - E2E テスト用 Chromium 共有メモリ（`shm_size: 1gb`）の設定
       - **ポートフォワーディング**:

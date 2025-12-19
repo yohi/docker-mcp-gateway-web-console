@@ -147,7 +147,7 @@
   - (+) セキュリティパッチの明示的な適用
   - (-) 依存関係更新時の手動作業が増加
 - **Implementation**:
-  - Docker イメージ: `python:3.14.2-slim`, `node:22.12.0-alpine`
+  - Docker イメージ: `python:3.14.2-slim`, `node:22.21.1-alpine`
   - Python: `requirements.txt` で `==` 指定
   - Node.js: `package.json` から `^` を除去、`package-lock.json` 必須コミット
 

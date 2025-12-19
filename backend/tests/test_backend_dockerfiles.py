@@ -23,6 +23,16 @@ def test_backend_dockerfile_is_python_314_multistage_with_wheels() -> None:
         flags=re.M,
     ), "backend/Dockerfile must start builder stage with python:3.14.2-slim AS builder"
 
+    # builderステージのテキストを抽出（次のFROMまたは終端まで）
+    builder_match = re.search(
+        r"^FROM\s+\S+\s+AS\s+builder\s*$(.*?)(?=^FROM|\Z)",
+        text,
+        flags=re.M | re.DOTALL,
+    )
+    assert builder_match, "builder stage not found in Dockerfile"
+    builder_stage = builder_match.group(0)
+
+    # builderステージ専用のパッケージを検証
     for pkg in (
         "build-essential",
         "libffi-dev",
@@ -32,7 +42,7 @@ def test_backend_dockerfile_is_python_314_multistage_with_wheels() -> None:
         "pkg-config",
         "python3-dev",
     ):
-        assert re.search(rf"\b{re.escape(pkg)}\b", text), f"builder stage must install {pkg}"
+        assert re.search(rf"\b{re.escape(pkg)}\b", builder_stage), f"builder stage must install {pkg}"
 
     assert re.search(
         r"^FROM\s+python:3\.14\.2-slim\s+AS\s+runtime\s*$",
@@ -40,8 +50,18 @@ def test_backend_dockerfile_is_python_314_multistage_with_wheels() -> None:
         flags=re.M,
     ), "backend/Dockerfile must define runtime stage with python:3.14.2-slim AS runtime"
 
+    # runtimeステージのテキストを抽出（次のFROMまたは終端まで）
+    runtime_match = re.search(
+        r"^FROM\s+\S+\s+AS\s+runtime\s*$(.*?)(?=^FROM|\Z)",
+        text,
+        flags=re.M | re.DOTALL,
+    )
+    assert runtime_match, "runtime stage not found in Dockerfile"
+    runtime_stage = runtime_match.group(0)
+
+    # runtimeステージ専用のパッケージを検証
     for pkg in ("libffi8", "libssl3"):
-        assert re.search(rf"\b{re.escape(pkg)}\b", text), f"runtime stage must install {pkg}"
+        assert re.search(rf"\b{re.escape(pkg)}\b", runtime_stage), f"runtime stage must install {pkg}"
 
     assert "COPY --from=builder /wheels /wheels" in text
 

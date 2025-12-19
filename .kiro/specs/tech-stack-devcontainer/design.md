@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Purpose**: 本機能は、docker-mcp-gateway-web-console の技術スタックを最新化（Python 3.14.2、Node.js 22.12.0、Next.js 15.1.11、React 19.0.0）し、DevContainer による統一開発環境を提供することで、開発効率の向上と環境差異の排除を実現する。
+**Purpose**: 本機能は、docker-mcp-gateway-web-console の技術スタックを最新化（Python 3.14.2、Node.js 22.21.1、Next.js 15.1.11、React 19.0.0）し、DevContainer による統一開発環境を提供することで、開発効率の向上と環境差異の排除を実現する。
 
 **Users**: 開発者およびプロジェクトオーナーが、一貫した開発環境でコンテナ化されたテスト実行と最新ランタイムでの開発を行う。
 
@@ -10,7 +10,7 @@
 
 ### Goals
 - DevContainer による再現可能な開発環境の提供（Backend/Frontend 両方を単一環境で開発可能）
-- Python 3.14.2 および Node.js 22.12.0 / Next.js 15.1.11 / React 19.0.0 への更新
+- Python 3.14.2 および Node.js 22.21.1 / Next.js 15.1.11 / React 19.0.0 への更新
 - **パッチレベルまでのバージョン固定**とロックファイルのコミット
 - コンテナ内テスト実行ポリシーの確立（`docker compose exec` による統一実行）
 - 既存テストスイートの維持（回帰防止）
@@ -85,7 +85,7 @@ graph TB
 | Backend Runtime | `python:3.14.2-slim` | FastAPI アプリケーション実行 | Dockerfile |
 | Backend Framework | `fastapi==0.115.6` | REST API 提供 | requirements.txt |
 | Backend Validation | `pydantic==2.10.4` | リクエスト/レスポンス検証 | requirements.txt |
-| Frontend Runtime | `node:22.12.0-alpine` | Next.js アプリケーション実行 | Dockerfile |
+| Frontend Runtime | `node:22.21.1-alpine` | Next.js アプリケーション実行 | Dockerfile |
 | Frontend Framework | `next@15.1.11` | App Router ベース UI（CVE-2025-55183/55184/67779 修正版） | package-lock.json |
 | Frontend Library | `react@19.0.0`, `react-dom@19.0.0` | UI コンポーネント | package-lock.json |
 | DevContainer | VS Code DevContainer spec | 開発環境定義 | devcontainer.json |
@@ -176,10 +176,10 @@ sequenceDiagram
 | Component | Domain/Layer | Intent | Req Coverage | Key Dependencies | Contracts |
 |-----------|--------------|--------|--------------|------------------|-----------|
 | DevContainerConfig | Infrastructure | DevContainer 環境定義（workspace サービス） | 1.1, 1.2, 1.3, 1.4, 6.3 | docker-compose (P0) | - |
-| WorkspaceDockerfile | Infrastructure | Python 3.14 + Node.js 22 統合開発イメージ | 1.1, 1.4 | python:3.14.2-slim, node:22.12.0 (P0) | - |
+| WorkspaceDockerfile | Infrastructure | Python 3.14 + Node.js 22 統合開発イメージ | 1.1, 1.4 | python:3.14.2-slim, node:22.21.1 (P0) | - |
 | BackendDockerfile | Infrastructure | Python 3.14 ベースイメージ定義 | 3.1, 3.4, 6.1, 6.2 | python:3.14.2-slim (P0) | - |
 | BackendDependencies | Infrastructure | Python 依存関係定義（`==` 固定） | 3.2, 3.3, 5.1 | FastAPI, Pydantic (P0) | - |
-| FrontendDockerfile | Infrastructure | Node.js 22 ベースイメージ定義 | 4.1, 4.4, 6.1 | node:22.12.0-alpine (P0) | - |
+| FrontendDockerfile | Infrastructure | Node.js 22 ベースイメージ定義 | 4.1, 4.4, 6.1 | node:22.21.1-alpine (P0) | - |
 | FrontendDependencies | Infrastructure | npm 依存関係定義（package-lock.json 必須） | 4.2, 5.2 | Next.js 15, React 19 (P0) | - |
 | FrontendCodeMigration | Application | Next.js 15 破壊的変更対応 | 4.2, 4.3, 5.2, 5.3 | - | - |
 | TestScripts | Infrastructure | テスト実行スクリプト（docker compose exec） | 2.1, 2.2, 2.3, 1.4 | docker compose (P0) | Service |
@@ -290,13 +290,13 @@ services:
 | Requirements | 1.1, 1.4 |
 
 **Responsibilities & Constraints**
-- Python 3.14.2 と Node.js 22.12.0 の両方をインストール
+- Python 3.14.2 と Node.js 22.21.1 の両方をインストール
 - 開発ツール（git, curl, docker CLI）をプリインストール
 - リポジトリルートをマウントするための作業ディレクトリ設定
 
 **Dependencies**
 - External: python:3.14.2-slim — ベースイメージ (P0)
-- External: Node.js 22.12.0 — npm/npx 実行用 (P0)
+- External: Node.js 22.21.1 — npm/npx 実行用 (P0)
 - External: Docker CLI — docker compose exec 実行用 (P0)
 
 **Contracts**: Service [ ] / API [ ] / Event [ ] / Batch [ ] / State [ ]
@@ -316,9 +316,9 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 22.12.0
+# Install Node.js 22.21.1
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs=22.12.0-1nodesource1 \
+    && apt-get install -y nodejs=22.21.1-1nodesource1 \
     && npm install -g npm@latest
 
 # Install Docker CLI (for docker compose exec)
@@ -460,22 +460,22 @@ hypothesis==6.98.15
 
 | Field | Detail |
 |-------|--------|
-| Intent | Node.js 22.12.0 ベースの Frontend コンテナイメージを定義（パッチレベル固定） |
+| Intent | Node.js 22.21.1 ベースの Frontend コンテナイメージを定義（パッチレベル固定） |
 | Requirements | 4.1, 4.4, 6.1 |
 
 **Responsibilities & Constraints**
-- `node:22.12.0-alpine` ベースイメージの使用（**パッチレベル固定**）
+- `node:22.21.1-alpine` ベースイメージの使用（**パッチレベル固定**）
 - マルチステージビルド構成の維持
 - standalone 出力の生成
 
 **Dependencies**
-- External: `node:22.12.0-alpine` — Docker Hub 公式イメージ（パッチ固定） (P0)
+- External: `node:22.21.1-alpine` — Docker Hub 公式イメージ（パッチ固定） (P0)
 
 **Contracts**: Service [ ] / API [ ] / Event [ ] / Batch [ ] / State [ ]
 
 **Implementation Notes**
-- 全ステージ（deps, builder, runner）で `node:22.12.0-alpine` を使用
-- **イメージタグは `22.12.0-alpine` のようにパッチレベルまで固定**
+- 全ステージ（deps, builder, runner）で `node:22.21.1-alpine` を使用
+- **イメージタグは `22.21.1-alpine` のようにパッチレベルまで固定**
 - healthcheck のコマンドは変更不要
 
 ##### Dockerfile Changes
@@ -485,13 +485,13 @@ hypothesis==6.98.15
 # バージョン固定ポリシー: パッチレベルまで固定
 
 # Stage 1: Dependencies
-FROM node:22.12.0-alpine AS deps
+FROM node:22.21.1-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --only=production
 
 # Stage 2: Builder
-FROM node:22.12.0-alpine AS builder
+FROM node:22.21.1-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -500,7 +500,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
 # Stage 3: Runner
-FROM node:22.12.0-alpine AS runner
+FROM node:22.21.1-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
