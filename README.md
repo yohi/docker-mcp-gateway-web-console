@@ -54,6 +54,7 @@ bw --version
 ### Option 1: Development with DevContainer (Recommended for VS Code)
 
 This project includes a DevContainer configuration that provides a consistent development environment with Python 3.14 and Node.js 22 pre-installed.
+The container forwards ports 3000 (frontend) and 8000 (backend API), and runs a post-create script to install backend/frontend dependencies.
 
 1.  **Clone the repository:**
     ```bash
@@ -71,7 +72,7 @@ This project includes a DevContainer configuration that provides a consistent de
     - Or open the Command Palette (Ctrl+Shift+P / Cmd+Shift+P) and run "Dev Containers: Reopen in Container".
 
 4.  **Start Services:**
-    The DevContainer automatically installs dependencies. You can start the services from the integrated terminal:
+    The DevContainer automatically installs dependencies (via `.devcontainer/post-create.sh`). You can start the services from the integrated terminal:
     ```bash
     # Backend
     cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -296,6 +297,8 @@ npm run test:e2e:ui
 # Run E2E tests in headed mode
 npm run test:e2e:headed
 ```
+
+Note: these `test:e2e*` scripts are defined in `frontend/package.json` (there is no `package.json` at the repository root).
 
 See [frontend/e2e/README.md](frontend/e2e/README.md) for detailed E2E testing documentation.
 
