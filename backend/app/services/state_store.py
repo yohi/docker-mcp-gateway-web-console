@@ -212,37 +212,50 @@ class StateStore:
             "metadata",
             "created_at",
         }
+        allowed_identifiers = {
+            "id",
+            "category",
+            "action",
+            "event_type",
+            "actor",
+            "target",
+            "correlation_id",
+            "metadata",
+            "created_at",
+        }
         try:
-            audit_columns = {
+            audit_columns_raw = {
                 row["name"] for row in conn.execute("PRAGMA table_info(audit_logs)").fetchall()
             }
         except Exception:
             logger.debug("PRAGMA table_info failed for audit_logs; skipping audit migrations", exc_info=True)
             return
 
-        if not audit_columns:
+        if not audit_columns_raw:
             return
-        if audit_columns == desired_columns:
+        unexpected_columns = audit_columns_raw - allowed_identifiers
+        if unexpected_columns:
+            logger.debug("Ignoring unexpected audit_logs columns: %s", unexpected_columns)
+
+        audit_columns = audit_columns_raw & allowed_identifiers
+
+        if audit_columns_raw == desired_columns:
             return
 
-        select_id = "id" if "id" in audit_columns else "NULL"
-        select_category = "category" if "category" in audit_columns else "'legacy'"
-        if "action" in audit_columns:
-            select_action = "action"
-        elif "event_type" in audit_columns:
-            select_action = "event_type"
-        else:
-            select_action = "'unknown'"
-        select_actor = "actor" if "actor" in audit_columns else "'system'"
-        if "target" in audit_columns:
-            select_target = "target"
-        elif "correlation_id" in audit_columns:
-            select_target = "correlation_id"
-        else:
-            select_target = "'unknown'"
-        select_metadata = "metadata" if "metadata" in audit_columns else "'{}'"
-        select_created_at = (
-            "created_at" if "created_at" in audit_columns else "'1970-01-01T00:00:00+00:00'"
+        def _select_token(preferred: list[str], fallback_literal: str) -> str:
+            for candidate in preferred:
+                if candidate in audit_columns:
+                    return candidate
+            return fallback_literal
+
+        select_id = _select_token(["id"], "NULL")
+        select_category = _select_token(["category"], "'legacy'")
+        select_action = _select_token(["action", "event_type"], "'unknown'")
+        select_actor = _select_token(["actor"], "'system'")
+        select_target = _select_token(["target", "correlation_id"], "'unknown'")
+        select_metadata = _select_token(["metadata"], "'{}'")
+        select_created_at = _select_token(
+            ["created_at"], "'1970-01-01T00:00:00+00:00'"
         )
 
         try:
