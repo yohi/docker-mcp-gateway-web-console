@@ -130,13 +130,11 @@ write_metadata() {
   local iso_ts
   iso_ts="$(echo "$TIMESTAMP" | sed 's#\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)-\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)#\1-\2-\3T\4:\5:\6Z#')"
   local compose_json
-  compose_json="["
-  local compose_file
-  for compose_file in "${COMPOSE_ARRAY[@]}"; do
-    compose_json+="\"${compose_file}\"," 
-  done
-  compose_json="${compose_json%,}"
-  compose_json+="]"
+  if command -v jq >/dev/null 2>&1; then
+    compose_json="$(printf '%s\n' "${COMPOSE_ARRAY[@]}" | jq -R . | jq -s .)"
+  else
+    compose_json="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${COMPOSE_ARRAY[@]}")"
+  fi
   cat > "${ARTIFACT_DIR}/metadata-${TIMESTAMP}.json" <<EOF
 {
   "mode": "${MODE}",
