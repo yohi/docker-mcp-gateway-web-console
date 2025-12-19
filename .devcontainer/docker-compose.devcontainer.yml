@@ -20,4 +20,4 @@ services:
   frontend:
     volumes:
       - ../frontend:/app:cached
-
+    shm_size: 1gb  # Chromium requires at least 1GB shared memory for E2E tests
