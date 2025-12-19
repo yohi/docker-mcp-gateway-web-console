@@ -15,7 +15,7 @@ def _write_fake_docker(
     script_path: Path,
     log_path: Path,
     *,
-    python_version: str = "Python 3.14.0",
+    python_version: str = "Python 3.14.2",
     fail_import: bool = False,
     health_payload: str = '{"status":"healthy"}',
 ) -> None:

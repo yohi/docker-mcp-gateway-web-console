@@ -55,6 +55,9 @@ function OAuthCallbackContent() {
 
   useEffect(() => {
     if (!searchParams) return;
+
+    let isMounted = true;
+
     const code = searchParams.get('code');
     const state = searchParams.get('state');
     const errorParam = searchParams.get('error');
@@ -85,6 +88,9 @@ function OAuthCallbackContent() {
           serverId,
           codeVerifier,
         });
+
+        if (!isMounted) return;
+
         setResult(response);
         setStatus('success');
         clearStoredPkce(state);
@@ -109,6 +115,8 @@ function OAuthCallbackContent() {
         const fallback = serverId ? `/catalog?server=${serverId}` : '/catalog';
         router.replace(returnUrl || fallback);
       } catch (err) {
+        if (!isMounted) return;
+
         setStatus('error');
         setErrorMessage(
           err instanceof Error ? err.message : '認証処理に失敗しました。再度お試しください。'
@@ -117,6 +125,10 @@ function OAuthCallbackContent() {
     };
 
     run();
+
+    return () => {
+      isMounted = false;
+    };
   }, [router, searchParams]);
 
   const statusMessage = useMemo(() => {

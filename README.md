@@ -181,7 +181,7 @@ Frontend will be available at http://localhost:3000
 
 - **DevContainer**: DevContainer support is implemented via scripts and a workspace image under `.devcontainer/` (this repository does not include a `.devcontainer/docker-compose.devcontainer.yml` or a `workspace` service definition in the repo).
 - **Docker Socket**: `.devcontainer/init-docker-socket.sh` detects an available Docker socket (rootful `/var/run/docker.sock` and rootless sockets under `$XDG_RUNTIME_DIR/docker.sock` or `/run/user/<uid>/docker.sock`) and prints `DOCKER_SOCKET=...` for consumption by the container tooling.
-- **Workspace Image**: `.devcontainer/Dockerfile.workspace` defines the unified development image, based on Python `3.14.0-slim` and a pinned Node.js `22.21.1`, and includes the Docker CLI.
+- **Workspace Image**: `.devcontainer/Dockerfile.workspace` defines the unified development image, based on Python `3.14.2-slim` and a pinned Node.js `22.21.1`, and includes the Docker CLI. After updating the base image, rebuild the devcontainer to pick up the new image.
 - **Post-create Setup**: `.devcontainer/post-create.sh` performs post-create provisioning by installing backend Python dependencies (`pip install -r backend/requirements.txt`) and frontend dependencies (`npm ci` in `frontend/`), logging output to `.devcontainer/.post-create.log`.
 
 ## Project Structure

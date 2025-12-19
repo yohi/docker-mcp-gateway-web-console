@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Purpose**: 本機能は、docker-mcp-gateway-web-console の技術スタックを最新化（Python 3.14.0、Node.js 22.12.0、Next.js 15.1.11、React 19.0.0）し、DevContainer による統一開発環境を提供することで、開発効率の向上と環境差異の排除を実現する。
+**Purpose**: 本機能は、docker-mcp-gateway-web-console の技術スタックを最新化（Python 3.14.2、Node.js 22.12.0、Next.js 15.1.11、React 19.0.0）し、DevContainer による統一開発環境を提供することで、開発効率の向上と環境差異の排除を実現する。
 
 **Users**: 開発者およびプロジェクトオーナーが、一貫した開発環境でコンテナ化されたテスト実行と最新ランタイムでの開発を行う。
 
@@ -10,7 +10,7 @@
 
 ### Goals
 - DevContainer による再現可能な開発環境の提供（Backend/Frontend 両方を単一環境で開発可能）
-- Python 3.14.0 および Node.js 22.12.0 / Next.js 15.1.11 / React 19.0.0 への更新
+- Python 3.14.2 および Node.js 22.12.0 / Next.js 15.1.11 / React 19.0.0 への更新
 - **パッチレベルまでのバージョン固定**とロックファイルのコミット
 - コンテナ内テスト実行ポリシーの確立（`docker compose exec` による統一実行）
 - 既存テストスイートの維持（回帰防止）
@@ -82,7 +82,7 @@ graph TB
 
 | Layer | Pinned Version | Role in Feature | Lock File |
 |-------|----------------|-----------------|-----------|
-| Backend Runtime | `python:3.14.0-slim` | FastAPI アプリケーション実行 | Dockerfile |
+| Backend Runtime | `python:3.14.2-slim` | FastAPI アプリケーション実行 | Dockerfile |
 | Backend Framework | `fastapi==0.115.6` | REST API 提供 | requirements.txt |
 | Backend Validation | `pydantic==2.10.4` | リクエスト/レスポンス検証 | requirements.txt |
 | Frontend Runtime | `node:22.12.0-alpine` | Next.js アプリケーション実行 | Dockerfile |
@@ -176,8 +176,8 @@ sequenceDiagram
 | Component | Domain/Layer | Intent | Req Coverage | Key Dependencies | Contracts |
 |-----------|--------------|--------|--------------|------------------|-----------|
 | DevContainerConfig | Infrastructure | DevContainer 環境定義（workspace サービス） | 1.1, 1.2, 1.3, 1.4, 6.3 | docker-compose (P0) | - |
-| WorkspaceDockerfile | Infrastructure | Python 3.14 + Node.js 22 統合開発イメージ | 1.1, 1.4 | python:3.14.0-slim, node:22.12.0 (P0) | - |
-| BackendDockerfile | Infrastructure | Python 3.14 ベースイメージ定義 | 3.1, 3.4, 6.1, 6.2 | python:3.14.0-slim (P0) | - |
+| WorkspaceDockerfile | Infrastructure | Python 3.14 + Node.js 22 統合開発イメージ | 1.1, 1.4 | python:3.14.2-slim, node:22.12.0 (P0) | - |
+| BackendDockerfile | Infrastructure | Python 3.14 ベースイメージ定義 | 3.1, 3.4, 6.1, 6.2 | python:3.14.2-slim (P0) | - |
 | BackendDependencies | Infrastructure | Python 依存関係定義（`==` 固定） | 3.2, 3.3, 5.1 | FastAPI, Pydantic (P0) | - |
 | FrontendDockerfile | Infrastructure | Node.js 22 ベースイメージ定義 | 4.1, 4.4, 6.1 | node:22.12.0-alpine (P0) | - |
 | FrontendDependencies | Infrastructure | npm 依存関係定義（package-lock.json 必須） | 4.2, 5.2 | Next.js 15, React 19 (P0) | - |
@@ -290,12 +290,12 @@ services:
 | Requirements | 1.1, 1.4 |
 
 **Responsibilities & Constraints**
-- Python 3.14.0 と Node.js 22.12.0 の両方をインストール
+- Python 3.14.2 と Node.js 22.12.0 の両方をインストール
 - 開発ツール（git, curl, docker CLI）をプリインストール
 - リポジトリルートをマウントするための作業ディレクトリ設定
 
 **Dependencies**
-- External: python:3.14.0-slim — ベースイメージ (P0)
+- External: python:3.14.2-slim — ベースイメージ (P0)
 - External: Node.js 22.12.0 — npm/npx 実行用 (P0)
 - External: Docker CLI — docker compose exec 実行用 (P0)
 
@@ -305,7 +305,7 @@ services:
 
 ```dockerfile
 # .devcontainer/Dockerfile.workspace
-FROM python:3.14.0-slim
+FROM python:3.14.2-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -335,17 +335,17 @@ CMD ["sleep", "infinity"]
 
 | Field | Detail |
 |-------|--------|
-| Intent | Python 3.14.0 ベースの Backend コンテナイメージを定義（パッチレベル固定） |
+| Intent | Python 3.14.2 ベースの Backend コンテナイメージを定義（パッチレベル固定） |
 | Requirements | 3.1, 3.4, 6.1, 6.2 |
 
 **Responsibilities & Constraints**
-- `python:3.14.0-slim` ベースイメージの使用（**パッチレベル固定**）
+- `python:3.14.2-slim` ベースイメージの使用（**パッチレベル固定**）
 - C 拡張ビルド用の依存関係インストール
 - Bitwarden CLI のインストール
 - 非 root ユーザーでの実行（本番用）
 
 **Dependencies**
-- External: `python:3.14.0-slim` — Docker Hub 公式イメージ（パッチ固定） (P0)
+- External: `python:3.14.2-slim` — Docker Hub 公式イメージ（パッチ固定） (P0)
 - External: Bitwarden CLI — 秘密情報管理 (P0)
 
 **Contracts**: Service [ ] / API [ ] / Event [ ] / Batch [ ] / State [ ]
@@ -354,14 +354,14 @@ CMD ["sleep", "infinity"]
 - `build-essential`, `libffi-dev`, `libssl-dev` を追加（C 拡張ビルド対応）
 - マルチステージビルドでビルド依存関係を最終イメージから除外
 - Dockerfile.dev と Dockerfile の両方を更新
-- **イメージタグは `3.14.0-slim` のようにパッチレベルまで固定**
+- **イメージタグは `3.14.2-slim` のようにパッチレベルまで固定**
 
 ##### Dockerfile Changes
 
 ```dockerfile
 # Production Dockerfile for Backend
 # バージョン固定ポリシー: パッチレベルまで固定
-FROM python:3.14.0-slim AS builder
+FROM python:3.14.2-slim AS builder
 
 # Install build dependencies for native extensions
 RUN apt-get update && apt-get install -y \
@@ -376,7 +376,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-FROM python:3.14.0-slim AS runner
+FROM python:3.14.2-slim AS runner
 WORKDIR /app
 
 # Install runtime dependencies only

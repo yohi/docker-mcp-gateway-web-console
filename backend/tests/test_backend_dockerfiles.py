@@ -18,10 +18,10 @@ def test_backend_dockerfile_is_python_314_multistage_with_wheels() -> None:
     text = dockerfile.read_text(encoding="utf-8")
 
     assert re.search(
-        r"^FROM\s+python:3\.14\.0-slim\s+AS\s+builder\s*$",
+        r"^FROM\s+python:3\.14\.2-slim\s+AS\s+builder\s*$",
         text,
         flags=re.M,
-    ), "backend/Dockerfile must start builder stage with python:3.14.0-slim AS builder"
+    ), "backend/Dockerfile must start builder stage with python:3.14.2-slim AS builder"
 
     for pkg in (
         "build-essential",
@@ -35,10 +35,10 @@ def test_backend_dockerfile_is_python_314_multistage_with_wheels() -> None:
         assert re.search(rf"\b{re.escape(pkg)}\b", text), f"builder stage must install {pkg}"
 
     assert re.search(
-        r"^FROM\s+python:3\.14\.0-slim\s+AS\s+runtime\s*$",
+        r"^FROM\s+python:3\.14\.2-slim\s+AS\s+runtime\s*$",
         text,
         flags=re.M,
-    ), "backend/Dockerfile must define runtime stage with python:3.14.0-slim AS runtime"
+    ), "backend/Dockerfile must define runtime stage with python:3.14.2-slim AS runtime"
 
     for pkg in ("libffi8", "libssl3"):
         assert re.search(rf"\b{re.escape(pkg)}\b", text), f"runtime stage must install {pkg}"

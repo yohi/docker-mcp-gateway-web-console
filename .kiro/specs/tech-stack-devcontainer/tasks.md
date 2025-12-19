@@ -11,7 +11,7 @@
 ### 1. DevContainer 環境の構築
 
 - [x] 1.1 (P) workspace サービス用 Dockerfile を作成
-  - Python 3.14.0 と Node.js 22.12.0 を含む統合開発イメージを定義
+  - Python 3.14.2 と Node.js 22.12.0 を含む統合開発イメージを定義
   - 開発ツール（git, curl, docker CLI）をプリインストール
   - リポジトリルートをマウントするための作業ディレクトリ設定
   - **成功基準**:
@@ -100,13 +100,13 @@
 - [x] 2.1 (P) Backend Dockerfile を Python 3.14 に更新
   - **マルチステージビルド構成（本番用 Dockerfile）**:
     - **builder ステージ**:
-      - ベースイメージ: `python:3.14.0-slim`
+      - ベースイメージ: `python:3.14.2-slim`
       - ビルド専用パッケージをインストール（apt-get）: `build-essential`, `libffi-dev`, `libssl-dev`, `gcc`, `make`, `pkg-config`, `python3-dev`
       - pip wheel ビルドのキャッシュを有効化（`--mount=type=cache,target=/root/.cache/pip`）
       - frozen requirements.txt から依存関係をビルドし、wheel/dist を生成
       - ビルド成果物を `/wheels` ディレクトリに配置
     - **runtime ステージ（最終イメージ）**:
-      - ベースイメージ: `python:3.14.0-slim`
+      - ベースイメージ: `python:3.14.2-slim`
       - ランタイム専用パッケージをインストール（apt-get）: `libffi8`, `libssl3`（slim パッケージ経由で必要最小限）
       - builder ステージから `/wheels` をコピー
       - frozen requirements.txt から最小限の pip インストールを実行（`--no-cache-dir --no-index --find-links=/wheels`）
@@ -122,9 +122,9 @@
     - **用途**: ローカル開発専用（DevContainer 内で使用）
     - 最終イメージにはdev依存関係を含めない（本番用は runtime ステージで終了）
   - **チェックリスト**:
-    - [x] builder ステージが明示的に定義され、`FROM python:3.14.0-slim AS builder` で開始する
+    - [x] builder ステージが明示的に定義され、`FROM python:3.14.2-slim AS builder` で開始する
     - [x] builder ステージのビルドパッケージリスト（7個）: `build-essential`, `libffi-dev`, `libssl-dev`, `gcc`, `make`, `pkg-config`, `python3-dev`
-    - [x] runtime ステージが明示的に定義され、`FROM python:3.14.0-slim AS runtime` で開始する
+    - [x] runtime ステージが明示的に定義され、`FROM python:3.14.2-slim AS runtime` で開始する
     - [x] runtime ステージのランタイムパッケージリスト（2個）: `libffi8`, `libssl3`
     - [x] `COPY --from=builder /wheels /wheels` で成果物をコピーしている
     - [x] イメージサイズ比較コマンドを実行し、削減率を記録: `docker build -t backend:before -f Dockerfile.old . && docker build -t backend:after -f Dockerfile . && docker images --format "{{.Repository}}:{{.Tag}} {{.Size}}" | grep backend`
@@ -183,7 +183,7 @@
       - CI に Python 3.14 専用ジョブを追加（`.gitlab-ci.yml` または `.github/workflows/`）:
         ```yaml
         test-python314:
-          image: python:3.14.0-slim
+          image: python:3.14.2-slim
           script:
             - pip install -r requirements.txt
             - pytest tests/
@@ -792,7 +792,7 @@
         - workspace サービス（開発統合環境）の定義
         - Docker ソケットマウント（rootless/rootful 両対応）の自動検出機能
       - **Backend サービスの変更**:
-        - Python 3.14.0 ベースイメージへの更新
+        - Python 3.14.2 ベースイメージへの更新
         - マルチステージビルドの導入（builder + runtime ステージ）
         - Dockerfile.dev の追加（開発専用イメージ）
       - **Frontend サービスの変更**:

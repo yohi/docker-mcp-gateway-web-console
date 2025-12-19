@@ -38,7 +38,7 @@ def test_verify_devcontainer_script_passes_with_fake_tools(tmp_path: Path) -> No
     _write_executable(
         fake_bin / "python",
         "#!/usr/bin/env sh\n"
-        'echo "Python 3.14.0"\n',
+        'echo "Python 3.14.2"\n',
     )
     _write_executable(
         fake_bin / "node",

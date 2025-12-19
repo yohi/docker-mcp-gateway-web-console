@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM python:3.14.0-slim AS builder
+FROM python:3.14.2-slim AS builder
 
 WORKDIR /app
 
@@ -36,7 +36,7 @@ RUN BITWARDEN_VERSION="2025.11.0" \
     && rm -rf /tmp/bw /tmp/bw.zip
 
 
-FROM python:3.14.0-slim AS runtime
+FROM python:3.14.2-slim AS runtime
 
 WORKDIR /app
 
