@@ -30,7 +30,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ca-certificates curl git jq \
-            docker.io \
+            docker.io docker-compose-plugin \
             libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
             libxdamage1 libxfixes3 libxrandr2 libxshmfence1 libgbm1 libasound2t64 \
             libpangocairo-1.0-0 libpango-1.0-0 libatspi2.0-0 libx11-6 libx11-xcb1 libxcb1 libxcursor1 \
@@ -41,7 +41,7 @@ jobs:
             sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
           fi
           sudo systemctl start docker || sudo service docker start || true
-          sudo usermod -aG docker "$USER" || true
+          sudo usermod -aG docker "$(whoami)" || true
           docker --version || true
           docker compose version || true
 
@@ -86,7 +86,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22.21.1"
+          node-version: "22.12.0"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
@@ -123,7 +123,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ca-certificates curl git jq \
-            docker.io \
+            docker.io docker-compose-plugin \
             libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
             libxdamage1 libxfixes3 libxrandr2 libxshmfence1 libgbm1 libasound2t64 \
             libpangocairo-1.0-0 libpango-1.0-0 libatspi2.0-0 libx11-6 libx11-xcb1 libxcb1 libxcursor1 \
@@ -134,14 +134,14 @@ jobs:
             sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
           fi
           sudo systemctl start docker || sudo service docker start || true
-          sudo usermod -aG docker "$USER" || true
+          sudo usermod -aG docker "$(whoami)" || true
           docker --version || true
           docker compose version || true
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22.21.1"
+          node-version: "22.12.0"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 

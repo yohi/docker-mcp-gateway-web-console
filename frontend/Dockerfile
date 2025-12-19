@@ -1,7 +1,7 @@
 # Production Dockerfile for Frontend
 
 # Stage 1: Dependencies
-FROM node:22.21.1-alpine AS deps
+FROM node:22.12.0-alpine AS deps
 WORKDIR /app
 
 # Copy package files
@@ -11,7 +11,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # Stage 2: Builder
-FROM node:22.21.1-alpine AS builder
+FROM node:22.12.0-alpine AS builder
 WORKDIR /app
 
 # Copy dependencies from deps stage
@@ -28,7 +28,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
 # Stage 3: Runner
-FROM node:22.21.1-alpine AS runner
+FROM node:22.12.0-alpine AS runner
 WORKDIR /app
 
 # Set environment to production
