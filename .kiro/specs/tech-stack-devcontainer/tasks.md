@@ -259,7 +259,7 @@
       - 実行例: `npm audit --audit-level=high && npx snyk test --severity-threshold=high`
   - _Requirements: 4.2_
 
-- [ ] 3.3 Next.js 15 の破壊的変更に対応
+- [x] 3.3 Next.js 15 の破壊的変更に対応
   - **公式 codemod の実行**:
     - コマンド: `npx @next/codemod@canary upgrade latest`
     - 実行環境: ローカル開発環境（DevContainer 内または開発マシン上）
