@@ -114,7 +114,7 @@ docker-compose up
    - Enter your Bitwarden email and API key (or master password)
    - Start managing your MCP servers!
 
-### Option 2: Local Development (Without Docker Compose)
+### Option 3: Local Development (Without Docker Compose)
 
 This option is useful for development when you want to run services individually.
 
@@ -314,12 +314,12 @@ For production deployment instructions, see [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### Common Issues
 
-**"DevContainer fails to start"**
+### DevContainer fails to start
 - Ensure Docker is running.
 - Try `Dev Containers: Rebuild Container` from VS Code.
 - Check if ports 3000 or 8000 are already in use on your host.
 
-**"Docker socket permission denied in DevContainer"**
+### Docker socket permission denied in DevContainer
 - If using Linux, ensure your user is in the `docker` group.
 - For rootless Docker, ensure the socket path is correctly detected (check `.devcontainer/init-docker-socket.sh`).
 
