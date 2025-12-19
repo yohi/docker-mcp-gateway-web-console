@@ -540,9 +540,9 @@
       - 操作: カタログアイテム `nginx` をクリック
       - 検証: 詳細ページ（`/catalog/nginx`）にリダイレクトされ、イメージ説明が表示されることを確認
   - **Playwright 実行環境の検証**:
-    - [ ] Chromium ブラウザがインストールされている（`npx playwright install --dry-run chromium` が成功）
-    - [ ] `shm_size: 1gb` が docker-compose に設定されている
-    - [ ] playwright.config.ts に `headless: true`, `viewport: { width: 1280, height: 720 }`, `trace: 'on-first-retry'` が設定されている
+    - [x] Chromium ブラウザがインストールされている（`npx playwright install --dry-run chromium` が成功）
+    - [x] `shm_size: 1gb` が docker-compose に設定されている
+    - [x] playwright.config.ts に `headless: true`, `viewport: { width: 1280, height: 720 }`, `trace: 'on-first-retry'` が設定されている
   - _Requirements: 5.3, 6.3_
 
 - [x] 4.3 テストスクリプトの動作確認
@@ -752,7 +752,7 @@
   - requirements.txt と package-lock.json のコミットを確認
   - _Requirements: 3.2, 4.2, 6.3_
 
-- [ ] 5.4 ドキュメント更新
+- [x] 5.4 ドキュメント更新
   - **DevContainer セットアップ手順のドキュメント化**:
     - **ドキュメント配置**: README.md または `.devcontainer/README.md` に以下のセクションを追加
     - **セクション構成**:
@@ -894,12 +894,12 @@
       - **問題: ポートが既に使用されている（"port is already allocated"）**
         - 解決策: 既存のサービスを停止（`lsof -i :8000` でプロセスを特定し `kill`）、または docker-compose.yml のポート番号を変更
   - **実装チェックリスト**:
-    - [ ] README.md または `.devcontainer/README.md` に DevContainer セットアップ手順が記載されている
-    - [ ] docker-compose.yml の変更点が README.md または CHANGELOG.md に記載されている
-    - [ ] scripts/run-tests.sh の使用方法が README.md の "Testing" セクションに記載されている
-    - [ ] CI/CD 統合ステップ（GitLab CI/GitHub Actions の設定例）がドキュメント化されている
-    - [ ] 既知の制限事項が5つ以上リストされている
-    - [ ] トラブルシューティングガイドが5つ以上のシナリオをカバーしている
+    - [x] README.md または `.devcontainer/README.md` に DevContainer セットアップ手順が記載されている
+    - [x] docker-compose.yml の変更点が README.md または CHANGELOG.md に記載されている
+    - [x] scripts/run-tests.sh の使用方法が README.md の "Testing" セクションに記載されている
+    - [x] CI/CD 統合ステップ（GitLab CI/GitHub Actions の設定例）がドキュメント化されている
+    - [x] 既知の制限事項が5つ以上リストされている
+    - [x] トラブルシューティングガイドが5つ以上のシナリオをカバーしている
   - _Requirements: 1.2, 1.4, 2.3, 4.1, 4.2, 5.1_
 
 ---

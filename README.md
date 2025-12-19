@@ -51,7 +51,36 @@ bw --version
 
 **New to the project?** Check out the [Quick Start Guide](docs/QUICK_START.md) for a 5-minute setup!
 
-### Option 1: Development with Docker Compose (Recommended)
+### Option 1: Development with DevContainer (Recommended for VS Code)
+
+This project includes a DevContainer configuration that provides a consistent development environment with Python 3.14 and Node.js 22 pre-installed.
+
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository-url>
+    cd docker-mcp-gateway-console
+    ```
+
+2.  **Open in VS Code:**
+    ```bash
+    code .
+    ```
+
+3.  **Reopen in Container:**
+    - When prompted, click "Reopen in Container".
+    - Or open the Command Palette (Ctrl+Shift+P / Cmd+Shift+P) and run "Dev Containers: Reopen in Container".
+
+4.  **Start Services:**
+    The DevContainer automatically installs dependencies. You can start the services from the integrated terminal:
+    ```bash
+    # Backend
+    cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+    # Frontend (in a new terminal)
+    cd frontend && npm run dev
+    ```
+
+### Option 2: Development with Docker Compose
 
 1. **Clone the repository:**
 ```bash
@@ -147,6 +176,12 @@ npm run dev
 
 Frontend will be available at http://localhost:3000
 
+## Infrastructure Notes
+
+- **DevContainer**: This project uses a `workspace` service defined in `.devcontainer/docker-compose.devcontainer.yml` to provide a unified environment for Python and Node.js development.
+- **Docker Socket**: The DevContainer configuration automatically detects and mounts the Docker socket, supporting both rootful (`/var/run/docker.sock`) and rootless (e.g., `/run/user/1000/docker.sock`) Docker configurations.
+- **E2E Testing**: The frontend service is configured with `shm_size: 1gb` to support Chromium in Playwright tests.
+
 ## Project Structure
 
 ```
@@ -221,14 +256,30 @@ See [ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md) for detailed confi
 
 ## Testing
 
-### Frontend Unit Tests
+We provide a unified test runner script that works across host, DevContainer, and CI environments.
+
+### Unified Test Runner (Recommended)
+
+```bash
+# Run all tests (Backend, Frontend, E2E)
+./scripts/run-tests.sh all
+
+# Run specific test suites
+./scripts/run-tests.sh backend
+./scripts/run-tests.sh frontend
+./scripts/run-tests.sh e2e
+```
+
+### Manual Test Execution
+
+#### Frontend Unit Tests
 
 ```bash
 cd frontend
 npm test
 ```
 
-### Frontend E2E Tests
+#### Frontend E2E Tests
 
 ```bash
 cd frontend
@@ -248,7 +299,7 @@ npm run test:e2e:headed
 
 See [frontend/e2e/README.md](frontend/e2e/README.md) for detailed E2E testing documentation.
 
-### Backend Tests
+#### Backend Tests
 
 ```bash
 cd backend
@@ -262,6 +313,15 @@ For production deployment instructions, see [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 ## Troubleshooting
 
 ### Common Issues
+
+**"DevContainer fails to start"**
+- Ensure Docker is running.
+- Try `Dev Containers: Rebuild Container` from VS Code.
+- Check if ports 3000 or 8000 are already in use on your host.
+
+**"Docker socket permission denied in DevContainer"**
+- If using Linux, ensure your user is in the `docker` group.
+- For rootless Docker, ensure the socket path is correctly detected (check `.devcontainer/init-docker-socket.sh`).
 
 **"Bitwarden CLI not found"**
 - Ensure Bitwarden CLI is installed: `bw --version`
