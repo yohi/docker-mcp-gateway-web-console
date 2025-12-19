@@ -626,7 +626,7 @@
     - Frontend: `docker compose -f docker-compose.devcontainer.yml exec frontend npm run dev` が起動し、http://localhost:3000 にアクセス可能であることを確認
   - _Requirements: 1.4, 2.4, 6.3_
 
-- [ ] 5.2 回帰テストの実行
+- [x] 5.2 回帰テストの実行
   - **ベースライン取得（技術スタック更新前）**:
     - **実行タイミング**: 技術スタック更新を開始する直前、現在の main ブランチで実行
     - **テストスイート実行コマンド**:
