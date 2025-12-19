@@ -221,28 +221,8 @@ jobs:
           E2E_FRONTEND_PORT: 3001
           E2E_BACKEND_PORT: 8001
         run: |
-          docker compose -f docker-compose.test.yml up -d frontend backend
-          timeout=150
-          elapsed=0
-          interval=5
-          while [ $elapsed -lt $timeout ]; do
-            if docker compose -f docker-compose.test.yml ps | grep -q "healthy"; then
-              frontend_healthy=$(docker compose -f docker-compose.test.yml ps frontend | grep -c "healthy" || echo "0")
-              backend_healthy=$(docker compose -f docker-compose.test.yml ps backend | grep -c "healthy" || echo "0")
-              if [ "$frontend_healthy" -gt 0 ] && [ "$backend_healthy" -gt 0 ]; then
-                echo "Services are ready!"
-                break
-              fi
-            fi
-            echo "Waiting for services... ($elapsed/$timeout seconds)"
-            sleep $interval
-            elapsed=$((elapsed + interval))
-          done
-          if [ $elapsed -ge $timeout ]; then
-            echo "Timeout waiting for services"
-            docker compose -f docker-compose.test.yml logs
-            exit 1
-          fi
+          set -e
+          docker compose -f docker-compose.test.yml up -d --wait --wait-timeout 90 frontend backend
 
       - name: Run E2E tests
         working-directory: frontend
