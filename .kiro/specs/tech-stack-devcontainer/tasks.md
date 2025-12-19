@@ -553,7 +553,7 @@
 
 ### 5. 統合検証とドキュメント更新
 
-- [ ] 5.1 統合テストの実行
+- [x] 5.1 統合テストの実行
   - **Backend API の起動確認（healthcheck）**:
     - コマンド: `curl -f http://localhost:8000/health || exit 1`
     - 検証: HTTP 200 が返され、レスポンスに `{"status": "ok"}` が含まれることを確認
