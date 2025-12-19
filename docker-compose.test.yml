@@ -24,10 +24,10 @@ services:
       - mcp-gateway-test
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 6
+      start_period: 10s
 
   backend:
     build:
@@ -51,10 +51,10 @@ services:
       - mcp-gateway-test
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 6
+      start_period: 10s
 
   # Playwright test runner
   playwright:

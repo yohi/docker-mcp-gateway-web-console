@@ -216,6 +216,49 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps
 
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache frontend docker build
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache-frontend
+          key: buildx-frontend-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            buildx-frontend-${{ runner.os }}-
+
+      - name: Cache backend docker build
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache-backend
+          key: buildx-backend-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            buildx-backend-${{ runner.os }}-
+
+      - name: Pre-build frontend image (cacheable)
+        run: |
+          docker buildx build \
+            --file frontend/Dockerfile.dev \
+            --tag docker-mcp-gateway-web-console-frontend:latest \
+            --cache-from type=local,src=/tmp/.buildx-cache-frontend \
+            --cache-to type=local,dest=/tmp/.buildx-cache-frontend-new,mode=max \
+            --load \
+            frontend
+          rm -rf /tmp/.buildx-cache-frontend
+          mv /tmp/.buildx-cache-frontend-new /tmp/.buildx-cache-frontend
+
+      - name: Pre-build backend image (cacheable)
+        run: |
+          docker buildx build \
+            --file backend/Dockerfile.dev \
+            --tag docker-mcp-gateway-web-console-backend:latest \
+            --cache-from type=local,src=/tmp/.buildx-cache-backend \
+            --cache-to type=local,dest=/tmp/.buildx-cache-backend-new,mode=max \
+            --load \
+            backend
+          rm -rf /tmp/.buildx-cache-backend
+          mv /tmp/.buildx-cache-backend-new /tmp/.buildx-cache-backend
+
       - name: Start Docker Compose services
         env:
           E2E_FRONTEND_PORT: 3001
