@@ -179,9 +179,10 @@ Frontend will be available at http://localhost:3000
 
 ## Infrastructure Notes
 
-- **DevContainer**: This project uses a `workspace` service defined in `.devcontainer/docker-compose.devcontainer.yml` to provide a unified environment for Python and Node.js development.
-- **Docker Socket**: The DevContainer configuration automatically detects and mounts the Docker socket, supporting both rootful (`/var/run/docker.sock`) and rootless (e.g., `/run/user/1000/docker.sock`) Docker configurations.
-- **E2E Testing**: The frontend service is configured with `shm_size: 1gb` to support Chromium in Playwright tests.
+- **DevContainer**: DevContainer support is implemented via scripts and a workspace image under `.devcontainer/` (this repository does not include a `.devcontainer/docker-compose.devcontainer.yml` or a `workspace` service definition in the repo).
+- **Docker Socket**: `.devcontainer/init-docker-socket.sh` detects an available Docker socket (rootful `/var/run/docker.sock` and rootless sockets under `$XDG_RUNTIME_DIR/docker.sock` or `/run/user/<uid>/docker.sock`) and prints `DOCKER_SOCKET=...` for consumption by the container tooling.
+- **Workspace Image**: `.devcontainer/Dockerfile.workspace` defines the unified development image, based on Python `3.14.0-slim` and a pinned Node.js `22.12.0`, and includes the Docker CLI.
+- **Post-create Setup**: `.devcontainer/post-create.sh` performs post-create provisioning by installing backend Python dependencies (`pip install -r backend/requirements.txt`) and frontend dependencies (`npm ci` in `frontend/`), logging output to `.devcontainer/.post-create.log`.
 
 ## Project Structure
 
