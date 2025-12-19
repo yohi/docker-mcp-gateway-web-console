@@ -129,11 +129,19 @@ capture_frontend_e2e() {
 write_metadata() {
   local iso_ts
   iso_ts="$(echo "$TIMESTAMP" | sed 's#\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)-\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)#\1-\2-\3T\4:\5:\6Z#')"
+  local compose_json
+  compose_json="["
+  local compose_file
+  for compose_file in "${COMPOSE_ARRAY[@]}"; do
+    compose_json+="\"${compose_file}\"," 
+  done
+  compose_json="${compose_json%,}"
+  compose_json+="]"
   cat > "${ARTIFACT_DIR}/metadata-${TIMESTAMP}.json" <<EOF
 {
   "mode": "${MODE}",
   "timestamp": "${iso_ts}",
-  "compose_files": ["${COMPOSE_ARRAY[@]}"]
+  "compose_files": ${compose_json}
 }
 EOF
 }
