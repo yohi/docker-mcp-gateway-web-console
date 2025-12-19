@@ -95,14 +95,18 @@ class ContainerService:
         空白や禁則文字はハイフンに置換し、先頭が英数字でなければ接頭辞を付与する。
         DNS ラベル上限 (63 文字) に収まるよう短縮する。
         """
-        # 空白や許可されない文字をハイフンに置換
-        normalized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", name.strip())
+        # Docker の許容文字集合以外はハイフンに置換する
+        normalized = re.sub(r"[^A-Za-z0-9_.-]+", "-", name.strip())
         # 先頭末尾のドット/ハイフン/アンダースコアは除去
         normalized = normalized.strip("._-")
         if not normalized:
             normalized = "mcp-server"
-        if not re.match(r"[a-zA-Z0-9]", normalized[0]):
+        # 先頭は英数字である必要があるため、満たさない場合は接頭辞を付与する
+        if not re.match(r"^[A-Za-z0-9]", normalized):
             normalized = f"mcp-{normalized}"
+            normalized = normalized.strip("._-")
+            if not normalized:
+                normalized = "mcp-server"
         # DNS ラベルの実務上の上限に合わせて短縮
         return normalized[:63]
 

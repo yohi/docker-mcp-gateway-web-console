@@ -17,8 +17,8 @@ A comprehensive web console for managing Docker-based MCP (Model Context Protoco
 
 ## Architecture
 
-- **Frontend**: Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS
-- **Backend**: Python 3.11+, FastAPI, Docker SDK
+- **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS
+- **Backend**: Python 3.14, FastAPI, Docker SDK
 - **Secret Management**: Bitwarden CLI integration with in-memory caching
 - **Container Management**: Docker Engine with real-time log streaming
 - **Communication**: REST API + WebSocket for log streaming
@@ -27,8 +27,8 @@ A comprehensive web console for managing Docker-based MCP (Model Context Protoco
 
 Before you begin, ensure you have the following installed:
 
-- **Node.js 18+**: [Download](https://nodejs.org/)
-- **Python 3.11+**: [Download](https://www.python.org/downloads/)
+- **Node.js 22+**: [Download](https://nodejs.org/)
+- **Python 3.14+**: [Download](https://www.python.org/downloads/)
 - **Docker Engine 20.10+**: [Install Docker](https://docs.docker.com/engine/install/)
 - **Bitwarden CLI 2023.x+**: [Install Bitwarden CLI](https://bitwarden.com/help/cli/)
 - **Docker Compose**: Usually included with Docker Desktop
@@ -51,7 +51,37 @@ bw --version
 
 **New to the project?** Check out the [Quick Start Guide](docs/QUICK_START.md) for a 5-minute setup!
 
-### Option 1: Development with Docker Compose (Recommended)
+### Option 1: Development with DevContainer (Recommended for VS Code)
+
+This project includes a DevContainer configuration that provides a consistent development environment with Python 3.14 and Node.js 22 pre-installed.
+The container forwards ports 3000 (frontend) and 8000 (backend API), and runs a post-create script to install backend/frontend dependencies.
+
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository-url>
+    cd docker-mcp-gateway-console
+    ```
+
+2.  **Open in VS Code:**
+    ```bash
+    code .
+    ```
+
+3.  **Reopen in Container:**
+    - When prompted, click "Reopen in Container".
+    - Or open the Command Palette (Ctrl+Shift+P / Cmd+Shift+P) and run "Dev Containers: Reopen in Container".
+
+4.  **Start Services:**
+    The DevContainer automatically installs dependencies (via `.devcontainer/post-create.sh`). You can start the services from the integrated terminal:
+    ```bash
+    # Backend
+    cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+    # Frontend (in a new terminal)
+    cd frontend && npm run dev
+    ```
+
+### Option 2: Development with Docker Compose
 
 1. **Clone the repository:**
 ```bash
@@ -85,7 +115,7 @@ docker-compose up
    - Enter your Bitwarden email and API key (or master password)
    - Start managing your MCP servers!
 
-### Option 2: Local Development (Without Docker Compose)
+### Option 3: Local Development (Without Docker Compose)
 
 This option is useful for development when you want to run services individually.
 
@@ -146,6 +176,13 @@ npm run dev
 ```
 
 Frontend will be available at http://localhost:3000
+
+## Infrastructure Notes
+
+- **DevContainer**: DevContainer support is implemented via scripts and a workspace image under `.devcontainer/` (the `.devcontainer/docker-compose.devcontainer.yml` and `workspace` service definition are added in this PR).
+- **Docker Socket**: `.devcontainer/init-docker-socket.sh` detects an available Docker socket (rootful `/var/run/docker.sock` and rootless sockets under `$XDG_RUNTIME_DIR/docker.sock` or `/run/user/<uid>/docker.sock`) and prints `DOCKER_SOCKET=...` for consumption by the container tooling.
+- **Workspace Image**: `.devcontainer/Dockerfile.workspace` defines the unified development image, based on Python `3.14.2-slim` and a pinned Node.js `22.21.1`, and includes the Docker CLI. After updating the base image, rebuild the devcontainer to pick up the new image.
+- **Post-create Setup**: `.devcontainer/post-create.sh` performs post-create provisioning by installing backend Python dependencies (`pip install -r backend/requirements.txt`) and frontend dependencies (`npm ci` in `frontend/`), logging output to `.devcontainer/.post-create.log`.
 
 ## Project Structure
 
@@ -221,14 +258,30 @@ See [ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md) for detailed confi
 
 ## Testing
 
-### Frontend Unit Tests
+We provide a unified test runner script that works across host, DevContainer, and CI environments.
+
+### Unified Test Runner (Recommended)
+
+```bash
+# Run all tests (Backend, Frontend, E2E)
+./scripts/run-tests.sh all
+
+# Run specific test suites
+./scripts/run-tests.sh backend
+./scripts/run-tests.sh frontend
+./scripts/run-tests.sh e2e
+```
+
+### Manual Test Execution
+
+#### Frontend Unit Tests
 
 ```bash
 cd frontend
 npm test
 ```
 
-### Frontend E2E Tests
+#### Frontend E2E Tests
 
 ```bash
 cd frontend
@@ -246,9 +299,11 @@ npm run test:e2e:ui
 npm run test:e2e:headed
 ```
 
+Note: these `test:e2e*` scripts are defined in `frontend/package.json` (there is no `package.json` at the repository root).
+
 See [frontend/e2e/README.md](frontend/e2e/README.md) for detailed E2E testing documentation.
 
-### Backend Tests
+#### Backend Tests
 
 ```bash
 cd backend
@@ -262,6 +317,15 @@ For production deployment instructions, see [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 ## Troubleshooting
 
 ### Common Issues
+
+### DevContainer fails to start
+- Ensure Docker is running.
+- Try `Dev Containers: Rebuild Container` from VS Code.
+- Check if ports 3000 or 8000 are already in use on your host.
+
+### Docker socket permission denied in DevContainer
+- If using Linux, ensure your user is in the `docker` group.
+- For rootless Docker, ensure the socket path is correctly detected (check `.devcontainer/init-docker-socket.sh`).
 
 **"Bitwarden CLI not found"**
 - Ensure Bitwarden CLI is installed: `bw --version`

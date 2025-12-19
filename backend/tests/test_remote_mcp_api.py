@@ -229,7 +229,7 @@ def test_register_rejected_endpoint_records_audit(remote_service, monkeypatch) -
 
     logs = remote_service.state_store.get_recent_audit_logs()
     assert any(
-        log.event_type == "endpoint_rejected"
+        log.action == "endpoint_rejected"
         and log.metadata.get("endpoint") == "https://blocked.example.com/sse"
         for log in logs
     )

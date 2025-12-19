@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def test_backend_dockerfile_exists() -> None:
+    dockerfile = _repo_root() / "backend" / "Dockerfile"
+    assert dockerfile.exists(), "Missing backend/Dockerfile"
+
+
+def test_backend_dockerfile_is_python_314_multistage_with_wheels() -> None:
+    dockerfile = _repo_root() / "backend" / "Dockerfile"
+    text = dockerfile.read_text(encoding="utf-8")
+
+    assert re.search(
+        r"^FROM\s+python:3\.14\.2-slim\s+AS\s+builder\s*$",
+        text,
+        flags=re.M,
+    ), "backend/Dockerfile must start builder stage with python:3.14.2-slim AS builder"
+
+    # builderステージのテキストを抽出（次のFROMまたは終端まで）
+    builder_match = re.search(
+        r"^FROM\s+\S+\s+AS\s+builder\s*$(.*?)(?=^FROM|\Z)",
+        text,
+        flags=re.M | re.DOTALL,
+    )
+    assert builder_match, "builder stage not found in Dockerfile"
+    builder_stage = builder_match.group(0)
+
+    # builderステージ専用のパッケージを検証
+    for pkg in (
+        "build-essential",
+        "libffi-dev",
+        "libssl-dev",
+        "gcc",
+        "make",
+        "pkg-config",
+        "python3-dev",
+    ):
+        assert re.search(rf"\b{re.escape(pkg)}\b", builder_stage), f"builder stage must install {pkg}"
+
+    assert re.search(
+        r"^FROM\s+python:3\.14\.2-slim\s+AS\s+runtime\s*$",
+        text,
+        flags=re.M,
+    ), "backend/Dockerfile must define runtime stage with python:3.14.2-slim AS runtime"
+
+    # runtimeステージのテキストを抽出（次のFROMまたは終端まで）
+    runtime_match = re.search(
+        r"^FROM\s+\S+\s+AS\s+runtime\s*$(.*?)(?=^FROM|\Z)",
+        text,
+        flags=re.M | re.DOTALL,
+    )
+    assert runtime_match, "runtime stage not found in Dockerfile"
+    runtime_stage = runtime_match.group(0)
+
+    # runtimeステージ専用のパッケージを検証
+    for pkg in ("libffi8", "libssl3"):
+        assert re.search(rf"\b{re.escape(pkg)}\b", runtime_stage), f"runtime stage must install {pkg}"
+
+    assert "COPY --from=builder /wheels /wheels" in text
+
+
+def test_backend_dockerfile_dev_exists_and_has_dev_stage() -> None:
+    dockerfile = _repo_root() / "backend" / "Dockerfile.dev"
+    assert dockerfile.exists(), "Missing backend/Dockerfile.dev"
+
+    text = dockerfile.read_text(encoding="utf-8")
+    assert re.search(
+        r"^FROM\s+runtime\s+AS\s+dev\s*$",
+        text,
+        flags=re.M,
+    ), "backend/Dockerfile.dev must define dev stage starting with FROM runtime AS dev"
+
+
+def test_backend_requirements_dev_includes_expected_tools() -> None:
+    requirements = _repo_root() / "backend" / "requirements-dev.txt"
+    assert requirements.exists(), "Missing backend/requirements-dev.txt"
+
+    text = requirements.read_text(encoding="utf-8")
+    for pkg in ("debugpy", "ruff", "pytest", "pytest-cov"):
+        assert re.search(rf"^\s*{re.escape(pkg)}\b", text, flags=re.M), (
+            f"backend/requirements-dev.txt must include {pkg}"
+        )

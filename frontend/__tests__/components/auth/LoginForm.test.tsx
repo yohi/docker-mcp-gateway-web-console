@@ -37,11 +37,13 @@ describe('LoginForm', () => {
       expect(screen.getByText('Bitwardenでログイン')).toBeInTheDocument();
     });
 
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText('your@email.com')).toBeInTheDocument();
-      expect(screen.getByPlaceholderText('Bitwarden APIキー')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument();
-    });
+    expect(screen.getByPlaceholderText('your@email.com')).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('user.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
+    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Client Secret')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('マスターパスワード')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument();
   });
 
   it('switches between API key and master password methods', async () => {
@@ -54,19 +56,26 @@ describe('LoginForm', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('Bitwarden APIキー')).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText('user.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
+      ).toBeInTheDocument();
     });
 
-    // Initially shows API key field
-    expect(screen.getByPlaceholderText('Bitwarden APIキー')).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText('マスターパスワード')).not.toBeInTheDocument();
+    // Initially shows API key credential fields
+    expect(
+      screen.getByPlaceholderText('user.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
+    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Client Secret')).toBeInTheDocument();
 
     // Switch to master password
     const masterPasswordRadio = screen.getByRole('radio', { name: 'マスターパスワード' });
     fireEvent.click(masterPasswordRadio);
 
-    // Now shows master password field
-    expect(screen.queryByPlaceholderText('Bitwarden APIキー')).not.toBeInTheDocument();
+    // Now hides API key fields and keeps master password field
+    expect(
+      screen.queryByPlaceholderText('user.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
+    ).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Client Secret')).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText('マスターパスワード')).toBeInTheDocument();
   });
 
@@ -115,8 +124,17 @@ describe('LoginForm', () => {
     fireEvent.change(screen.getByPlaceholderText('your@email.com'), {
       target: { value: 'test@example.com' },
     });
-    fireEvent.change(screen.getByPlaceholderText('Bitwarden APIキー'), {
-      target: { value: 'test-api-key' },
+    fireEvent.change(
+      screen.getByPlaceholderText('user.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'),
+      {
+        target: { value: 'user.1234-5678' },
+      }
+    );
+    fireEvent.change(screen.getByPlaceholderText('Client Secret'), {
+      target: { value: 'test-secret' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('マスターパスワード'), {
+      target: { value: 'vault-pass' },
     });
 
     // Submit
@@ -127,7 +145,9 @@ describe('LoginForm', () => {
       expect(mockLoginAPI).toHaveBeenCalledWith({
         method: 'api_key',
         email: 'test@example.com',
-        apiKey: 'test-api-key',
+        client_id: 'user.1234-5678',
+        client_secret: 'test-secret',
+        master_password: 'vault-pass',
       });
     });
   });
@@ -181,7 +201,7 @@ describe('LoginForm', () => {
       expect(mockLoginAPI).toHaveBeenCalledWith({
         method: 'master_password',
         email: 'test@example.com',
-        masterPassword: 'test-password',
+        master_password: 'test-password',
       });
     });
   });
@@ -207,8 +227,17 @@ describe('LoginForm', () => {
     fireEvent.change(screen.getByPlaceholderText('your@email.com'), {
       target: { value: 'test@example.com' },
     });
-    fireEvent.change(screen.getByPlaceholderText('Bitwarden APIキー'), {
+    fireEvent.change(
+      screen.getByPlaceholderText('user.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'),
+      {
+        target: { value: 'user.1234-5678' },
+      }
+    );
+    fireEvent.change(screen.getByPlaceholderText('Client Secret'), {
       target: { value: 'wrong-key' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('マスターパスワード'), {
+      target: { value: 'vault-pass' },
     });
 
     // Submit
@@ -245,8 +274,17 @@ describe('LoginForm', () => {
     fireEvent.change(screen.getByPlaceholderText('your@email.com'), {
       target: { value: 'test@example.com' },
     });
-    fireEvent.change(screen.getByPlaceholderText('Bitwarden APIキー'), {
-      target: { value: 'test-api-key' },
+    fireEvent.change(
+      screen.getByPlaceholderText('user.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'),
+      {
+        target: { value: 'user.1234-5678' },
+      }
+    );
+    fireEvent.change(screen.getByPlaceholderText('Client Secret'), {
+      target: { value: 'test-secret' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('マスターパスワード'), {
+      target: { value: 'vault-pass' },
     });
 
     // Submit

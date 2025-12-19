@@ -24,6 +24,12 @@ export default defineConfig({
   
   /* Shared settings for all the projects below */
   use: {
+    /* Run headless in Docker/CI to avoid X server dependency */
+    headless: true,
+    
+    /* Stable viewport for screenshots and assertions */
+    viewport: { width: 1280, height: 720 },
+    
     /* Base URL to use in actions like `await page.goto('/')` */
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
     

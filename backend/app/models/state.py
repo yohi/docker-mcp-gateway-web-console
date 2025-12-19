@@ -127,11 +127,13 @@ class GatewayAllowEntry(BaseModel):
 
 
 class AuditLogEntry(BaseModel):
-    """相関 ID 付き監査ログのレコード。"""
+    """監査ログのレコード。"""
 
     id: Optional[int] = None
-    correlation_id: str
-    event_type: str
+    category: str
+    action: str
+    actor: str
+    target: str
     metadata: Dict[str, Any]
     created_at: datetime = Field(default_factory=_now_utc)
 

@@ -14,6 +14,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
+    shm_size: 1gb  # Chromium requires at least 1GB shared memory for E2E tests
     environment:
       - NEXT_PUBLIC_API_URL=http://backend:8000
       - NODE_ENV=test
@@ -34,9 +35,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
+    working_dir: /workspace/backend
     ports:
       - "8001:8000"  # Use different port to avoid conflicts
     volumes:
+      - ./:/workspace
       - ./backend:/app
       - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
       - /run/user:/run/user:ro
@@ -68,6 +71,7 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    shm_size: 1gb  # Chromium requires at least 1GB shared memory for E2E tests
     environment:
       - PLAYWRIGHT_BASE_URL=http://frontend:3000
       - CI=true

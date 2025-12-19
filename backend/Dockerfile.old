@@ -1,0 +1,49 @@
+# Production Dockerfile for Backend (baseline single-stage for size comparison)
+
+FROM python:3.14.2-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies (single-stage baseline intentionally keeps build deps)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libffi-dev \
+    libssl-dev \
+    gcc \
+    make \
+    pkg-config \
+    python3-dev \
+    curl \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Bitwarden CLI
+RUN curl -L https://github.com/bitwarden/clients/releases/download/cli-v2025.11.0/bw-linux-2025.11.0.zip -o bw.zip \
+    && unzip bw.zip \
+    && chmod +x bw \
+    && mv bw /usr/local/bin/ \
+    && rm bw.zip
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY app/ ./app/
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2).read()" || exit 1
+
+# Run application
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

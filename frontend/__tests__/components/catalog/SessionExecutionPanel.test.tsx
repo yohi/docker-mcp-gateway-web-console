@@ -50,8 +50,8 @@ describe('SessionExecutionPanel', () => {
       );
     });
 
-    expect(await screen.findByText('unix:///tmp/gw.sock')).toBeInTheDocument();
-    expect(screen.getByText('cont-1')).toBeInTheDocument();
+    expect(await screen.findByText(/unix:\/\/\/tmp\/gw\.sock/)).toBeInTheDocument();
+    expect(screen.getByText(/cont-1/)).toBeInTheDocument();
   });
 
   it('runs sync exec and shows timeout/truncate flags', async () => {
@@ -73,7 +73,7 @@ describe('SessionExecutionPanel', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'ゲートウェイを起動' }));
-    await screen.findByText('unix:///tmp/gw.sock');
+    await screen.findByText(/unix:\/\/\/tmp\/gw\.sock/);
 
     fireEvent.change(screen.getByLabelText('ツール名'), { target: { value: 'ping' } });
     fireEvent.change(screen.getByLabelText('引数'), { target: { value: 'localhost' } });
@@ -124,7 +124,7 @@ describe('SessionExecutionPanel', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'ゲートウェイを起動' }));
-    await screen.findByText('unix:///tmp/gw.sock');
+    await screen.findByText(/unix:\/\/\/tmp\/gw\.sock/);
 
     fireEvent.change(screen.getByLabelText('ツール名'), { target: { value: 'echo' } });
     fireEvent.click(screen.getByLabelText('非同期で実行'));
@@ -139,7 +139,7 @@ describe('SessionExecutionPanel', () => {
       );
     });
 
-    expect(await screen.findByText('job-1')).toBeInTheDocument();
+    expect(await screen.findByText(/job-1/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '状態を更新' }));
 
@@ -160,7 +160,7 @@ describe('SessionExecutionPanel', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'ゲートウェイを起動' }));
-    await screen.findByText('unix:///tmp/gw.sock');
+    await screen.findByText(/unix:\/\/\/tmp\/gw\.sock/);
 
     fireEvent.click(screen.getByRole('button', { name: 'ログを開く' }));
 

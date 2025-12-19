@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { completeOAuthCallback, OAuthCallbackResult } from '@/lib/api/oauth';
 
@@ -46,7 +46,7 @@ function clearStoredPkce(state: string) {
   }
 }
 
-export default function OAuthCallbackPage() {
+function OAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<Status>('processing');
@@ -55,6 +55,9 @@ export default function OAuthCallbackPage() {
 
   useEffect(() => {
     if (!searchParams) return;
+
+    let isMounted = true;
+
     const code = searchParams.get('code');
     const state = searchParams.get('state');
     const errorParam = searchParams.get('error');
@@ -85,6 +88,9 @@ export default function OAuthCallbackPage() {
           serverId,
           codeVerifier,
         });
+
+        if (!isMounted) return;
+
         setResult(response);
         setStatus('success');
         clearStoredPkce(state);
@@ -109,6 +115,8 @@ export default function OAuthCallbackPage() {
         const fallback = serverId ? `/catalog?server=${serverId}` : '/catalog';
         router.replace(returnUrl || fallback);
       } catch (err) {
+        if (!isMounted) return;
+
         setStatus('error');
         setErrorMessage(
           err instanceof Error ? err.message : '認証処理に失敗しました。再度お試しください。'
@@ -117,6 +125,10 @@ export default function OAuthCallbackPage() {
     };
 
     run();
+
+    return () => {
+      isMounted = false;
+    };
   }, [router, searchParams]);
 
   const statusMessage = useMemo(() => {
@@ -165,5 +177,27 @@ export default function OAuthCallbackPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function OAuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+          <div className="w-full max-w-lg rounded-lg bg-white shadow-md p-6 space-y-4 border border-gray-200">
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">OAuth コールバック</h1>
+              <p className="mt-1 text-sm text-gray-600">認証結果を処理しています...</p>
+            </div>
+            <div className="flex items-center justify-center py-4">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <OAuthCallbackContent />
+    </Suspense>
   );
 }

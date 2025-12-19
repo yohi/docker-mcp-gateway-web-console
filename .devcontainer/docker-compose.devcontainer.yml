@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  workspace:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile.workspace
+    volumes:
+      - ..:/workspace:cached
+      - ${DOCKER_SOCKET}:/var/run/docker.sock
+    command: sleep infinity
+    depends_on:
+      - backend
+      - frontend
+
+  backend:
+    volumes:
+      - ../backend:/app:cached
+
+  frontend:
+    volumes:
+      - ../frontend:/app:cached
+    shm_size: 1gb  # Chromium requires at least 1GB shared memory for E2E tests

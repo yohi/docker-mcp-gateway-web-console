@@ -1,0 +1,11 @@
+{
+  "runtime_tolerance_percent": 10.0,
+  "coverage_drop_global": 0.5,
+  "coverage_drop_critical": 1.0,
+  "max_new_failures": 0,
+  "max_new_flaky": 3,
+  "critical_paths": [
+    "backend/app/core",
+    "frontend/src/components"
+  ]
+}

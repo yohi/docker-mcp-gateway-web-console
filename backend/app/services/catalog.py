@@ -66,7 +66,7 @@ class CatalogService:
         )
 
     def _append_warning(self, message: str) -> None:
-        """警告メッセージを追記する（複数要因がある場合に備える）。"""
+        """警告メッセージを追記する(複数要因がある場合に備える)。"""
         msg = message.strip()
         if not msg:
             return
@@ -89,6 +89,7 @@ class CatalogService:
         allow_insecure = getattr(settings, "allow_insecure_endpoint", False)
 
         for item in items:
+            has_image = bool((item.docker_image or "").strip())
             remote_endpoint = item.remote_endpoint
 
             if remote_endpoint:
@@ -96,8 +97,14 @@ class CatalogService:
                     str(remote_endpoint), allow_insecure=allow_insecure
                 )
                 if not remote_valid:
-                    removed_invalid_remote += 1
-                    continue
+                    if not has_image:
+                        removed_invalid_remote += 1
+                        continue
+
+            # docker_image も remote_endpoint も無くても許容（OAuth 専用など）
+            if not has_image and not remote_endpoint:
+                filtered.append(item)
+                continue
 
             filtered.append(item)
 
@@ -219,7 +226,7 @@ class CatalogService:
 
     @property
     def warning(self) -> Optional[str]:
-        """直近の警告（GitHub トークン復号失敗など）を返す。"""
+        """直近の警告(GitHub トークン復号失敗など)を返す。"""
         return self._warning_var.get()
 
     async def _fetch_from_url(self, source_url: str) -> List[CatalogItem]:
@@ -268,7 +275,10 @@ class CatalogService:
                         converted: List[CatalogItem] = []
                         for item, result in zip(dir_items, results):
                             if isinstance(result, Exception) or result is None:
-                                converted.append(self._convert_github_content_item(item))
+                                self._append_warning(
+                                    "Dockerイメージが未定義のカタログ項目を除外しました。server.yaml を取得できない場合は image を明示してください。"
+                                )
+                                continue
                             else:
                                 converted.append(result)
                         return self._filter_items_missing_image(converted)
