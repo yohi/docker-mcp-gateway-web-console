@@ -43,33 +43,27 @@ jobs:
             sudo chmod +x /usr/lib/docker/cli-plugins/docker-compose
           fi
           sudo ln -sf /usr/lib/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
-          sudo systemctl start docker || sudo service docker start || true
-          sudo usermod -aG docker "$(whoami)" || true
           docker --version || true
           docker compose version || true
 
-      - name: Start Docker daemon (fallback)
+      - name: Wait for Docker daemon (dind)
         run: |
-          # systemctl/service may not be available on ubuntu-slim runners; start dockerd manually
-          if ! docker info >/dev/null 2>&1; then
-            echo "Starting dockerd manually..."
-            sudo dockerd --host=unix:///var/run/docker.sock --storage-driver=overlay2 > /tmp/dockerd.log 2>&1 &
-            for i in $(seq 1 30); do
-              sleep 2
-              if docker info >/dev/null 2>&1; then
-                echo "dockerd is up"
-                break
-              fi
-            done
-          fi
-          if ! docker info >/dev/null 2>&1; then
-            echo "Failed to start dockerd"
-            if [ -f /tmp/dockerd.log ]; then
-              echo "==== dockerd.log ===="
-              tail -200 /tmp/dockerd.log || true
+          for i in $(seq 1 30); do
+            if docker info >/dev/null 2>&1; then
+              echo "docker daemon is ready"
+              exit 0
             fi
-            exit 1
-          fi
+            sleep 2
+          done
+          echo "docker daemon not ready"
+          docker info
+
+      - name: Configure Docker context for dind
+        run: |
+          docker context rm ci-dind >/dev/null 2>&1 || true
+          docker context create ci-dind --docker "host=${DOCKER_HOST}"
+          docker context use ci-dind
+          docker info
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -130,6 +124,18 @@ jobs:
     name: E2E (Playwright)
     runs-on: ubuntu-slim
     timeout-minutes: 35
+    env:
+      DOCKER_HOST: tcp://127.0.0.1:2375
+      DOCKER_TLS_CERTDIR: ""
+      DOCKER_CLI_EXPERIMENTAL: "enabled"
+    services:
+      docker:
+        image: docker:27-dind
+        options: --privileged --storage-driver=overlay2
+        env:
+          DOCKER_TLS_CERTDIR: ""
+        ports:
+          - 2375:2375
 
     steps:
       - name: Checkout code
