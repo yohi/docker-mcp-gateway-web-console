@@ -48,6 +48,29 @@ jobs:
           docker --version || true
           docker compose version || true
 
+      - name: Start Docker daemon (fallback)
+        run: |
+          # systemctl/service may not be available on ubuntu-slim runners; start dockerd manually
+          if ! docker info >/dev/null 2>&1; then
+            echo "Starting dockerd manually..."
+            sudo dockerd --host=unix:///var/run/docker.sock --storage-driver=overlay2 > /tmp/dockerd.log 2>&1 &
+            for i in $(seq 1 30); do
+              sleep 2
+              if docker info >/dev/null 2>&1; then
+                echo "dockerd is up"
+                break
+              fi
+            done
+          fi
+          if ! docker info >/dev/null 2>&1; then
+            echo "Failed to start dockerd"
+            if [ -f /tmp/dockerd.log ]; then
+              echo "==== dockerd.log ===="
+              tail -200 /tmp/dockerd.log || true
+            fi
+            exit 1
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
