@@ -300,7 +300,7 @@
     - [ ] **主要ページのレンダリング確認**: ブラウザで主要ルート（`/`, `/login`, `/dashboard` 等）にアクセスし、エラーなくレンダリングされることを確認
   - _Requirements: 4.2, 4.3_
 
-- [ ] 3.4 Frontend のビルドおよび起動確認
+- [x] 3.4 Frontend のビルドおよび起動確認
   - docker compose で frontend サービスをビルド
   - Node.js 22 ランタイム上での起動を確認
   - healthcheck の動作確認
