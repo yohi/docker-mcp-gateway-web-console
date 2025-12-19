@@ -10,17 +10,17 @@ const pkgJson = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as {
 };
 
 const expectedRuntimeDeps: DependencyMap = {
-  next: '15.1.11',
-  react: '19.0.0',
-  'react-dom': '19.0.0',
-  swr: '2.2.5',
+  next: '15.5.9',
+  react: '19.2.3',
+  'react-dom': '19.2.3',
+  swr: '2.3.8',
 };
 
 const expectedDevDeps: DependencyMap = {
-  '@types/react': '19.0.0',
-  '@types/react-dom': '19.0.0',
-  'eslint-config-next': '15.1.11',
-  typescript: '5.6.3',
+  '@types/react': '19.2.7',
+  '@types/react-dom': '19.2.3',
+  'eslint-config-next': '15.5.9',
+  typescript: '5.9.3',
 };
 
 const expectNoRanges = (deps: DependencyMap) => {

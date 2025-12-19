@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Purpose**: 本機能は、docker-mcp-gateway-web-console の技術スタックを最新化（Python 3.14.0、Node.js 22.12.0、Next.js 15.1.3、React 19.0.0）し、DevContainer による統一開発環境を提供することで、開発効率の向上と環境差異の排除を実現する。
+**Purpose**: 本機能は、docker-mcp-gateway-web-console の技術スタックを最新化（Python 3.14.0、Node.js 22.12.0、Next.js 15.1.11、React 19.0.0）し、DevContainer による統一開発環境を提供することで、開発効率の向上と環境差異の排除を実現する。
 
 **Users**: 開発者およびプロジェクトオーナーが、一貫した開発環境でコンテナ化されたテスト実行と最新ランタイムでの開発を行う。
 
@@ -10,7 +10,7 @@
 
 ### Goals
 - DevContainer による再現可能な開発環境の提供（Backend/Frontend 両方を単一環境で開発可能）
-- Python 3.14.0 および Node.js 22.12.0 / Next.js 15.1.3 / React 19.0.0 への更新
+- Python 3.14.0 および Node.js 22.12.0 / Next.js 15.1.11 / React 19.0.0 への更新
 - **パッチレベルまでのバージョン固定**とロックファイルのコミット
 - コンテナ内テスト実行ポリシーの確立（`docker compose exec` による統一実行）
 - 既存テストスイートの維持（回帰防止）
@@ -86,7 +86,7 @@ graph TB
 | Backend Framework | `fastapi==0.115.6` | REST API 提供 | requirements.txt |
 | Backend Validation | `pydantic==2.10.4` | リクエスト/レスポンス検証 | requirements.txt |
 | Frontend Runtime | `node:22.12.0-alpine` | Next.js アプリケーション実行 | Dockerfile |
-| Frontend Framework | `next@15.1.3` | App Router ベース UI（CVE-2025-55183/55184 修正版） | package-lock.json |
+| Frontend Framework | `next@15.1.11` | App Router ベース UI（CVE-2025-55183/55184/67779 修正版） | package-lock.json |
 | Frontend Library | `react@19.0.0`, `react-dom@19.0.0` | UI コンポーネント | package-lock.json |
 | DevContainer | VS Code DevContainer spec | 開発環境定義 | devcontainer.json |
 | Container Runtime | Docker + Compose | サービスオーケストレーション | docker-compose.yml |
@@ -530,7 +530,7 @@ CMD ["node", "server.js"]
 - **package-lock.json を必須コミット**
 
 **Dependencies**
-- External: `next@15.1.3` — フレームワーク（CVE-2025-55183/55184 修正版） (P0)
+- External: `next@15.1.11` — フレームワーク（CVE-2025-55183/55184/67779 修正版）。**注**: 15.1.3は不完全なパッチであり、CVE-2025-67779の完全修正には15.1.11以降が必須 (P0)
 - External: `react@19.0.0`, `react-dom@19.0.0` — UI ライブラリ (P0)
 - External: `@types/react@19.0.0`, `@types/react-dom@19.0.0` — 型定義 (P1)
 
@@ -538,7 +538,7 @@ CMD ["node", "server.js"]
 
 **Implementation Notes**
 - `--legacy-peer-deps` が必要な場合は `.npmrc` に設定を追加
-- **CVE-2025-55183/55184 修正版（Next.js 15.1.3 以降）を使用必須**
+- **CVE-2025-55183/55184/67779 修正版（Next.js 15.1.11 以降）を使用必須**。15.1.3は初回パッチだが不完全であり、CVE-2025-67779の完全修正には15.1.11以降が必要
 - `package.json` の `^` プレフィックスは除去し、完全固定
 
 ##### package.json Changes（バージョン固定）
@@ -546,7 +546,7 @@ CMD ["node", "server.js"]
 ```json
 {
   "dependencies": {
-    "next": "15.1.3",
+    "next": "15.1.11",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "swr": "2.2.5"
@@ -560,7 +560,7 @@ CMD ["node", "server.js"]
     "@types/react-dom": "19.0.0",
     "autoprefixer": "10.4.18",
     "eslint": "8.57.0",
-    "eslint-config-next": "15.1.3",
+    "eslint-config-next": "15.1.11",
     "fast-check": "3.15.1",
     "jest": "29.7.0",
     "jest-environment-jsdom": "29.7.0",

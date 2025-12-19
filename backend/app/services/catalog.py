@@ -67,7 +67,7 @@ class CatalogService:
         )
 
     def _append_warning(self, message: str) -> None:
-        """警告メッセージを追記する（複数要因がある場合に備える）。"""
+        """警告メッセージを追記する(複数要因がある場合に備える)。"""
         msg = message.strip()
         if not msg:
             return
@@ -227,7 +227,7 @@ class CatalogService:
 
     @property
     def warning(self) -> Optional[str]:
-        """直近の警告（GitHub トークン復号失敗など）を返す。"""
+        """直近の警告(GitHub トークン復号失敗など)を返す。"""
         return self._warning_var.get()
 
     async def _fetch_from_url(self, source_url: str) -> List[CatalogItem]:
