@@ -9,7 +9,7 @@ env:
 jobs:
   backend-unit:
     name: Backend Unit (Pytest)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 25
 
     steps:
@@ -30,16 +30,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ca-certificates curl git jq \
-            docker.io docker-compose-plugin \
+            docker.io \
             libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
             libxdamage1 libxfixes3 libxrandr2 libxshmfence1 libgbm1 libasound2t64 \
             libpangocairo-1.0-0 libpango-1.0-0 libatspi2.0-0 libx11-6 libx11-xcb1 libxcb1 libxcursor1 \
             libxrender1 libxi6 libxtst6 fonts-noto-color-emoji
           sudo mkdir -p /usr/lib/docker/cli-plugins /usr/local/lib/docker/cli-plugins
-          if [ -x /usr/libexec/docker/cli-plugins/docker-compose ]; then
-            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose
-            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+          if [ ! -x /usr/lib/docker/cli-plugins/docker-compose ]; then
+            compose_version="v2.33.1"
+            compose_url="https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-x86_64"
+            sudo curl -sSL "$compose_url" -o /usr/lib/docker/cli-plugins/docker-compose
+            sudo chmod +x /usr/lib/docker/cli-plugins/docker-compose
           fi
+          sudo ln -sf /usr/lib/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
           sudo systemctl start docker || sudo service docker start || true
           sudo usermod -aG docker "$(whoami)" || true
           docker --version || true
@@ -123,16 +126,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ca-certificates curl git jq \
-            docker.io docker-compose-plugin \
+            docker.io \
             libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
             libxdamage1 libxfixes3 libxrandr2 libxshmfence1 libgbm1 libasound2t64 \
             libpangocairo-1.0-0 libpango-1.0-0 libatspi2.0-0 libx11-6 libx11-xcb1 libxcb1 libxcursor1 \
             libxrender1 libxi6 libxtst6 fonts-noto-color-emoji
           sudo mkdir -p /usr/lib/docker/cli-plugins /usr/local/lib/docker/cli-plugins
-          if [ -x /usr/libexec/docker/cli-plugins/docker-compose ]; then
-            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose
-            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+          if [ ! -x /usr/lib/docker/cli-plugins/docker-compose ]; then
+            compose_version="v2.33.1"
+            compose_url="https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-x86_64"
+            sudo curl -sSL "$compose_url" -o /usr/lib/docker/cli-plugins/docker-compose
+            sudo chmod +x /usr/lib/docker/cli-plugins/docker-compose
           fi
+          sudo ln -sf /usr/lib/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
           sudo systemctl start docker || sudo service docker start || true
           sudo usermod -aG docker "$(whoami)" || true
           docker --version || true
