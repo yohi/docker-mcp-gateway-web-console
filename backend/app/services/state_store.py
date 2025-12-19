@@ -241,7 +241,9 @@ class StateStore:
         else:
             select_target = "'unknown'"
         select_metadata = "metadata" if "metadata" in audit_columns else "'{}'"
-        select_created_at = "created_at" if "created_at" in audit_columns else "'1970-01-01T00:00:00Z'"
+        select_created_at = (
+            "created_at" if "created_at" in audit_columns else "'1970-01-01T00:00:00+00:00'"
+        )
 
         try:
             conn.execute(
