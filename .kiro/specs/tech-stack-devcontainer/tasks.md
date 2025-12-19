@@ -370,7 +370,7 @@
     - **デフォルト値**: 未指定の場合、`docker-compose.yml` を使用
     - **優先順位**:
       1. `COMPOSE_FILE` 環境変数が設定されている場合、その値を使用（例: `COMPOSE_FILE=docker-compose.devcontainer.yml ./run-tests.sh all`）
-      2. 複数ファイル指定時（コロン区切り）は、左側が優先（例: `COMPOSE_FILE=docker-compose.override.yml:docker-compose.yml` では override.yml の設定が優先）
+      2. 複数ファイル指定時（コロン区切り）は、右側が優先（例: `COMPOSE_FILE=docker-compose.yml:docker-compose.override.yml` では override.yml の設定が優先）
       3. 環境変数未設定の場合、スクリプトは `docker-compose.yml` をデフォルト値として使用
     - **検証**: スクリプト内で以下のロジックを実装
       ```bash
@@ -388,7 +388,7 @@
       - backend: 300秒（5分）
       - frontend: 180秒（3分）
       - e2e: 600秒（10分）
-      - all: 1200秒（20分、各テストモードの合計 + バッファ）
+      - all: 1200秒（各ステージに適用）
     - **環境変数でのオーバーライド**:
       ```bash
       TEST_TIMEOUT=900 ./scripts/run-tests.sh e2e  # E2E テストのタイムアウトを15分に延長

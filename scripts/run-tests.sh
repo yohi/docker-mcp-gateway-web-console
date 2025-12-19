@@ -53,8 +53,8 @@ for file in "${COMPOSE_ARRAY[@]}"; do
 done
 
 COMPOSE_FLAGS=()
-for file in "${COMPOSE_ARRAY[@]}"; do
-  COMPOSE_FLAGS+=("-f" "$file")
+for ((idx=${#COMPOSE_ARRAY[@]}-1; idx>=0; idx--)); do
+  COMPOSE_FLAGS+=("-f" "${COMPOSE_ARRAY[$idx]}")
 done
 
 TTY_FLAG=""
