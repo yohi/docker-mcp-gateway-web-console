@@ -35,11 +35,10 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
-    working_dir: /workspace/backend
+    working_dir: /app
     ports:
       - "8001:8000"  # Use different port to avoid conflicts
     volumes:
-      - ./:/workspace
       - ./backend:/app
       - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
       - /run/user:/run/user:ro
