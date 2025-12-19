@@ -545,7 +545,7 @@
     - [ ] playwright.config.ts に `headless: true`, `viewport: { width: 1280, height: 720 }`, `trace: 'on-first-retry'` が設定されている
   - _Requirements: 5.3, 6.3_
 
-- [ ] 4.3 テストスクリプトの動作確認
+- [x] 4.3 テストスクリプトの動作確認
   - ホストから scripts/run-tests.sh all を実行し、全テストがパスすることを確認
   - workspace コンテナから scripts/run-tests.sh all を実行し、同様に確認
   - cc-sdd からの呼び出しインターフェースを検証
