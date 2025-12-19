@@ -10,20 +10,57 @@ jobs:
     runs-on: ubuntu-latest
     # timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-     
-      - uses: actions/setup-python@v5
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set dummy Fernet key for tests
+        run: |
+          key=$(python - <<'PY'
+import base64, os
+print(base64.urlsafe_b64encode(os.urandom(32)).decode())
+PY
+)
+          echo "OAUTH_TOKEN_ENCRYPTION_KEY=$key" >> "$GITHUB_ENV"
+
+      - name: Install base packages (docker/compose & Playwright deps)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates curl git jq \
+            docker.io \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
+            libxdamage1 libxfixes3 libxrandr2 libxshmfence1 libgbm1 libasound2t64 \
+            libpangocairo-1.0-0 libpango-1.0-0 libatspi2.0-0 libx11-6 libx11-xcb1 libxcb1 libxcursor1 \
+            libxrender1 libxi6 libxtst6 fonts-noto-color-emoji
+          sudo mkdir -p /usr/lib/docker/cli-plugins /usr/local/lib/docker/cli-plugins
+          if [ -x /usr/libexec/docker/cli-plugins/docker-compose ]; then
+            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose
+            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+          fi
+          sudo systemctl start docker || sudo service docker start || true
+          sudo usermod -aG docker "$USER" || true
+          docker --version || true
+          docker compose version || true
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-          
-      - name: Install dependencies
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          pip install .
-          
-      - name: Run tests
-        run: pytest
- 
+          pip install -r requirements.txt
+
+      - name: Run backend tests
+        working-directory: backend
+        env:
+          PYTHONPATH: "${{ github.workspace }}/backend:${{ github.workspace }}"
+        run: |
+          pytest
   # test:
   #   runs-on: ubuntu-slim
   #   steps:
