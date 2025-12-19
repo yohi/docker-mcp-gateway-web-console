@@ -69,20 +69,28 @@ required_extensions=(
   "bradlc.vscode-tailwindcss"
 )
 
+# CI など headless 環境では VS Code が無いため、テスト用にバイパスできるフラグを用意
+if [ "${VERIFY_DEVCONTAINER_SKIP_EXTENSIONS:-}" = "1" ]; then
+  ok "VS Code extensions check skipped (VERIFY_DEVCONTAINER_SKIP_EXTENSIONS=1)"
+  required_extensions=()
+fi
+
 installed_extensions=""
-if command -v code >/dev/null 2>&1; then
-  installed_extensions="$(code --list-extensions 2>/dev/null || true)"
-elif [ -d "${HOME}/.vscode-server/extensions" ] || [ -d "${HOME}/.vscode-server-insiders/extensions" ]; then
-  ext_dir=""
-  if [ -d "${HOME}/.vscode-server/extensions" ]; then
-    ext_dir="${HOME}/.vscode-server/extensions"
+if [ "${#required_extensions[@]}" -gt 0 ]; then
+  if command -v code >/dev/null 2>&1; then
+    installed_extensions="$(code --list-extensions 2>/dev/null || true)"
+  elif [ -d "${HOME}/.vscode-server/extensions" ] || [ -d "${HOME}/.vscode-server-insiders/extensions" ]; then
+    ext_dir=""
+    if [ -d "${HOME}/.vscode-server/extensions" ]; then
+      ext_dir="${HOME}/.vscode-server/extensions"
+    else
+      ext_dir="${HOME}/.vscode-server-insiders/extensions"
+    fi
+    installed_extensions="$(ls -1 "${ext_dir}" 2>/dev/null | sed -E 's/-[0-9].*$//' || true)"
   else
-    ext_dir="${HOME}/.vscode-server-insiders/extensions"
+    warn "VS Code extension directory not found and 'code' command not available; cannot verify extensions."
+    fail "Unable to verify VS Code extensions (run inside a VS Code DevContainer session)."
   fi
-  installed_extensions="$(ls -1 "${ext_dir}" 2>/dev/null | sed -E 's/-[0-9].*$//' || true)"
-else
-  warn "VS Code extension directory not found and 'code' command not available; cannot verify extensions."
-  fail "Unable to verify VS Code extensions (run inside a VS Code DevContainer session)."
 fi
 
 missing=()
@@ -90,12 +98,13 @@ for ext in "${required_extensions[@]}"; do
   echo "${installed_extensions}" | grep -Fxq "${ext}" || missing+=("${ext}")
 done
 
-if [ "${#missing[@]}" -ne 0 ]; then
-  printf 'Missing VS Code extensions:\n' >&2
-  printf '  - %s\n' "${missing[@]}" >&2
-  fail "VS Code extensions check failed"
+if [ "${#required_extensions[@]}" -gt 0 ]; then
+  if [ "${#missing[@]}" -ne 0 ]; then
+    printf 'Missing VS Code extensions:\n' >&2
+    printf '  - %s\n' "${missing[@]}" >&2
+    fail "VS Code extensions check failed"
+  fi
+  ok "VS Code extensions OK"
 fi
-ok "VS Code extensions OK"
 
 ok "DevContainer verification passed."
-

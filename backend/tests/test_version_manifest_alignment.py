@@ -27,8 +27,8 @@ def _load_manifest() -> Dict[str, str]:
 
     assert pins["python"].startswith("3.14."), "python pin must be for the 3.14.x line"
     assert pins["node"].startswith("22.12."), "node pin must be for the 22.12.x line"
-    assert pins["next"].startswith("15.1."), "next pin must be for the 15.1.x line"
-    assert pins["react"].startswith("19.0."), "react pin must be for the 19.0.x line"
+    assert pins["next"].startswith("15.5."), "next pin must be for the 15.5.x line"
+    assert pins["react"].startswith("19.2."), "react pin must be for the 19.2.x line"
 
     return pins
 
