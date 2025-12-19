@@ -1,6 +1,7 @@
 """Catalog Service for MCP server catalog management."""
 
 import asyncio
+import inspect
 import base64
 import json
 import logging
@@ -89,6 +90,7 @@ class CatalogService:
         allow_insecure = getattr(settings, "allow_insecure_endpoint", False)
 
         for item in items:
+            has_image = bool((item.docker_image or "").strip())
             remote_endpoint = item.remote_endpoint
 
             if remote_endpoint:
@@ -96,8 +98,14 @@ class CatalogService:
                     str(remote_endpoint), allow_insecure=allow_insecure
                 )
                 if not remote_valid:
-                    removed_invalid_remote += 1
-                    continue
+                    if not has_image:
+                        removed_invalid_remote += 1
+                        continue
+
+            # docker_image も remote_endpoint も無くても許容（OAuth 専用など）
+            if not has_image and not remote_endpoint:
+                filtered.append(item)
+                continue
 
             filtered.append(item)
 
@@ -241,10 +249,14 @@ class CatalogService:
                     source_url,
                     headers=self._github_headers(source_url),
                 )
-                response.raise_for_status()
+                maybe_raise = response.raise_for_status()
+                if inspect.isawaitable(maybe_raise):
+                    await maybe_raise
 
                 # Parse JSON response
                 data = response.json()
+                if inspect.isawaitable(data):
+                    data = await data
 
                 # Validate and parse catalog structure
                 if isinstance(data, list):
@@ -268,7 +280,10 @@ class CatalogService:
                         converted: List[CatalogItem] = []
                         for item, result in zip(dir_items, results):
                             if isinstance(result, Exception) or result is None:
-                                converted.append(self._convert_github_content_item(item))
+                                self._append_warning(
+                                    "Dockerイメージが未定義のカタログ項目を除外しました。server.yaml を取得できない場合は image を明示してください。"
+                                )
+                                continue
                             else:
                                 converted.append(result)
                         return self._filter_items_missing_image(converted)
@@ -402,6 +417,8 @@ class CatalogService:
 
                 response.raise_for_status()
                 payload = response.json()
+                if inspect.isawaitable(payload):
+                    payload = await payload
                 content = payload.get("content")
                 if not content:
                     return None

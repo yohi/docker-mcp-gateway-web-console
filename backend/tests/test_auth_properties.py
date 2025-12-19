@@ -2,7 +2,7 @@
 
 import pytest
 from hypothesis import given, strategies as st
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.models.auth import AuthMethod, LoginRequest
@@ -53,7 +53,7 @@ class TestAuthProperties:
             assert session.user_email == normalized_email
             assert session.bw_session_key == session_key
             assert session.created_at is not None
-            assert session.expires_at > datetime.now()
+            assert session.expires_at > datetime.now(timezone.utc)
             
             # Verify session is valid and stored
             assert await auth_service.validate_session(session.session_id) is True

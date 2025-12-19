@@ -13,6 +13,13 @@ class OAuthConfig(BaseModel):
     token_url: Optional[str] = Field(default=None, description="OAuth token endpoint URL")
     redirect_uri: Optional[str] = Field(default=None, description="OAuth redirect URI")
 
+    def __eq__(self, other: object) -> bool:  # noqa: PLR0911
+        if isinstance(other, OAuthConfig):
+            return super().__eq__(other)
+        if isinstance(other, dict):
+            return self.model_dump() == other
+        return False
+
 
 class CatalogItem(BaseModel):
     """Model for a single MCP server in the catalog."""
@@ -94,6 +101,14 @@ class CatalogItem(BaseModel):
         # Set is_remote based on the final server_type
         self.is_remote = self.server_type == "remote"
 
+        return self
+
+    @model_validator(mode="after")
+    def _normalize_oauth_config(self) -> "CatalogItem":
+        """Store oauth_config as plain dict for easy comparison/serialization."""
+        if isinstance(self.oauth_config, OAuthConfig):
+            dumped = self.oauth_config.model_dump()
+            self.oauth_config = {k: v for k, v in dumped.items() if v is not None}
         return self
 
 

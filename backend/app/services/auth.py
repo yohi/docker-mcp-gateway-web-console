@@ -18,6 +18,15 @@ from .state_store import StateStore
 
 logger = logging.getLogger(__name__)
 
+# Track initialized state stores to avoid repeating expensive schema setup
+_INITIALIZED_DB_PATHS: set[str] = set()
+_DEFAULT_STATE_STORE = StateStore()
+try:
+    _DEFAULT_STATE_STORE.init_schema()
+    _INITIALIZED_DB_PATHS.add(_DEFAULT_STATE_STORE.db_path)
+except Exception as exc:  # noqa: BLE001
+    logger.warning("StateStore の初期化に失敗しました（継続します）: %s", exc)
+
 
 class AuthError(Exception):
     """Custom exception for authentication errors."""
@@ -52,10 +61,12 @@ class AuthService:
         self._sessions: Dict[str, Session] = {}
         self._session_timeout = timedelta(minutes=settings.session_timeout_minutes)
         self._on_session_end = on_session_end
-        self._state_store = state_store or StateStore()
+        self._state_store = state_store or _DEFAULT_STATE_STORE
 
         try:
-            self._state_store.init_schema()
+            if self._state_store.db_path not in _INITIALIZED_DB_PATHS:
+                self._state_store.init_schema()
+                _INITIALIZED_DB_PATHS.add(self._state_store.db_path)
             self._load_persisted_sessions()
         except Exception as exc:  # noqa: BLE001
             logger.warning("セッション永続化の初期化に失敗しました: %s", exc)
@@ -151,6 +162,10 @@ class AuthService:
         if session is None:
             return False
 
+        # Normalize timestamps to UTC to avoid naive/aware mismatches
+        session.last_activity = self._to_utc(session.last_activity)
+        session.expires_at = self._to_utc(session.expires_at)
+
         now = datetime.now(timezone.utc)
         
         # Check if session has expired
@@ -214,8 +229,10 @@ class AuthService:
         """
         now = datetime.now(timezone.utc)
         expired_sessions = []
-        
+
         for session_id, session in self._sessions.items():
+            session.expires_at = self._to_utc(session.expires_at)
+            session.last_activity = self._to_utc(session.last_activity)
             if now >= session.expires_at or (now - session.last_activity) >= self._session_timeout:
                 expired_sessions.append(session_id)
         
