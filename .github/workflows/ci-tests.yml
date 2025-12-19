@@ -5,6 +5,10 @@ on:
   pull_request:
 
 jobs:
+  backend-unit:
+    name: Backend Unit (Pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
   test:
     runs-on: ubuntu-slim
     steps:
