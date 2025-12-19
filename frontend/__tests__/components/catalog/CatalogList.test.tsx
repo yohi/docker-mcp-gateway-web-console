@@ -303,35 +303,49 @@ describe('CatalogList', () => {
     render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
 
     expect(screen.getByText('Remote Server')).toBeInTheDocument();
-    expect(screen.getByText('remote')).toBeInTheDocument();
-    expect(screen.getByText(/api\.example\.com\/sse/)).toBeInTheDocument();
+    expect(screen.getAllByText('remote').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/リモートエンドポイント/)).toBeInTheDocument();
+    expect(screen.getByText(/https:\/\/api\.example\.com\/sse/)).toBeInTheDocument();
     // ステータスバッジ
     expect(screen.getByText('登録済み')).toBeInTheDocument();
     expect(screen.queryByText('インストール')).not.toBeInTheDocument();
   });
 
   it('falls back to cached data when fetching fails after a success', async () => {
-    mockUseSWR
-      .mockImplementationOnce((key: string) =>
-        key.startsWith('catalog|')
-          ? {
-              data: { servers: mockItems, cached: false, total: mockItems.length, page_size: mockItems.length },
-              error: undefined,
-              isLoading: false,
-              mutate: jest.fn(),
-            }
-          : emptyRemoteResponse
-      )
-      .mockImplementation((key: string) =>
-        key.startsWith('catalog|')
-          ? {
-              data: undefined,
-              error: new Error('Network error'),
-              isLoading: false,
-              mutate: jest.fn(),
-            }
-          : emptyRemoteResponse
-      );
+    let catalogCallCount = 0;
+    mockUseSWR.mockImplementation((key: string) => {
+      if (key === 'remote-servers-catalog') {
+        return emptyRemoteResponse;
+      }
+
+      if (key.startsWith('catalog|')) {
+        catalogCallCount += 1;
+        if (catalogCallCount === 1) {
+          return {
+            data: { servers: mockItems, cached: false, total: mockItems.length, page_size: mockItems.length },
+            error: undefined,
+            isLoading: false,
+            isValidating: false,
+            mutate: jest.fn(),
+          };
+        }
+        return {
+          data: undefined,
+          error: new Error('Network error'),
+          isLoading: false,
+          isValidating: false,
+          mutate: jest.fn(),
+        };
+      }
+
+      return {
+        data: undefined,
+        error: undefined,
+        isLoading: false,
+        isValidating: false,
+        mutate: jest.fn(),
+      };
+    });
 
     const { rerender } = render(
       <CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />

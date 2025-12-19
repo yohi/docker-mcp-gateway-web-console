@@ -307,7 +307,7 @@
   - ビルド失敗時のログ出力を確認
   - _Requirements: 4.1, 4.2, 4.4, 6.1_
 
-- [ ] 3.5 Frontend テストスイートの実行
+- [x] 3.5 Frontend テストスイートの実行
   - docker compose exec frontend npm test でユニットテストを実行
   - 全既存テストがパスすることを確認
   - テスト失敗時のログ出力を確認
