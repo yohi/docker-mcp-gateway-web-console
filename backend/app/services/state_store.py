@@ -45,6 +45,7 @@ class StateStore:
     def __init__(self, db_path: Optional[str] = None) -> None:
         self.db_path = db_path or settings.state_db_path
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._initialized = False
 
     def _connect(self) -> sqlite3.Connection:
         """SQLite 接続を取得する。"""
@@ -55,6 +56,8 @@ class StateStore:
 
     def init_schema(self) -> None:
         """必要なテーブルを作成する。既に存在する場合は何もしない。"""
+        if self._initialized:
+            return
         with self._connect() as conn:
             conn.executescript(
                 """
@@ -138,8 +141,10 @@ class StateStore:
                 );
                 CREATE TABLE IF NOT EXISTS audit_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    correlation_id TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    target TEXT,
                     metadata TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
@@ -169,6 +174,7 @@ class StateStore:
             )
             self._migrate_columns(conn)
             conn.commit()
+        self._initialized = True
 
     def _migrate_columns(self, conn: sqlite3.Connection) -> None:
         """既存DBに対して不足カラムを追加する（軽量マイグレーション）。"""

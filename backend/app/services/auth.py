@@ -18,12 +18,9 @@ from .state_store import StateStore
 
 logger = logging.getLogger(__name__)
 
-# Track initialized state stores to avoid repeating expensive schema setup
-_INITIALIZED_DB_PATHS: set[str] = set()
 _DEFAULT_STATE_STORE = StateStore()
 try:
     _DEFAULT_STATE_STORE.init_schema()
-    _INITIALIZED_DB_PATHS.add(_DEFAULT_STATE_STORE.db_path)
 except Exception as exc:  # noqa: BLE001
     logger.warning("StateStore の初期化に失敗しました（継続します）: %s", exc)
 
@@ -64,9 +61,7 @@ class AuthService:
         self._state_store = state_store or _DEFAULT_STATE_STORE
 
         try:
-            if self._state_store.db_path not in _INITIALIZED_DB_PATHS:
-                self._state_store.init_schema()
-                _INITIALIZED_DB_PATHS.add(self._state_store.db_path)
+            self._state_store.init_schema()
             self._load_persisted_sessions()
         except Exception as exc:  # noqa: BLE001
             logger.warning("セッション永続化の初期化に失敗しました: %s", exc)

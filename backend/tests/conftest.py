@@ -30,6 +30,13 @@ if "HYPOTHESIS_PROFILE" not in os.environ:
 @pytest.fixture(autouse=True)
 def clear_auth_sessions() -> None:
     """各テスト間で認証セッションの永続データをクリーンに保つ。"""
+    try:
+        from app.services import auth as auth_service  # pylint: disable=import-outside-toplevel
+
+        if hasattr(auth_service, "_INITIALIZED_DB_PATHS"):
+            auth_service._INITIALIZED_DB_PATHS.clear()
+    except Exception:
+        pass
     store = StateStore()
     try:
         with store._connect() as conn:  # type: ignore[attr-defined]
@@ -38,3 +45,11 @@ def clear_auth_sessions() -> None:
     except Exception:
         # DB がまだ初期化されていない場合などはスキップ
         return
+    finally:
+        try:
+            from app.services import auth as auth_service  # pylint: disable=import-outside-toplevel
+
+            if hasattr(auth_service, "_INITIALIZED_DB_PATHS"):
+                auth_service._INITIALIZED_DB_PATHS.clear()
+        except Exception:
+            pass

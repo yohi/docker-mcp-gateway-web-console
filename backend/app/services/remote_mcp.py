@@ -461,19 +461,10 @@ class RemoteMcpService:
         updates: dict[str, object] = {"status": status}
         if credential_key is not _UNSET:
             if credential_key and self._state_store.get_credential(str(credential_key)) is None:
-                now = datetime.now(timezone.utc)
-                placeholder = CredentialRecord(
-                    credential_key=str(credential_key),
-                    token_ref={"type": "placeholder"},
-                    scopes=[],
-                    expires_at=now + timedelta(days=1),
-                    server_id=server_id,
-                    oauth_token_url=None,
-                    oauth_client_id=None,
-                    created_by="system",
-                    created_at=now,
+                raise CredentialNotFoundError(
+                    "credential_key が指定されていますが、資格情報レコードが存在しません。"
+                    " credential_key の設定や資格情報の作成手順を確認してください。"
                 )
-                self._state_store.save_credential(placeholder)
             updates["credential_key"] = credential_key
         if last_connected_at is not _UNSET:
             updates["last_connected_at"] = last_connected_at

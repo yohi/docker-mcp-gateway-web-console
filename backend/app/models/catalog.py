@@ -105,10 +105,11 @@ class CatalogItem(BaseModel):
 
     @model_validator(mode="after")
     def _normalize_oauth_config(self) -> "CatalogItem":
-        """Store oauth_config as plain dict for easy comparison/serialization."""
-        if isinstance(self.oauth_config, OAuthConfig):
-            dumped = self.oauth_config.model_dump()
-            self.oauth_config = {k: v for k, v in dumped.items() if v is not None}
+        """Normalize oauth_config.
+
+        Keep oauth_config as OAuthConfig (or None) and rely on Pydantic's native
+        serialization.
+        """
         return self
 
 
