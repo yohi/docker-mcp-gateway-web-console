@@ -467,7 +467,7 @@
     - [ ] エラーハンドリング（サービス未起動、Docker 未インストール）が実装されている
   - _Requirements: 2.1, 2.2, 2.3, 1.4_
 
-- [ ] 4.2 E2E テストの実行確認
+- [x] 4.2 E2E テストの実行確認
   - **Playwright Docker 環境の前提条件**:
     - **Dockerイメージタグ**: プロジェクトの Playwright バージョンに合致した公式イメージを使用
       - 確認方法: `jq -r '.devDependencies.["@playwright/test"]' frontend/package.json` で Playwright バージョンを取得
