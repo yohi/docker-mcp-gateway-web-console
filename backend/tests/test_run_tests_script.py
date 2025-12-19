@@ -234,6 +234,65 @@ def test_missing_compose_file_returns_exit_code_3(tmp_path: Path) -> None:
     assert "Compose file not found" in combined_output
 
 
+def test_compose_file_order_preserves_override_priority(tmp_path: Path) -> None:
+    repo_root = _repo_root()
+    base_compose = tmp_path / "docker-compose.yml"
+    override_compose = tmp_path / "docker-compose.override.yml"
+    base_compose.write_text("version: '3.8'\nservices:\n  backend:\n    image: dummy\n", encoding="utf-8")
+    override_compose.write_text("version: '3.8'\nservices:\n  backend:\n    image: override\n", encoding="utf-8")
+
+    log_path = tmp_path / "docker.log"
+    exec_log = tmp_path / "exec.log"
+    timeout_log = tmp_path / "timeout.log"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_docker(
+        fake_bin / "docker",
+        log_path,
+        exec_log,
+        running_services=("backend",),
+    )
+    _write_fake_timeout(fake_bin / "timeout", timeout_log)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
+    env["COMPOSE_FILE"] = f"{base_compose}:{override_compose}"
+    env["CI"] = "true"
+
+    script_under_test = repo_root / "scripts" / "run-tests.sh"
+    result = subprocess.run(
+        ["bash", str(script_under_test), "backend"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, textwrap.dedent(
+        f"""
+        Expected success but got exit code {result.returncode}
+        --- stdout ---
+        {result.stdout}
+        --- stderr ---
+        {result.stderr}
+        """
+    )
+
+    docker_calls = log_path.read_text(encoding="utf-8").splitlines()
+    ps_call = next((line for line in docker_calls if "compose" in line and "ps" in line), "")
+    exec_call = next((line for line in docker_calls if "compose" in line and "exec" in line), "")
+    assert ps_call, "docker compose ps should be invoked"
+    assert exec_call, "docker compose exec should be invoked"
+
+    def _is_order_correct(call: str) -> bool:
+        parts = call.split()
+        return parts.index(str(base_compose)) < parts.index(str(override_compose))
+
+    assert _is_order_correct(ps_call), "compose files should keep base before override for priority resolution"
+    assert _is_order_correct(exec_call), "compose exec should keep base before override for priority resolution"
+
+
 def test_invalid_mode_returns_exit_code_2(tmp_path: Path) -> None:
     repo_root = _repo_root()
     compose_file = tmp_path / "docker-compose.yml"
