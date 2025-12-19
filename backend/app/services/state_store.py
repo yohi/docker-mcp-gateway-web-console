@@ -45,6 +45,7 @@ class StateStore:
     def __init__(self, db_path: Optional[str] = None) -> None:
         self.db_path = db_path or settings.state_db_path
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._initialized = False
 
     def _connect(self) -> sqlite3.Connection:
         """SQLite 接続を取得する。"""
@@ -55,6 +56,8 @@ class StateStore:
 
     def init_schema(self) -> None:
         """必要なテーブルを作成する。既に存在する場合は何もしない。"""
+        if self._initialized:
+            return
         with self._connect() as conn:
             conn.executescript(
                 """
@@ -138,8 +141,10 @@ class StateStore:
                 );
                 CREATE TABLE IF NOT EXISTS audit_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    correlation_id TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    target TEXT NOT NULL,
                     metadata TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
@@ -169,22 +174,23 @@ class StateStore:
             )
             self._migrate_columns(conn)
             conn.commit()
+        self._initialized = True
 
     def _migrate_columns(self, conn: sqlite3.Connection) -> None:
         """既存DBに対して不足カラムを追加する（軽量マイグレーション）。"""
+        def _get_columns(table: str) -> set[str]:
+            return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
         try:
-            columns = {
-                row["name"]
-                for row in conn.execute("PRAGMA table_info(credentials)").fetchall()
-            }
+            credential_columns = _get_columns("credentials")
         except Exception:
             logger.debug("PRAGMA table_info failed; skipping migrations", exc_info=True)
             return
 
         statements: list[str] = []
-        if "oauth_token_url" not in columns:
+        if "oauth_token_url" not in credential_columns:
             statements.append("ALTER TABLE credentials ADD COLUMN oauth_token_url TEXT")
-        if "oauth_client_id" not in columns:
+        if "oauth_client_id" not in credential_columns:
             statements.append("ALTER TABLE credentials ADD COLUMN oauth_client_id TEXT")
 
         for stmt in statements:
@@ -192,6 +198,98 @@ class StateStore:
                 conn.execute(stmt)
             except Exception:
                 logger.debug("Migration failed: %s", stmt, exc_info=True)
+
+        self._migrate_audit_logs(conn)
+
+    def _migrate_audit_logs(self, conn: sqlite3.Connection) -> None:
+        """audit_logs テーブルを最新スキーマに再構築する。"""
+        desired_columns = {
+            "id",
+            "category",
+            "action",
+            "actor",
+            "target",
+            "metadata",
+            "created_at",
+        }
+        allowed_identifiers = {
+            "id",
+            "category",
+            "action",
+            "event_type",
+            "actor",
+            "target",
+            "correlation_id",
+            "metadata",
+            "created_at",
+        }
+        try:
+            audit_columns_raw = {
+                row["name"] for row in conn.execute("PRAGMA table_info(audit_logs)").fetchall()
+            }
+        except Exception:
+            logger.debug("PRAGMA table_info failed for audit_logs; skipping audit migrations", exc_info=True)
+            return
+
+        if not audit_columns_raw:
+            return
+        unexpected_columns = audit_columns_raw - allowed_identifiers
+        if unexpected_columns:
+            logger.debug("Ignoring unexpected audit_logs columns: %s", unexpected_columns)
+
+        audit_columns = audit_columns_raw & allowed_identifiers
+
+        if audit_columns_raw == desired_columns:
+            return
+
+        def _select_token(preferred: list[str], fallback_literal: str) -> str:
+            for candidate in preferred:
+                if candidate in audit_columns:
+                    return candidate
+            return fallback_literal
+
+        select_id = _select_token(["id"], "NULL")
+        select_category = _select_token(["category"], "'legacy'")
+        select_action = _select_token(["action", "event_type"], "'unknown'")
+        select_actor = _select_token(["actor"], "'system'")
+        select_target = _select_token(["target", "correlation_id"], "'unknown'")
+        select_metadata = _select_token(["metadata"], "'{}'")
+        select_created_at = _select_token(
+            ["created_at"], "'1970-01-01T00:00:00+00:00'"
+        )
+
+        try:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS audit_logs_migrated (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    target TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                f"""
+                INSERT INTO audit_logs_migrated (id, category, action, actor, target, metadata, created_at)
+                SELECT
+                    {select_id},
+                    {select_category},
+                    {select_action},
+                    {select_actor},
+                    {select_target},
+                    {select_metadata},
+                    {select_created_at}
+                FROM audit_logs
+                """
+            )
+            conn.execute("DROP TABLE audit_logs")
+            conn.execute("ALTER TABLE audit_logs_migrated RENAME TO audit_logs")
+        except Exception:
+            logger.debug("Audit log migration failed", exc_info=True)
 
     def list_tables(self) -> List[str]:
         """テーブル一覧を返す（テスト用ヘルパー）。"""
@@ -729,23 +827,27 @@ class StateStore:
     # Audit log operations
     def record_audit_log(
         self,
-        event_type: str,
-        correlation_id: str,
+        category: str,
+        action: str,
+        actor: str,
+        target: str,
         metadata: Dict[str, object],
         created_at: Optional[datetime] = None,
     ) -> None:
-        """相関 ID 付きの監査ログを保存する。"""
+        """監査ログを保存する。"""
         sanitized = self._sanitize_metadata(metadata)
         timestamp = created_at or datetime.now(timezone.utc)
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO audit_logs (correlation_id, event_type, metadata, created_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO audit_logs (category, action, actor, target, metadata, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    correlation_id,
-                    event_type,
+                    category,
+                    action,
+                    actor,
+                    target,
                     json.dumps(sanitized),
                     _to_iso(timestamp),
                 ),
@@ -810,8 +912,10 @@ class StateStore:
             result.append(
                 AuditLogEntry(
                     id=row["id"],
-                    correlation_id=row["correlation_id"],
-                    event_type=row["event_type"],
+                    category=row["category"],
+                    action=row["action"],
+                    actor=row["actor"],
+                    target=row["target"],
                     metadata=json.loads(row["metadata"]),
                     created_at=_from_iso(row["created_at"]),
                 )

@@ -513,8 +513,10 @@ def test_audit_log_sanitizes_tokens(store: StateStore) -> None:
     """監査ログにトークン値が残らないようにマスクされることを検証する。"""
     now = datetime.now(timezone.utc)
     store.record_audit_log(
-        event_type="token_saved",
-        correlation_id="corr-1",
+        category="oauth",
+        action="token_saved",
+        actor="system",
+        target="corr-1",
         metadata={
             "token": "secret",
             "refresh_token": "refresh",

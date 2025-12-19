@@ -571,8 +571,8 @@ class OAuthService:
         state = secrets.token_urlsafe(32)
         if missing:
             self._record_audit(
-                event_type="scope_denied",
-                correlation_id=state,
+                action="scope_denied",
+                target=state,
                 metadata={"server_id": server_id, "requested_scopes": scopes, "missing": missing},
             )
             raise ScopeNotAllowedError(missing)
@@ -641,8 +641,8 @@ class OAuthService:
         correlation = correlation_id or secrets.token_urlsafe(16)
         if not is_admin:
             self._record_audit(
-                event_type="scope_update_forbidden",
-                correlation_id=correlation,
+                action="scope_update_forbidden",
+                target=correlation,
                 metadata={"requested_scopes": scopes},
             )
             raise ScopeUpdateForbiddenError("許可スコープの変更は管理者のみ可能です")
@@ -652,8 +652,8 @@ class OAuthService:
         for key in list(self._secret_store.keys()):
             self._delete_credential(key)
         self._record_audit(
-            event_type="scope_updated",
-            correlation_id=correlation,
+            action="scope_updated",
+            target=correlation,
             metadata={"permitted_scopes": scopes},
         )
 
@@ -841,8 +841,8 @@ class OAuthService:
                 )
                 self._delete_credential(credential_key)
                 self._record_audit(
-                    event_type="token_refreshed",
-                    correlation_id=credential["credential_key"],
+                    action="token_refreshed",
+                    target=credential["credential_key"],
                     metadata={
                         "old_credential_key": credential_key,
                         "credential_key": credential["credential_key"],
@@ -914,8 +914,8 @@ class OAuthService:
             "scope": scopes,
         }
         self._record_audit(
-            event_type="token_saved",
-            correlation_id=correlation_id or credential_key,
+            action="token_saved",
+            target=correlation_id or credential_key,
             metadata={
                 "credential_key": credential_key,
                 "server_id": server_id,
@@ -930,13 +930,15 @@ class OAuthService:
         self._secret_store.pop(credential_key, None)
 
     def _record_audit(
-        self, event_type: str, correlation_id: str, metadata: Dict[str, object]
+        self, action: str, target: str, metadata: Dict[str, object]
     ) -> None:
         """監査ログを記録する。"""
         try:
             self._state_store.record_audit_log(
-                event_type=event_type,
-                correlation_id=correlation_id,
+                category="oauth",
+                action=action,
+                actor="system",
+                target=target,
                 metadata=metadata,
             )
         except Exception:

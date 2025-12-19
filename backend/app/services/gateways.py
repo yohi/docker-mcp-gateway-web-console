@@ -110,8 +110,8 @@ class GatewayService:
                 {"result": "pass"},
             )
             self._record_allowlist_audit(
-                event_type="gateway_allowlist_pass",
-                correlation_id=correlation_id,
+                action="gateway_allowlist_pass",
+                target=correlation_id,
                 url=str(request.url),
                 gateway_type=request.type,
             )
@@ -121,8 +121,8 @@ class GatewayService:
                 {"result": "reject"},
             )
             self._record_allowlist_audit(
-                event_type="gateway_allowlist_reject",
-                correlation_id=correlation_id,
+                action="gateway_allowlist_reject",
+                target=correlation_id,
                 url=str(request.url),
                 gateway_type=request.type,
             )
@@ -138,8 +138,10 @@ class GatewayService:
 
         # 監査ログ（トークンは StateStore 側でマスクされる）
         self.state_store.record_audit_log(
-            event_type="gateway_registered",
-            correlation_id=correlation_id or record.gateway_id,
+            category="gateways",
+            action="gateway_registered",
+            actor="system",
+            target=correlation_id or record.gateway_id,
             metadata={"gateway_id": record.gateway_id, "url": record.url, "type": record.type},
         )
 
@@ -214,16 +216,18 @@ class GatewayService:
     def _record_allowlist_audit(
         self,
         *,
-        event_type: str,
-        correlation_id: Optional[str],
+        action: str,
+        target: Optional[str],
         url: str,
         gateway_type: str,
     ) -> None:
         """allowlist 判定結果を監査ログに記録する。"""
         try:
             self.state_store.record_audit_log(
-                event_type=event_type,
-                correlation_id=correlation_id or "gateway-allowlist",
+                category="gateways",
+                action=action,
+                actor="system",
+                target=target or "gateway-allowlist",
                 metadata={"url": url, "type": gateway_type},
             )
         except Exception:  # noqa: BLE001

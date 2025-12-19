@@ -216,7 +216,7 @@
   - C 拡張を含む依存関係のビルド可否を確認
   - _Requirements: 3.1, 3.2, 3.4, 6.1, 6.2_
 
-- [ ] 2.4 Backend テストスイートの実行
+- [x] 2.4 Backend テストスイートの実行
   - docker compose exec backend pytest でテストを実行
   - 全既存テストがパスすることを確認
   - テスト失敗時のログ出力を確認

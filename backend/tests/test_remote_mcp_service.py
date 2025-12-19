@@ -138,6 +138,19 @@ async def test_set_status_updates_record(tmp_path) -> None:
     )
     await service.save_server(server)
 
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    record = CredentialRecord(
+        credential_key="cred-1",
+        token_ref={"type": "plaintext", "value": "abc"},
+        scopes=["scope1"],
+        expires_at=expires,
+        server_id="srv-status",
+        oauth_token_url="https://auth.example.com/token",
+        oauth_client_id="client-id",
+        created_by="tester",
+    )
+    service.state_store.save_credential(record)
+
     updated = await service.set_status(
         server_id="srv-status",
         status=RemoteServerStatus.AUTHENTICATED,
@@ -238,7 +251,7 @@ async def test_register_server_saves_and_records_audit(tmp_path, monkeypatch) ->
 
     logs = service.state_store.get_recent_audit_logs()
     assert any(
-        log.event_type == "server_registered"
+        log.action == "server_registered"
         and log.metadata.get("server_id") == server.server_id
         and log.metadata.get("endpoint") == "https://api.example.com/sse"
         for log in logs
@@ -263,7 +276,7 @@ async def test_register_server_rejects_not_allowed_endpoint(tmp_path, monkeypatc
     assert servers == []
 
     logs = service.state_store.get_recent_audit_logs()
-    assert any(log.event_type == "endpoint_rejected" for log in logs)
+    assert any(log.action == "endpoint_rejected" for log in logs)
 
 
 @pytest.mark.asyncio
@@ -339,7 +352,7 @@ async def test_enable_server_sets_auth_required_and_records_audit(tmp_path, monk
 
     logs = service.state_store.get_recent_audit_logs()
     assert any(
-        log.event_type == "server_enabled"
+        log.action == "server_enabled"
         and log.metadata.get("server_id") == server.server_id
         and log.metadata.get("to_status") == RemoteServerStatus.AUTH_REQUIRED.value
         for log in logs
@@ -385,7 +398,7 @@ async def test_enable_server_uses_credentials_when_present(tmp_path, monkeypatch
 
     logs = service.state_store.get_recent_audit_logs()
     assert any(
-        log.event_type == "server_enabled"
+        log.action == "server_enabled"
         and log.metadata.get("server_id") == server.server_id
         and log.metadata.get("to_status") == RemoteServerStatus.AUTHENTICATED.value
         for log in logs
@@ -413,7 +426,7 @@ async def test_disable_server_sets_disabled_and_records_audit(tmp_path, monkeypa
 
     logs = service.state_store.get_recent_audit_logs()
     assert any(
-        log.event_type == "server_disabled"
+        log.action == "server_disabled"
         and log.metadata.get("server_id") == server.server_id
         and log.metadata.get("to_status") == RemoteServerStatus.DISABLED.value
         for log in logs
@@ -458,7 +471,7 @@ async def test_delete_server_removes_credentials_when_requested(tmp_path, monkey
     assert service.state_store.get_credential("cred-del") is None
 
     logs = service.state_store.get_recent_audit_logs()
-    assert any(log.event_type == "server_deleted" for log in logs)
+    assert any(log.action == "server_deleted" for log in logs)
 
 
 @pytest.mark.asyncio
@@ -501,7 +514,7 @@ async def test_revoke_credentials_clears_token_and_sets_auth_required(tmp_path, 
 
     logs = service.state_store.get_recent_audit_logs()
     assert any(
-        log.event_type == "credentials_revoked"
+        log.action == "credentials_revoked"
         and log.metadata.get("server_id") == server.server_id
         for log in logs
     )

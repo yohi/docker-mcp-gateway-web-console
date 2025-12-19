@@ -18,6 +18,12 @@ from .state_store import StateStore
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_STATE_STORE = StateStore()
+try:
+    _DEFAULT_STATE_STORE.init_schema()
+except Exception as exc:  # noqa: BLE001
+    logger.warning("StateStore の初期化に失敗しました（継続します）: %s", exc)
+
 
 class AuthError(Exception):
     """Custom exception for authentication errors."""
@@ -52,7 +58,7 @@ class AuthService:
         self._sessions: Dict[str, Session] = {}
         self._session_timeout = timedelta(minutes=settings.session_timeout_minutes)
         self._on_session_end = on_session_end
-        self._state_store = state_store or StateStore()
+        self._state_store = state_store or _DEFAULT_STATE_STORE
 
         try:
             self._state_store.init_schema()
@@ -137,6 +143,21 @@ class AuthService:
         
         return True
 
+    async def _invalidate_session(self, session_id: str) -> None:
+        """期限切れ/タイムアウト時にセッションを無効化する。"""
+        session = self._sessions.get(session_id) or self._load_session_from_store(session_id)
+        if session is None:
+            return
+
+        self._sessions.pop(session_id, None)
+        self._delete_persisted_session(session_id)
+
+        if self._on_session_end:
+            try:
+                self._on_session_end(session_id)
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"Error in session end callback for {session_id}: {e}")
+
     async def validate_session(self, session_id: str) -> bool:
         """
         Check if a session is valid and not expired.
@@ -151,20 +172,23 @@ class AuthService:
         if session is None:
             return False
 
+        # Normalize timestamps to UTC to avoid naive/aware mismatches
+        session.last_activity = self._to_utc(session.last_activity)
+        session.expires_at = self._to_utc(session.expires_at)
+
         now = datetime.now(timezone.utc)
         
         # Check if session has expired
         if now >= session.expires_at:
             logger.info(f"Session expired: {session_id}")
-            # Clean up expired session
-            await self.logout(session_id)
+            await self._invalidate_session(session_id)
             return False
         
         # Check for inactivity timeout
         time_since_activity = now - session.last_activity
         if time_since_activity >= self._session_timeout:
             logger.info(f"Session timed out due to inactivity: {session_id}")
-            await self.logout(session_id)
+            await self._invalidate_session(session_id)
             return False
         
         # Update last activity time
@@ -214,8 +238,10 @@ class AuthService:
         """
         now = datetime.now(timezone.utc)
         expired_sessions = []
-        
+
         for session_id, session in self._sessions.items():
+            session.expires_at = self._to_utc(session.expires_at)
+            session.last_activity = self._to_utc(session.last_activity)
             if now >= session.expires_at or (now - session.last_activity) >= self._session_timeout:
                 expired_sessions.append(session_id)
         

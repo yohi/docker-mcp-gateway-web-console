@@ -30,11 +30,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
+    working_dir: /workspace/backend
     ports:
       - "8000:8000"
     # Run as root to avoid permission issues with rootless Docker socket access inside the container
     user: "0:0"
     volumes:
+      - ./:/workspace
       - ./data:/app/data
       - ./backend:/app
       - ${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}:${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}

@@ -45,7 +45,8 @@ async def get_catalog(
     try:
         # Check if we have valid cached data first
         cached_items = await catalog_service.get_cached_catalog(source_url)
-        
+        warning_msg = str(catalog_service.warning) if catalog_service.warning else None
+
         if cached_items is not None:
             # We have valid cache, try to fetch fresh data in background
             # but return cached data immediately
@@ -64,11 +65,12 @@ async def get_catalog(
                 page_size=max(len(cached_items), 1),
                 cached=True,
                 categories=sorted({item.category for item in cached_items}),
-                warning=catalog_service.warning,
+                warning=warning_msg,
             )
         else:
             # No cache, must fetch fresh data
             items, is_cached = await catalog_service.fetch_catalog(source_url)
+            warning_msg = str(catalog_service.warning) if catalog_service.warning else None
             return CatalogResponse(
                 servers=items,
                 total=len(items),
@@ -76,7 +78,7 @@ async def get_catalog(
                 page_size=max(len(items), 1),
                 cached=is_cached,
                 categories=sorted({item.category for item in items}),
-                warning=catalog_service.warning,
+                warning=warning_msg,
             )
             
     except CatalogError as e:
@@ -136,6 +138,7 @@ async def search_catalog(
             query=q,
             category=category
         )
+        warning_msg = str(catalog_service.warning) if catalog_service.warning else None
         
         total = len(filtered_items)
         if total == 0:
@@ -146,7 +149,7 @@ async def search_catalog(
                 page_size=page_size,
                 cached=is_cached,
                 categories=[],
-                warning=catalog_service.warning,
+                warning=warning_msg,
             )
 
         max_page = max(1, math.ceil(total / page_size))
@@ -163,7 +166,7 @@ async def search_catalog(
             page_size=page_size,
             cached=is_cached,
             categories=categories,
-            warning=catalog_service.warning,
+            warning=warning_msg,
         )
         
     except CatalogError as e:

@@ -1063,7 +1063,7 @@ async def test_oauth_initiate_rejects_unpermitted_scope(monkeypatch, reset_oauth
     assert response.status_code == 400
     logs = reset_oauth_service.state_store.get_recent_audit_logs(limit=1)
     assert logs
-    assert logs[0].event_type == "scope_denied"
+    assert logs[0].action == "scope_denied"
 
 
 def test_scope_update_requires_admin(reset_oauth_service):
@@ -1074,7 +1074,7 @@ def test_scope_update_requires_admin(reset_oauth_service):
 
     logs = store.get_recent_audit_logs(limit=1)
     assert logs
-    assert logs[0].event_type == "scope_update_forbidden"
+    assert logs[0].action == "scope_update_forbidden"
 
 
 def test_expires_in_parsing(reset_oauth_service):
@@ -1160,4 +1160,4 @@ async def test_scope_update_by_admin_invalidates_credentials(monkeypatch, reset_
     assert store.get_credential(cred_key) is None
     logs = store.get_recent_audit_logs(limit=1)
     assert logs
-    assert logs[0].event_type == "scope_updated"
+    assert logs[0].action == "scope_updated"

@@ -13,6 +13,13 @@ class OAuthConfig(BaseModel):
     token_url: Optional[str] = Field(default=None, description="OAuth token endpoint URL")
     redirect_uri: Optional[str] = Field(default=None, description="OAuth redirect URI")
 
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, OAuthConfig):
+            return super().__eq__(other)
+        if isinstance(other, dict):
+            return self.model_dump(exclude_none=True) == other
+        return False
+
 
 class CatalogItem(BaseModel):
     """Model for a single MCP server in the catalog."""
@@ -94,6 +101,15 @@ class CatalogItem(BaseModel):
         # Set is_remote based on the final server_type
         self.is_remote = self.server_type == "remote"
 
+        return self
+
+    @model_validator(mode="after")
+    def _normalize_oauth_config(self) -> "CatalogItem":
+        """Normalize oauth_config.
+
+        Keep oauth_config as OAuthConfig (or None) and rely on Pydantic's native
+        serialization.
+        """
         return self
 
 

@@ -88,7 +88,7 @@ class TestGatewayAPI:
         assert "許可リスト未登録" in data["detail"]
         logs = gateway_service.state_store.get_recent_audit_logs(limit=5)
         assert any(
-            log.event_type == "gateway_allowlist_reject" and log.correlation_id == "corr-allow-deny"
+            log.action == "gateway_allowlist_reject" and log.target == "corr-allow-deny"
             for log in logs
         )
         assert gateway_service.metrics.get_counter(
@@ -117,7 +117,7 @@ class TestGatewayAPI:
         assert "token" not in body
         logs = gateway_service.state_store.get_recent_audit_logs(limit=5)
         assert any(
-            log.event_type == "gateway_allowlist_pass" and log.correlation_id == "corr-allow-pass"
+            log.action == "gateway_allowlist_pass" and log.target == "corr-allow-pass"
             for log in logs
         )
         assert gateway_service.metrics.get_counter(
