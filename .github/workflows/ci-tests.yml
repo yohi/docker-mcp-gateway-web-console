@@ -161,6 +161,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Set dummy Fernet key for tests
         run: |
           key=$(python - <<'PY'
@@ -271,13 +282,12 @@ jobs:
       - name: Run E2E tests
         env:
           CI: true
+          PLAYWRIGHT_BASE_URL: http://localhost:3001
+        working-directory: frontend
         run: |
           set -e
-          mkdir -p frontend/test-results frontend/playwright-report
-          docker compose -f docker-compose.test.yml run --rm \
-            -v "$PWD/frontend/test-results:/app/test-results" \
-            -v "$PWD/frontend/playwright-report:/app/playwright-report" \
-            playwright
+          mkdir -p test-results playwright-report
+          npx playwright test
 
       - name: Upload Playwright report
         if: always()
