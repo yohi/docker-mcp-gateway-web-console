@@ -137,9 +137,14 @@ jobs:
         run: npm test -- --runInBand --ci
 
   e2e-playwright:
-    name: E2E (Playwright)
+    name: E2E (Playwright) - Shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3]
+        shardTotal: [3]
     env:
       E2E_FRONTEND_PORT: 3001
       E2E_BACKEND_PORT: 8001
@@ -223,45 +228,25 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Cache frontend docker build
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.buildx-cache-frontend
-          key: buildx-frontend-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            buildx-frontend-${{ runner.os }}-
-
-      - name: Cache backend docker build
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.buildx-cache-backend
-          key: buildx-backend-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            buildx-backend-${{ runner.os }}-
-
       - name: Pre-build frontend image (cacheable)
         run: |
           docker buildx build \
             --file frontend/Dockerfile.dev \
             --tag docker-mcp-gateway-web-console-frontend:latest \
-            --cache-from type=local,src=/tmp/.buildx-cache-frontend \
-            --cache-to type=local,dest=/tmp/.buildx-cache-frontend-new,mode=max \
+            --cache-from type=gha,scope=frontend \
+            --cache-to type=gha,mode=max,scope=frontend \
             --load \
             frontend
-          rm -rf /tmp/.buildx-cache-frontend
-          mv /tmp/.buildx-cache-frontend-new /tmp/.buildx-cache-frontend
 
       - name: Pre-build backend image (cacheable)
         run: |
           docker buildx build \
             --file backend/Dockerfile.dev \
             --tag docker-mcp-gateway-web-console-backend:latest \
-            --cache-from type=local,src=/tmp/.buildx-cache-backend \
-            --cache-to type=local,dest=/tmp/.buildx-cache-backend-new,mode=max \
+            --cache-from type=gha,scope=backend \
+            --cache-to type=gha,mode=max,scope=backend \
             --load \
             backend
-          rm -rf /tmp/.buildx-cache-backend
-          mv /tmp/.buildx-cache-backend-new /tmp/.buildx-cache-backend
 
       - name: Start Docker Compose services
         run: |
@@ -277,7 +262,7 @@ jobs:
           echo "=== Curl Test (Frontend) ==="
           curl -v http://127.0.0.1:3001 || echo "Curl failed"
 
-      - name: Run E2E tests
+      - name: Run E2E tests (Shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
         env:
           CI: true
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3001
@@ -285,13 +270,13 @@ jobs:
         run: |
           set -e
           mkdir -p test-results playwright-report
-          npx playwright test
+          npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shardIndex }}
           path: frontend/playwright-report/
           retention-days: 30
 
@@ -299,7 +284,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-shard-${{ matrix.shardIndex }}
           path: frontend/test-results/
           retention-days: 30
 
