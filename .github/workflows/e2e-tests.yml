@@ -13,6 +13,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Set dummy Fernet key for tests
         run: |
           key="$(python -c "from base64 import urlsafe_b64encode; from os import urandom; print(urlsafe_b64encode(urandom(32)).decode())")"

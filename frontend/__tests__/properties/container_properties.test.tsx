@@ -125,9 +125,10 @@ describe('Container Properties', () => {
           />
         );
 
-        expect(screen.getAllByText(container.name).length).toBeGreaterThan(0);
-        expect(screen.getAllByText(container.image, { exact: false }).length).toBeGreaterThan(0);
-        expect(screen.getAllByText(container.id.substring(0, 12)).length).toBeGreaterThan(0);
+        // Custom matcher to handle whitespace normalization
+        expect(screen.getAllByText((_, element) => element?.textContent === container.name).length).toBeGreaterThan(0);
+        expect(screen.getAllByText((_, element) => element?.textContent?.includes(container.image) ?? false).length).toBeGreaterThan(0);
+        expect(screen.getAllByText((_, element) => element?.textContent?.includes(container.id.substring(0, 12)) ?? false).length).toBeGreaterThan(0);
 
         cleanup();
       }),
