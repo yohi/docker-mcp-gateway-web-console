@@ -269,13 +269,15 @@ jobs:
           docker compose -f docker-compose.test.yml up -d --wait --wait-timeout 90 frontend backend
 
       - name: Run E2E tests
-        working-directory: frontend
         env:
           CI: true
-          PLAYWRIGHT_BASE_URL: http://localhost:${{ env.E2E_FRONTEND_PORT }}
-          E2E_FRONTEND_PORT: 3001
-          E2E_BACKEND_PORT: 8001
-        run: npm run test:e2e
+        run: |
+          set -e
+          mkdir -p frontend/test-results frontend/playwright-report
+          docker compose -f docker-compose.test.yml run --rm \
+            -v "$PWD/frontend/test-results:/app/test-results" \
+            -v "$PWD/frontend/playwright-report:/app/playwright-report" \
+            playwright
 
       - name: Upload Playwright report
         if: always()
