@@ -275,12 +275,12 @@ jobs:
           echo "=== Frontend Logs ==="
           docker compose -f docker-compose.test.yml logs frontend
           echo "=== Curl Test (Frontend) ==="
-          curl -v http://localhost:3001 || echo "Curl failed"
+          curl -v http://127.0.0.1:3001 || echo "Curl failed"
 
       - name: Run E2E tests
         env:
           CI: true
-          PLAYWRIGHT_BASE_URL: http://localhost:3001
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3001
         working-directory: frontend
         run: |
           set -e
