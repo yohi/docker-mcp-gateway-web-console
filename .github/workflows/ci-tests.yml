@@ -266,7 +266,16 @@ jobs:
       - name: Start Docker Compose services
         run: |
           set -e
-          docker compose -f docker-compose.test.yml up -d --wait --wait-timeout 90 frontend backend
+          docker compose -f docker-compose.test.yml up -d --wait --wait-timeout 120 frontend backend
+
+      - name: Debug Docker Services
+        run: |
+          echo "=== Docker Containers ==="
+          docker compose -f docker-compose.test.yml ps -a
+          echo "=== Frontend Logs ==="
+          docker compose -f docker-compose.test.yml logs frontend
+          echo "=== Curl Test (Frontend) ==="
+          curl -v http://localhost:3001 || echo "Curl failed"
 
       - name: Run E2E tests
         env:
