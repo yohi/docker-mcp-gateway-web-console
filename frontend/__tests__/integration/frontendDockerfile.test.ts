@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 const BASE_IMAGE = 'node:22.12.0-alpine';
+const DEV_BASE_IMAGE = 'node:22.12.0-bookworm';
 const PRODUCTION_STAGE_REGEX = /FROM node:22\.12\.0-alpine AS (deps|builder|runner)/g;
 
 describe('Frontend Dockerfile base image pinning', () => {
@@ -16,10 +17,10 @@ describe('Frontend Dockerfile base image pinning', () => {
     expect(content).not.toMatch(/FROM node:18/);
   });
 
-  it('uses Node 22.12.0-alpine as the base for the development Dockerfile', () => {
+  it('uses Node 22.12.0-bookworm as the base for the development Dockerfile', () => {
     const content = fs.readFileSync(dockerfileDevPath, 'utf8').trim();
 
-    expect(content.startsWith(`FROM ${BASE_IMAGE}`)).toBe(true);
+    expect(content.startsWith(`FROM ${DEV_BASE_IMAGE}`)).toBe(true);
     expect(content).not.toMatch(/FROM node:18/);
   });
 });
