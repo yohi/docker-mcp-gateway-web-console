@@ -101,11 +101,14 @@ jobs:
           fi
 
       - name: Run E2E tests
-        working-directory: frontend
-        run: npm run test:e2e
+        run: |
+          mkdir -p frontend/test-results frontend/playwright-report
+          docker compose -f docker-compose.test.yml run --rm \
+            -v "$PWD/frontend/test-results:/app/test-results" \
+            -v "$PWD/frontend/playwright-report:/app/playwright-report" \
+            playwright
         env:
           CI: true
-          PLAYWRIGHT_BASE_URL: http://localhost:3001
 
       - name: Upload Playwright report
         if: always()

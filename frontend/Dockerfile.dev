@@ -11,6 +11,9 @@ COPY package.json package-lock.json* ./
 # Install dependencies
 RUN npm ci
 
+# Install Playwright browsers for E2E (headless chromium)
+RUN npx playwright install --with-deps
+
 # Copy application files
 COPY . .
 
