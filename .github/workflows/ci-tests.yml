@@ -141,6 +141,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
+      E2E_FRONTEND_PORT: 3001
+      E2E_BACKEND_PORT: 8001
       DOCKER_HOST: tcp://127.0.0.1:2375
       DOCKER_TLS_CERTDIR: ""
       DOCKER_CLI_EXPERIMENTAL: "enabled"
@@ -260,9 +262,6 @@ jobs:
           mv /tmp/.buildx-cache-backend-new /tmp/.buildx-cache-backend
 
       - name: Start Docker Compose services
-        env:
-          E2E_FRONTEND_PORT: 3001
-          E2E_BACKEND_PORT: 8001
         run: |
           set -e
           docker compose -f docker-compose.test.yml up -d --wait --wait-timeout 90 frontend backend
@@ -302,7 +301,4 @@ jobs:
 
       - name: Cleanup
         if: always()
-        env:
-          E2E_FRONTEND_PORT: 3001
-          E2E_BACKEND_PORT: 8001
         run: docker compose -f docker-compose.test.yml down -v
