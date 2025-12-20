@@ -33,8 +33,11 @@ export default defineConfig({
     /* Stable viewport for screenshots and assertions */
     viewport: { width: 1280, height: 720 },
 
-    /* Base URL to use in actions like `await page.goto('/')` */
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
+    /* Base URL to use in actions like `await page.goto('/')`
+       CI では docker compose 内で frontend サービスが動くため、環境変数が無くても service 名を使う */
+    baseURL:
+      process.env.PLAYWRIGHT_BASE_URL ||
+      (process.env.CI ? 'http://frontend:3000' : 'http://localhost:3000'),
 
     /* Collect trace when retrying the failed test */
     trace: 'on-first-retry',
