@@ -13,7 +13,7 @@ services:
       - "${E2E_FRONTEND_PORT_MAPPING:-:3000}"
     command: >
       sh -c "npm run build &&
-      rm -rf .next/standalone/public && cp -r public .next/standalone/ &&
+      if [ -d public ]; then rm -rf .next/standalone/public && cp -r public .next/standalone/; fi &&
       rm -rf .next/standalone/.next/static && mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/ &&
       node .next/standalone/server.js"
     shm_size: 1gb  # Chromium requires at least 1GB shared memory for E2E tests
