@@ -122,7 +122,7 @@ test.describe('Catalog Installed State', () => {
     await expect(
       fetchCard.getByText(/実行中|インストール済み/i)
     ).toBeVisible({ timeout: 10000 });
-    await expect(fetchCard.getByRole('button', { name: 'インストール' })).toHaveCount(0);
+    await expect(fetchCard.getByRole('button', { name: /^インストール$/ })).toHaveCount(0);
   });
 });
 
