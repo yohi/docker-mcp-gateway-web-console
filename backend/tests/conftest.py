@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import stat
 from typing import Iterator
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from hypothesis import settings
 
@@ -55,6 +55,52 @@ def _mock_docker_socket(tmp_path_factory) -> Iterator[None]:
     docker_client_mock = docker_client_patcher.start()
     docker_from_env_mock = docker_from_env_patcher.start()
     mock_client = docker_client_mock.return_value
+    mock_container = MagicMock()
+    mock_container.id = "mock-container-id"
+    mock_container.name = "mock-container"
+    mock_container.status = "running"
+    mock_container.image = MagicMock()
+    mock_container.image.tags = ["mock-image:latest"]
+    mock_container.image.id = "sha256:mockimage"
+    mock_container.attrs = {
+        "Created": "2024-01-01T00:00:00.000000000Z",
+        "Config": {"Env": []},
+        "NetworkSettings": {"Ports": {}},
+    }
+    mock_exec_result = MagicMock()
+    mock_exec_result.exit_code = 0
+    mock_exec_result.output = b'{"result": {"tools": [], "resources": [], "prompts": []}}'
+    mock_container.exec_run.return_value = mock_exec_result
+
+    mock_image = MagicMock()
+    mock_image.id = "sha256:mockimage"
+    mock_image.tags = ["mock-image:latest"]
+    mock_image.attrs = {"RepoTags": ["mock-image:latest"]}
+
+    mock_client.containers = MagicMock()
+    mock_client.containers.get.return_value = mock_container
+    mock_client.containers.create.return_value = mock_container
+    mock_client.containers.run.return_value = mock_container
+    mock_client.containers.list.return_value = []
+
+    mock_client.images = MagicMock()
+    mock_client.images.get.return_value = mock_image
+    mock_client.images.pull.return_value = mock_image
+    mock_client.images.list.return_value = [mock_image]
+
+    mock_client.api = MagicMock()
+    mock_client.api.containers.return_value = [
+        {
+            "Id": "mock-container-id",
+            "Names": ["/mock-container"],
+            "Image": "mock-image:latest",
+            "State": "running",
+            "Status": "Up 5 seconds",
+            "Created": 1700000000,
+            "Ports": [{"PrivatePort": 8080, "PublicPort": 18080}],
+            "Labels": {"mcp.server": "mock"},
+        }
+    ]
     mock_client.ping.return_value = True
     mock_client.close.return_value = None
     docker_from_env_mock.return_value = mock_client

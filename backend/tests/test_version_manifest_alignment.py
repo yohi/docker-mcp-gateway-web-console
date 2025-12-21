@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict
 
+from packaging import version
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -27,8 +28,8 @@ def _load_manifest() -> Dict[str, str]:
 
     assert pins["python"].startswith("3.14."), "python pin must be for the 3.14.x line"
     assert pins["node"].startswith("22.21."), "node pin must be for the 22.21.x line"
-    assert pins["next"].startswith("15.5."), "next pin must be for the 15.5.x line"
-    assert pins["react"].startswith("19.2."), "react pin must be for the 19.2.x line"
+    assert version.parse(pins["next"]) >= version.parse("15.5.7"), "next pin must be >= 15.5.7"
+    assert version.parse(pins["react"]) >= version.parse("19.2.1"), "react pin must be >= 19.2.1"
 
     return pins
 
