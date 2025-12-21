@@ -26,21 +26,21 @@ test.describe('Container Management', () => {
   test('should display container dashboard', async ({ page }) => {
     // Check for main heading
     await expect(
-      page.getByRole('heading', { name: /containers|dashboard|コンテナ|ダッシュボード/i })
+      page.getByRole('heading', { level: 1, name: /dashboard|ダッシュボード/i })
     ).toBeVisible();
 
     // Should have a button to create new container
-    const newContainerButton = page.getByRole('button', { name: /new|create|add/i });
+    const newContainerButton = page.getByRole('button', { name: /新規|作成|create|new|add/i });
     await expect(newContainerButton).toBeVisible();
   });
 
   test('should navigate to container creation form', async ({ page }) => {
     // Click new container button
-    const newContainerButton = page.getByRole('button', { name: /new|create|add/i });
+    const newContainerButton = page.getByRole('button', { name: /新規|作成|create|new|add/i });
     await newContainerButton.click();
 
-    // Should navigate to container creation page
-    await expect(page).toHaveURL(/\/containers\/new/);
+    // Should open container configurator modal
+    await expect(page.getByRole('heading', { name: /コンテナ設定/i })).toBeVisible();
 
     // Should show configuration form
     await expect(page.getByLabel(/name|コンテナ名/i)).toBeVisible();
@@ -158,7 +158,12 @@ test.describe('Container Management', () => {
 
 test.describe('Container Configuration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/containers/new');
+    await mockAuthentication(page);
+    await mockContainerList(page);
+    await page.goto('/dashboard');
+    const newContainerButton = page.getByRole('button', { name: /新規|作成|create|new|add/i });
+    await newContainerButton.click();
+    await expect(page.getByRole('heading', { name: /コンテナ設定/i })).toBeVisible();
   });
 
   test('should display container configuration form', async ({ page }) => {

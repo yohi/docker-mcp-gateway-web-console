@@ -175,10 +175,14 @@ export default function ContainerConfigurator({
             {/* Basic settings */}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label
+                  htmlFor="containerName"
+                  className="block text-sm font-semibold text-gray-700 mb-2"
+                >
                   コンテナ名 *
                 </label>
                 <input
+                  id="containerName"
                   type="text"
                   required
                   value={config.name}
@@ -189,10 +193,14 @@ export default function ContainerConfigurator({
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label
+                  htmlFor="containerImage"
+                  className="block text-sm font-semibold text-gray-700 mb-2"
+                >
                   Dockerイメージ *
                 </label>
                 <input
+                  id="containerImage"
                   type="text"
                   required
                   value={config.image}
@@ -203,10 +211,14 @@ export default function ContainerConfigurator({
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label
+                  htmlFor="containerNetworkMode"
+                  className="block text-sm font-semibold text-gray-700 mb-2"
+                >
                   ネットワークモード
                 </label>
                 <input
+                  id="containerNetworkMode"
                   type="text"
                   value={config.network_mode || ''}
                   onChange={(e) =>

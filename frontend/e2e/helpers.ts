@@ -159,7 +159,7 @@ export async function mockCatalogData(page: Page, customServers?: CatalogMockSer
   console.log('Registering catalog mock...');
   await page.route(url => url.toString().includes('/api/catalog'), route => {
     const url = new URL(route.request().url());
-    if (url.pathname !== '/api/catalog') {
+    if (url.pathname !== '/api/catalog' && url.pathname !== '/api/catalog/search') {
       route.continue();
       return;
     }

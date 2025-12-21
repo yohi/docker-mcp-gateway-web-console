@@ -98,7 +98,7 @@ test.describe('Authentication Flow', () => {
     await page.getByLabel(/email|メールアドレス/i).fill(TEST_LOGIN_CREDENTIALS.email);
     await page.getByLabel('Client ID').fill(TEST_LOGIN_CREDENTIALS.clientId);
     await page.getByLabel('Client Secret').fill(TEST_LOGIN_CREDENTIALS.clientSecret);
-    await page.getByLabel(/マスターパスワード/i).fill(TEST_LOGIN_CREDENTIALS.masterPassword);
+    await page.locator('#masterPassword').fill(TEST_LOGIN_CREDENTIALS.masterPassword);
 
     await page.getByRole('button', { name: /login|ログイン/i }).click();
 
