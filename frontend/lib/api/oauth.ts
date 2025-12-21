@@ -1,7 +1,7 @@
 // OAuth 関連 API クライアント
 import { CatalogItem } from '../types/catalog';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export interface OAuthInitiatePayload {
   serverId: string;

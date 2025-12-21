@@ -2,7 +2,7 @@
 
 import { CatalogResponse, CatalogSearchParams } from '../types/catalog';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export async function fetchCatalog(source?: string): Promise<CatalogResponse> {
   const url = new URL(`${API_BASE_URL}/api/catalog`);

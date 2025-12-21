@@ -2,7 +2,7 @@
 
 import { LoginCredentials, Session } from '../types/auth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 function getSessionId(): string {
   if (typeof window === 'undefined') return '';

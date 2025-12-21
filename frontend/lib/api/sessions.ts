@@ -8,7 +8,7 @@ import {
   SessionJobStatusResponse,
 } from '../types/sessions';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export async function createSession(payload: SessionCreateRequest): Promise<SessionCreateResponse> {
   const response = await fetch(`${API_BASE_URL}/api/sessions`, {
