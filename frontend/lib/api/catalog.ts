@@ -11,7 +11,7 @@ function getUrl(path: string): URL {
   if (typeof window !== 'undefined') {
     return new URL(path, window.location.origin);
   }
-  return new URL(path, 'http://localhost:3000');
+  return new URL(path, 'http://127.0.0.1:3000');
 }
 
 export async function fetchCatalog(source?: string): Promise<CatalogResponse> {
@@ -24,6 +24,7 @@ export async function fetchCatalog(source?: string): Promise<CatalogResponse> {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Failed to fetch catalog' }));
+    console.error('Fetch catalog failed:', error, url.toString());
     throw new Error(error.detail || 'Failed to fetch catalog');
   }
 
