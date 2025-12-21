@@ -78,6 +78,7 @@ const CatalogRow = ({
     >
       <div className="flex items-start gap-3">
         {item.icon_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={item.icon_url}
             alt={item.name}

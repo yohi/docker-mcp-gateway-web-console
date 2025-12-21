@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   deleteGitHubToken,
   fetchGitHubTokenStatus,
@@ -25,16 +25,7 @@ export default function GitHubTokenSection() {
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [inlineError, setInlineError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadStatus();
-  }, []);
-
-  const formattedUpdatedAt = useMemo(() => {
-    if (!status?.updated_at) return null;
-    return new Date(status.updated_at).toLocaleString();
-  }, [status?.updated_at]);
-
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     setLoadingStatus(true);
     setInlineError(null);
     try {
@@ -47,7 +38,16 @@ export default function GitHubTokenSection() {
     } finally {
       setLoadingStatus(false);
     }
-  };
+  }, [showError]);
+
+  useEffect(() => {
+    void loadStatus();
+  }, [loadStatus]);
+
+  const formattedUpdatedAt = useMemo(() => {
+    if (!status?.updated_at) return null;
+    return new Date(status.updated_at).toLocaleString();
+  }, [status?.updated_at]);
 
   const handleSearch = async () => {
     const trimmed = query.trim();

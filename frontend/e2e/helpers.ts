@@ -3,6 +3,7 @@
  */
 
 import { Page } from '@playwright/test';
+import type { CatalogItem } from '@/lib/types/catalog';
 import registryCatalog from './fixtures/mcp-registry.json';
 
 export const TEST_SESSION_ID = 'test-session-id';
@@ -30,6 +31,11 @@ type MockLoginOptions = {
   createdAt?: string;
   expiresAt?: string;
 };
+
+type CatalogMockServer =
+  & Partial<Pick<CatalogItem, 'id' | 'name' | 'description' | 'vendor' | 'category'>>
+  & Record<string, unknown>;
+type CatalogFixturePayload = { servers?: CatalogMockServer[] } | CatalogMockServer[];
 
 /**
  * Mock authentication by setting session cookie
@@ -143,9 +149,12 @@ export async function mockLogin(page: Page, options: MockLoginOptions = {}) {
 /**
  * Mock catalog data for testing
  */
-export async function mockCatalogData(page: Page, customServers?: any[]) {
-  const fixtureServers = (registryCatalog as any).servers ?? registryCatalog;
-  const servers = customServers || fixtureServers;
+export async function mockCatalogData(page: Page, customServers?: CatalogMockServer[]) {
+  const catalogPayload = registryCatalog as unknown as CatalogFixturePayload;
+  const fixtureServers = Array.isArray(catalogPayload)
+    ? catalogPayload
+    : (catalogPayload.servers ?? []);
+  const servers = customServers ?? fixtureServers;
 
   console.log('Registering catalog mock...');
   await page.route(url => url.toString().includes('/api/catalog'), route => {
