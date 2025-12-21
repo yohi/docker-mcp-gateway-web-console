@@ -43,7 +43,7 @@ ok "Python version OK"
 require_cmd node
 node_version="$(node --version 2>&1 | tr -d '\r')"
 echo "node --version: ${node_version}"
-echo "${node_version}" | grep -Eq '^v22\.12\.' || fail "Expected Node.js v22.12.x"
+echo "${node_version}" | grep -Eq '^v22\.21\.' || fail "Expected Node.js v22.21.x"
 ok "Node.js version OK"
 
 require_cmd pip

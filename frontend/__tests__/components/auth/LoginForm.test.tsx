@@ -145,9 +145,9 @@ describe('LoginForm', () => {
       expect(mockLoginAPI).toHaveBeenCalledWith({
         method: 'api_key',
         email: 'test@example.com',
-        client_id: 'user.1234-5678',
-        client_secret: 'test-secret',
-        master_password: 'vault-pass',
+        clientId: 'user.1234-5678',
+        clientSecret: 'test-secret',
+        masterPassword: 'vault-pass',
       });
     });
   });
@@ -201,7 +201,7 @@ describe('LoginForm', () => {
       expect(mockLoginAPI).toHaveBeenCalledWith({
         method: 'master_password',
         email: 'test@example.com',
-        master_password: 'test-password',
+        masterPassword: 'test-password',
       });
     });
   });

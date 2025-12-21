@@ -43,7 +43,7 @@ def test_verify_devcontainer_script_passes_with_fake_tools(tmp_path: Path) -> No
     _write_executable(
         fake_bin / "node",
         "#!/usr/bin/env sh\n"
-        'echo "v22.12.0"\n',
+        'echo "v22.21.1"\n',
     )
     _write_executable(
         fake_bin / "pip",
@@ -126,7 +126,7 @@ def test_verify_devcontainer_script_fails_on_wrong_python_version(tmp_path: Path
     _write_executable(
         fake_bin / "node",
         "#!/usr/bin/env sh\n"
-        'echo "v22.12.0"\n',
+        'echo "v22.21.1"\n',
     )
     _write_executable(
         fake_bin / "pip",

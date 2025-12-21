@@ -15,7 +15,7 @@ compose_file="${COMPOSE_FILE:-docker-compose.yml}"
 compose_path="${repo_root}/${compose_file}"
 frontend_service="${FRONTEND_SERVICE:-frontend}"
 docker_bin="${DOCKER_BIN:-docker}"
-node_prefix="${NODE_PREFIX:-v22.12.}"
+node_prefix="${NODE_PREFIX:-v22.21.}"
 health_url="${HEALTH_URL:-http://localhost:3000}"
 
 command -v "${docker_bin}" >/dev/null 2>&1 || fail "docker command not found: ${docker_bin}"

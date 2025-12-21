@@ -62,6 +62,8 @@ test.describe('Catalog Browser', () => {
     // Look for server cards - using data-testid from implementation
     const serverCards = page.locator('[data-testid="catalog-card"]');
 
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
     // Should have cards
     const cardCount = await serverCards.count();
     expect(cardCount).toBeGreaterThan(0);
