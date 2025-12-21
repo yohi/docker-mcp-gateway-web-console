@@ -33,8 +33,8 @@ test.describe('Authentication Flow', () => {
 
     // Check for authentication method selection
     // (either API key or master password fields should be present)
-    const apiKeyInput = page.getByLabel(/api key|client id|client secret/i);
-    const passwordInput = page.getByLabel(/password|マスターパスワード/i);
+    const apiKeyInput = page.locator('input#clientId').or(page.getByLabel(/client id|client secret/i));
+    const passwordInput = page.locator('input[type="password"]').or(page.getByLabel(/password|マスターパスワード/i));
 
     // At least one authentication method should be visible
     const hasApiKey = await apiKeyInput.first().isVisible().catch(() => false);
@@ -53,8 +53,13 @@ test.describe('Authentication Flow', () => {
     await page.getByLabel(/email|メールアドレス/i).fill('invalid@example.com');
 
     // Try to find and fill authentication field
-    // Note: Japanese form has radio buttons for method selection, simplified check here
-    const passwordInput = page.getByLabel(/password|マスターパスワード/i);
+    // Note: Use specific input types to avoid matching radio buttons with similar labels
+    const apiKeyInput = page.locator('input#clientId');
+    const passwordInput = page.locator('input[type="password"]');
+
+    if (await apiKeyInput.isVisible().catch(() => false)) {
+      await apiKeyInput.fill('invalid-api-key');
+    }
 
     if (await passwordInput.first().isVisible().catch(() => false)) {
       await passwordInput.first().fill('invalid-password');
