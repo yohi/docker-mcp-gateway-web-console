@@ -172,9 +172,7 @@ test.describe('Container Configuration', () => {
     await expect(page.getByLabel(/image|Dockerイメージ/i)).toBeVisible();
 
     // Should have submit button
-    await expect(
-      page.getByRole('button', { name: /create|start|launch|コンテナを作成/i })
-    ).toBeVisible();
+    await expect(page.getByTestId('container-submit')).toBeVisible();
   });
 
   test('should allow adding environment variables', async ({ page }) => {
@@ -218,7 +216,7 @@ test.describe('Container Configuration', () => {
 
   test('should validate required fields', async ({ page }) => {
     // Try to submit without filling required fields
-    const submitButton = page.getByRole('button', { name: /create|start|launch/i });
+    const submitButton = page.getByTestId('container-submit');
     await submitButton.click();
 
     // Should show validation errors

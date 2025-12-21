@@ -29,7 +29,7 @@ export default function PromptsList({ prompts, loading, error }: PromptsListProp
   if (prompts.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
-        <p>利用可能な Prompts がありません</p>
+        <p>利用可能なプロンプトがありません</p>
       </div>
     );
   }

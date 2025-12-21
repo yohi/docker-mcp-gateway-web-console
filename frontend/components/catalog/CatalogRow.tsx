@@ -94,7 +94,9 @@ const CatalogRow = ({
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold text-gray-900 truncate">{item.name}</h3>
+            <h3 className="text-lg font-semibold text-gray-900 truncate" data-testid="server-name">
+              {item.name}
+            </h3>
             <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
               {item.category}
             </span>
@@ -105,7 +107,9 @@ const CatalogRow = ({
               {isRemote ? 'remote' : 'Docker'}
             </span>
             {item.vendor ? (
-              <span className="text-xs text-gray-500">by {item.vendor}</span>
+              <span className="text-xs text-gray-500" data-testid="server-vendor">
+                by {item.vendor}
+              </span>
             ) : null}
             {isRemote && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
@@ -123,7 +127,9 @@ const CatalogRow = ({
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-600 line-clamp-2">{item.description}</p>
+          <p className="text-sm text-gray-600 line-clamp-2" data-testid="server-description">
+            {item.description}
+          </p>
           {isRemote ? (
             <p className="text-xs text-gray-500 mt-1 break-all">リモートエンドポイント: {remoteEndpoint || '未設定'}</p>
           ) : (

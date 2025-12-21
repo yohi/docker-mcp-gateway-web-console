@@ -131,8 +131,12 @@ export default function ContainerConfigurator({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    if (!config.name.trim() || !config.image.trim()) {
+      setError('必須項目を入力してください');
+      return;
+    }
+    setLoading(true);
 
     try {
       if (onSubmit) {
@@ -149,7 +153,10 @@ export default function ContainerConfigurator({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto"
+      data-testid="container-configurator"
+    >
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl my-8">
         <form onSubmit={handleSubmit}>
           {/* Header */}
@@ -388,6 +395,7 @@ export default function ContainerConfigurator({
             </button>
             <button
               type="submit"
+              data-testid="container-submit"
               disabled={loading || isSubmitting}
               className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors"
             >
