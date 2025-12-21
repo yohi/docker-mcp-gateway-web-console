@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mockCatalogData, mockContainerList, mockLogin, TEST_LOGIN_CREDENTIALS } from './helpers';
 
 /**
  * E2E tests for authentication flow
@@ -13,6 +14,17 @@ test.describe('Authentication Flow', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to the application
     page.on('console', msg => console.log(`BROWSER LOG: ${msg.text()}`));
+    page.on('request', req => {
+      if (req.url().includes('api')) {
+        console.log(`REQUEST: ${req.method()} ${req.url()}`);
+      }
+    });
+
+    // Mock data to avoid hitting backend and GitHub API
+    await mockCatalogData(page);
+    await mockContainerList(page);
+    await mockLogin(page);
+
     await page.goto('/');
   });
 
@@ -61,8 +73,13 @@ test.describe('Authentication Flow', () => {
       await apiKeyInput.fill('invalid-api-key');
     }
 
-    if (await passwordInput.first().isVisible().catch(() => false)) {
-      await passwordInput.first().fill('invalid-password');
+    // Fill all password-type inputs (Client Secret and/or Master Password)
+    const passwordInputs = page.locator('input[type="password"]');
+    const count = await passwordInputs.count();
+    for (let i = 0; i < count; i++) {
+      if (await passwordInputs.nth(i).isVisible()) {
+        await passwordInputs.nth(i).fill('invalid-password');
+      }
     }
 
     // Submit the form
@@ -71,8 +88,22 @@ test.describe('Authentication Flow', () => {
     // Should show error message
     // Wait for either a toast notification or error message
     await expect(
-      page.getByText(/authentication failed|invalid credentials|error|失敗しました|入力してください/i)
+      page.getByText(/authentication failed|invalid credentials|error|failed|失敗しました|入力してください/i)
     ).toBeVisible({ timeout: 5000 });
+  });
+
+  test('should login with test credentials', async ({ page }) => {
+    await page.goto('/login');
+
+    await page.getByLabel(/email|メールアドレス/i).fill(TEST_LOGIN_CREDENTIALS.email);
+    await page.getByLabel('Client ID').fill(TEST_LOGIN_CREDENTIALS.clientId);
+    await page.getByLabel('Client Secret').fill(TEST_LOGIN_CREDENTIALS.clientSecret);
+    await page.getByLabel(/マスターパスワード/i).fill(TEST_LOGIN_CREDENTIALS.masterPassword);
+
+    await page.getByRole('button', { name: /login|ログイン/i }).click();
+
+    await page.waitForURL(/\/dashboard/, { timeout: 5000 });
+    await expect(page).toHaveURL(/\/dashboard/);
   });
 
   test('should handle session timeout', async ({ page, context }) => {

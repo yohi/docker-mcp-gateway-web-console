@@ -1,0 +1,96 @@
+{
+  "servers": [
+    {
+      "id": "fetch",
+      "name": "fetch",
+      "description": "Web fetch tool",
+      "vendor": "Docker",
+      "category": "utilities",
+      "docker_image": "docker/mcp-fetch:latest",
+      "icon_url": "",
+      "default_env": {
+        "PORT": "8080",
+        "API_KEY": "{{ bw:fetch:api_key }}"
+      },
+      "required_envs": ["PORT", "API_KEY"],
+      "required_secrets": ["API_KEY"]
+    },
+    {
+      "id": "filesystem",
+      "name": "filesystem",
+      "description": "File system access",
+      "vendor": "Docker",
+      "category": "utilities",
+      "docker_image": "docker/mcp-filesystem:latest",
+      "icon_url": "",
+      "default_env": {
+        "PORT": "8080",
+        "ALLOWED_PATHS": "/data,/workspace"
+      },
+      "required_envs": ["PORT"],
+      "required_secrets": []
+    },
+    {
+      "id": "github",
+      "name": "github",
+      "description": "GitHub integration",
+      "vendor": "Docker",
+      "category": "development",
+      "docker_image": "docker/mcp-github:latest",
+      "icon_url": "",
+      "default_env": {
+        "PORT": "8080",
+        "GITHUB_TOKEN": "{{ bw:github:token }}"
+      },
+      "required_envs": ["PORT", "GITHUB_TOKEN"],
+      "required_secrets": ["GITHUB_TOKEN"]
+    },
+    {
+      "id": "sqlite",
+      "name": "SQLite",
+      "description": "SQLite database operations",
+      "vendor": "Docker",
+      "category": "database",
+      "docker_image": "mcp/sqlite",
+      "icon_url": "",
+      "default_env": {
+        "PORT": "8080",
+        "DB_PATH": "/data/sqlite.db"
+      },
+      "required_envs": ["PORT"],
+      "required_secrets": []
+    },
+    {
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "description": "PostgreSQL database operations",
+      "vendor": "Docker",
+      "category": "database",
+      "docker_image": "docker/mcp-postgres:latest",
+      "icon_url": "",
+      "default_env": {
+        "PORT": "8080",
+        "POSTGRES_HOST": "localhost",
+        "POSTGRES_USER": "{{ bw:postgres:username }}",
+        "POSTGRES_PASSWORD": "{{ bw:postgres:password }}"
+      },
+      "required_envs": ["PORT", "POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD"],
+      "required_secrets": ["POSTGRES_USER", "POSTGRES_PASSWORD"]
+    },
+    {
+      "id": "brave-search",
+      "name": "brave-search",
+      "description": "Search via Brave Search API",
+      "vendor": "Brave",
+      "category": "search",
+      "docker_image": "docker/mcp-brave-search:latest",
+      "icon_url": "",
+      "default_env": {
+        "PORT": "8080",
+        "BRAVE_API_KEY": "{{ bw:brave:api_key }}"
+      },
+      "required_envs": ["PORT", "BRAVE_API_KEY"],
+      "required_secrets": ["BRAVE_API_KEY"]
+    }
+  ]
+}

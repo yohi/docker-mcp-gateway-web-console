@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockAuthentication } from './helpers';
+import { mockAuthentication, mockInspectorData, mockContainerList } from './helpers';
 
 /**
  * E2E tests for MCP Inspector functionality
@@ -14,6 +14,10 @@ test.describe('MCP Inspector', () => {
   test.beforeEach(async ({ page }) => {
     // Mock authentication
     await mockAuthentication(page);
+
+    // Mock data
+    await mockContainerList(page);
+    await mockInspectorData(page, 'test-container-id');
 
     await page.goto('/dashboard');
   });
@@ -87,12 +91,12 @@ test.describe('MCP Inspector', () => {
 
       // Wait for tab to activate
       // Wait for tab to activate
-      await expect(page.locator('[data-testid="resources-list"], .resources-list').or(page.getByText(/no resources|empty/i)).first()).toBeVisible();
+      await expect(page.locator('[data-testid="resources-list"], .resources-list').or(page.getByText(/no resources|empty|リソースがありません/i)).first()).toBeVisible();
 
       // Click back to Tools tab
       await toolsTab.click();
 
-      await expect(page.locator('[data-testid="tools-list"], .tools-list').or(page.getByText(/no tools|empty/i)).first()).toBeVisible();
+      await expect(page.locator('[data-testid="tools-list"], .tools-list').or(page.getByText(/no tools|empty|ありません/i)).first()).toBeVisible();
     }
   });
 
@@ -105,7 +109,7 @@ test.describe('MCP Inspector', () => {
 
     if (hasTab) {
       await toolsTab.click();
-      await expect(page.locator('[data-testid="tools-list"], .tools-list').or(page.getByText(/no tools|empty/i)).first()).toBeVisible();
+      await expect(page.locator('[data-testid="tools-list"], .tools-list').or(page.getByText(/no tools|empty|ありません/i)).first()).toBeVisible();
     }
 
     // Look for tools list or empty state
@@ -113,7 +117,7 @@ test.describe('MCP Inspector', () => {
       page.locator('.tools-list')
     );
 
-    const emptyState = page.getByText(/no tools|empty/i);
+    const emptyState = page.getByText(/no tools|empty|ありません/i);
 
     // Either list or empty state should be visible
     const hasList = await toolsList.isVisible().catch(() => false);
@@ -131,14 +135,14 @@ test.describe('MCP Inspector', () => {
 
     if (hasTab) {
       await resourcesTab.click();
-      await expect(page.locator('[data-testid="resources-list"], .resources-list').or(page.getByText(/no resources|empty/i)).first()).toBeVisible();
+      await expect(page.locator('[data-testid="resources-list"], .resources-list').or(page.getByText(/no resources|empty|リソースがありません/i)).first()).toBeVisible();
 
       // Look for resources list or empty state
       const resourcesList = page.locator('[data-testid="resources-list"]').or(
         page.locator('.resources-list')
       );
 
-      const emptyState = page.getByText(/no resources|empty/i);
+      const emptyState = page.getByText(/no resources|empty|リソースがありません/i);
 
       // Either list or empty state should be visible
       const hasList = await resourcesList.isVisible().catch(() => false);
@@ -164,7 +168,7 @@ test.describe('MCP Inspector', () => {
         page.locator('.prompts-list')
       );
 
-      const emptyState = page.getByText(/no prompts|empty/i);
+      const emptyState = page.getByText(/no prompts|empty|プロンプトがありません/i);
 
       // Either list or empty state should be visible
       const hasList = await promptsList.isVisible().catch(() => false);
@@ -214,7 +218,7 @@ test.describe('MCP Inspector', () => {
 
     if (hasTab) {
       await toolsTab.click();
-      await expect(page.locator('[data-testid="tools-list"], .tools-list').or(page.getByText(/no tools|empty/i)).first()).toBeVisible();
+      await expect(page.locator('[data-testid="tools-list"], .tools-list').or(page.getByText(/no tools|empty|ありません/i)).first()).toBeVisible();
 
       // Look for tool items
       const toolItems = page.locator('[data-testid="tool-item"]').or(
@@ -242,7 +246,7 @@ test.describe('MCP Inspector', () => {
 
     if (hasTab) {
       await resourcesTab.click();
-      await expect(page.locator('[data-testid="resources-list"], .resources-list').or(page.getByText(/no resources|empty/i)).first()).toBeVisible();
+      await expect(page.locator('[data-testid="resources-list"], .resources-list').or(page.getByText(/no resources|empty|リソースがありません/i)).first()).toBeVisible();
 
       // Look for resource items
       const resourceItems = page.locator('[data-testid="resource-item"]').or(

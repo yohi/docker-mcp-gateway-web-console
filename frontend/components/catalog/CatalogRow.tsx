@@ -72,7 +72,10 @@ const CatalogRow = ({
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm flex flex-col gap-3">
+    <div
+      className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm flex flex-col gap-3"
+      data-testid="catalog-card"
+    >
       <div className="flex items-start gap-3">
         {item.icon_url ? (
           <img

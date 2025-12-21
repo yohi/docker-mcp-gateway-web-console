@@ -8,14 +8,14 @@ export default defineConfig({
   testDir: './e2e',
 
   /* Maximum time one test can run for. */
-  timeout: 60 * 1000,
+  timeout: 10 * 1000,
 
   expect: {
     /**
      * Maximum time expect() should wait for the condition to be met.
      * Default is 5000ms.
      */
-    timeout: 30 * 1000,
+    timeout: 10 * 1000,
   },
 
   /* Run tests in files in parallel */
@@ -57,10 +57,10 @@ export default defineConfig({
     screenshot: 'only-on-failure',
 
     /* Maximum time each action such as `click()` can take. Defaults to 0 (no limit). */
-    actionTimeout: 30 * 1000,
+    actionTimeout: 10 * 1000,
 
     /* Maximum time required for navigation resources to load. */
-    navigationTimeout: 30 * 1000,
+    navigationTimeout: 10 * 1000,
   },
 
   /* Configure projects (CI はchromiumのみで時短) */

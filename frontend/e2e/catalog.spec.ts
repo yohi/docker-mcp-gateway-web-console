@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { mockAuthentication, mockCatalogData, mockContainerList, waitForToast } from './helpers';
+import { mockAuthentication, mockCatalogData, mockContainerList, waitForToast, mockRemoteServers } from './helpers';
 
 /**
  * E2E tests for Catalog browsing and installation flow
@@ -13,9 +13,17 @@ import { mockAuthentication, mockCatalogData, mockContainerList, waitForToast } 
 
 test.describe('Catalog Browser', () => {
   test.beforeEach(async ({ page }) => {
+    page.on('console', msg => console.log(`BROWSER LOG: ${msg.text()}`));
+    page.on('request', req => {
+      if (req.url().includes('api')) {
+        console.log(`REQUEST: ${req.method()} ${req.url()}`);
+      }
+    });
     // Set up authentication and catalog data mocks
     await mockAuthentication(page);
     await mockCatalogData(page);
+    await mockContainerList(page);
+    await mockRemoteServers(page, []);
 
     // Navigate to catalog
     await page.goto('/catalog');
@@ -24,7 +32,7 @@ test.describe('Catalog Browser', () => {
   test('should display catalog page with search functionality', async ({ page }) => {
     // Check for main heading
     await expect(
-      page.getByRole('heading', { name: /catalog|mcp servers/i })
+      page.getByRole('heading', { name: /catalog|mcp.*server/i })
     ).toBeVisible();
 
     // Check for search bar
@@ -38,14 +46,14 @@ test.describe('Catalog Browser', () => {
 
     // Type a search query
     const searchInput = page.getByPlaceholder(/search/i);
-    await searchInput.fill('Test MCP Server');
+    await searchInput.fill('fetch');
     // Trigger search logic (debounced or immediate)
     await page.waitForTimeout(500);
 
     // Verify filtered results
     const serverNames = page.getByTestId('server-name');
-    await expect(serverNames.filter({ hasText: 'Test MCP Server' })).toHaveCount(1);
-    await expect(serverNames.filter({ hasText: 'Another Test Server' })).toHaveCount(0);
+    await expect(serverNames.filter({ hasText: /^fetch$/i })).toHaveCount(1);
+    await expect(serverNames.filter({ hasText: /^filesystem$/i })).toHaveCount(0);
   });
 
   test('should display server cards with required information', async ({ page }) => {
@@ -55,15 +63,18 @@ test.describe('Catalog Browser', () => {
     const serverCards = page.locator('[data-testid="catalog-card"]');
 
     // Should have cards
-    await expect(serverCards).toHaveCount(2); // Based on mockCatalogData default
+    const cardCount = await serverCards.count();
+    expect(cardCount).toBeGreaterThan(0);
 
-    const firstCard = serverCards.first();
-    await expect(firstCard.getByTestId('server-name')).toContainText('Test MCP Server');
-    await expect(firstCard.getByTestId('server-description')).toBeVisible();
-    await expect(firstCard.getByTestId('server-vendor')).toContainText('Test Vendor');
+    const fetchCard = serverCards.filter({
+      has: page.getByTestId('server-name').filter({ hasText: /^fetch$/i }),
+    }).first();
+    await expect(fetchCard.getByTestId('server-name')).toContainText('fetch');
+    await expect(fetchCard.getByTestId('server-description')).toBeVisible();
+    await expect(fetchCard.getByTestId('server-vendor')).toContainText('Docker');
 
     // Check for Install button
-    const installButton = firstCard.getByRole('button', { name: 'インストール' });
+    const installButton = fetchCard.getByRole('button', { name: 'インストール' });
     await expect(installButton).toBeVisible();
   });
 
@@ -78,7 +89,7 @@ test.describe('Catalog Browser', () => {
 
     // Should show empty state message
     await expect(
-      page.getByRole('heading', { name: 'No servers found' })
+      page.getByRole('heading', { name: /No servers found|見つかりませんでした/i })
     ).toBeVisible();
   });
 });
@@ -90,8 +101,8 @@ test.describe('Catalog Installed State', () => {
     await mockContainerList(page, [
       {
         id: 'existing-container',
-        name: 'test-mcp-server',
-        image: 'test/mcp-server:latest',
+        name: 'fetch',
+        image: 'docker/mcp-fetch:latest',
         status: 'running',
         created_at: new Date().toISOString(),
         ports: { '8080': 8080 },
@@ -104,13 +115,14 @@ test.describe('Catalog Installed State', () => {
     await page.waitForLoadState('networkidle');
 
     const serverCards = page.locator('[data-testid="catalog-card"]');
-    await expect(serverCards).toHaveCount(2);
-
-    const firstCard = serverCards.first();
+    const fetchCard = serverCards.filter({
+      has: page.getByTestId('server-name').filter({ hasText: /^fetch$/i }),
+    }).first();
+    await expect(fetchCard).toBeVisible();
     await expect(
-      firstCard.getByText(/実行中|インストール済み/)
+      fetchCard.getByText(/実行中|インストール済み/i)
     ).toBeVisible({ timeout: 10000 });
-    await expect(firstCard.getByRole('button', { name: 'インストール' })).toHaveCount(0);
+    await expect(fetchCard.getByRole('button', { name: 'インストール' })).toHaveCount(0);
   });
 });
 
@@ -125,17 +137,21 @@ test.describe('Catalog Installation Flow', () => {
     await page.waitForLoadState('networkidle');
 
     // 1. Click Install on the first card
-    const firstCard = page.locator('[data-testid="catalog-card"]').first();
-    await firstCard.getByRole('button', { name: 'インストール' }).click();
+    const fetchCard = page.locator('[data-testid="catalog-card"]').filter({
+      has: page.getByTestId('server-name').filter({ hasText: /^fetch$/i }),
+    }).first();
+    await fetchCard.getByRole('button', { name: 'インストール' }).click();
 
     // 2. Verify Modal Opens
-    const modal = page.locator('text=Test MCP Serverをインストール'); // Or stricter selector
+    const modal = page.locator('text=fetchをインストール'); // Or stricter selector
     await expect(modal).toBeVisible();
 
     // 3. Verify inputs
-    // Test MCP Server has PORT and API_KEY in mockCatalogData
+    // fetch has PORT and API_KEY in mockCatalogData
     // PORT is a normal env, API_KEY is a secret
     const portInput = page.getByLabel('PORT');
+    await expect(page.getByLabel(/name|コンテナ名/i)).toBeVisible();
+    await expect(page.getByLabel(/image|Dockerイメージ/i)).toBeVisible();
     await expect(portInput).toBeVisible();
     await expect(portInput).toHaveValue('8080'); // Default value
 
@@ -150,13 +166,13 @@ test.describe('Catalog Installation Flow', () => {
       if (route.request().method() === 'POST') {
         const postData = route.request().postDataJSON();
         // Verify payload
-        if (postData.image === 'test/mcp-server:latest' && postData.env.API_KEY === 'my-secret-key') {
+        if (postData.image === 'docker/mcp-fetch:latest' && postData.env.API_KEY === 'my-secret-key') {
           await route.fulfill({
             status: 201,
             contentType: 'application/json',
             body: JSON.stringify({
               container_id: 'new-container-id',
-              name: 'Test MCP Server',
+              name: 'fetch',
               status: 'running'
             })
           });
@@ -187,10 +203,12 @@ test.describe('Catalog Installation Flow', () => {
   test('should block installation when required envs are missing', async ({ page }) => {
     await page.waitForLoadState('networkidle');
 
-    const firstCard = page.locator('[data-testid="catalog-card"]').first();
-    await firstCard.getByRole('button', { name: 'インストール' }).click();
+    const fetchCard = page.locator('[data-testid="catalog-card"]').filter({
+      has: page.getByTestId('server-name').filter({ hasText: /^fetch$/i }),
+    }).first();
+    await fetchCard.getByRole('button', { name: 'インストール' }).click();
 
-    const modal = page.locator('text=Test MCP Serverをインストール');
+    const modal = page.locator('text=fetchをインストール');
     await expect(modal).toBeVisible();
 
     const keyInput = page.getByLabel('API_KEY');

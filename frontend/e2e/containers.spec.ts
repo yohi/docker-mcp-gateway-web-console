@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockAuthentication } from './helpers';
+import { mockAuthentication, mockContainerList } from './helpers';
 
 /**
  * E2E tests for container management flow
@@ -16,6 +16,9 @@ test.describe('Container Management', () => {
     // Mock authentication
     await mockAuthentication(page);
 
+    // Mock container list
+    await mockContainerList(page);
+
     // Navigate to dashboard/containers page
     await page.goto('/dashboard');
   });
@@ -23,7 +26,7 @@ test.describe('Container Management', () => {
   test('should display container dashboard', async ({ page }) => {
     // Check for main heading
     await expect(
-      page.getByRole('heading', { name: /containers|dashboard/i })
+      page.getByRole('heading', { name: /containers|dashboard|コンテナ|ダッシュボード/i })
     ).toBeVisible();
 
     // Should have a button to create new container
@@ -40,8 +43,8 @@ test.describe('Container Management', () => {
     await expect(page).toHaveURL(/\/containers\/new/);
 
     // Should show configuration form
-    await expect(page.getByLabel(/name/i)).toBeVisible();
-    await expect(page.getByLabel(/image/i)).toBeVisible();
+    await expect(page.getByLabel(/name|コンテナ名/i)).toBeVisible();
+    await expect(page.getByLabel(/image|Dockerイメージ/i)).toBeVisible();
   });
 
   test('should display container list', async ({ page }) => {
@@ -53,7 +56,7 @@ test.describe('Container Management', () => {
       page.locator('.container-list')
     );
 
-    const emptyState = page.getByText(/no containers|empty/i);
+    const emptyState = page.getByText(/no containers|empty|ありません/i);
 
     // Either list or empty state should be visible
     const hasList = await containerList.isVisible().catch(() => false);
@@ -110,7 +113,7 @@ test.describe('Container Management', () => {
 
       // Should show confirmation dialog
       await expect(
-        page.getByText(/confirm|are you sure/i)
+        page.getByText(/confirm|are you sure|よろしいですか|削除/i)
       ).toBeVisible({ timeout: 2000 });
 
       // Should have cancel button
@@ -160,12 +163,12 @@ test.describe('Container Configuration', () => {
 
   test('should display container configuration form', async ({ page }) => {
     // Check for required form fields
-    await expect(page.getByLabel(/name/i)).toBeVisible();
-    await expect(page.getByLabel(/image/i)).toBeVisible();
+    await expect(page.getByLabel(/name|コンテナ名/i)).toBeVisible();
+    await expect(page.getByLabel(/image|Dockerイメージ/i)).toBeVisible();
 
     // Should have submit button
     await expect(
-      page.getByRole('button', { name: /create|start|launch/i })
+      page.getByRole('button', { name: /create|start|launch|コンテナを作成/i })
     ).toBeVisible();
   });
 
