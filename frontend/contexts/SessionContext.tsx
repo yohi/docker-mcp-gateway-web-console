@@ -38,9 +38,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const checkSession = useCallback(async () => {
     try {
+      console.log('SessionContext: Starting checkSession');
       setIsLoading(true);
       const stored = readStoredSession();
       const result = await checkSessionAPI();
+      console.log('SessionContext: checkSessionAPI result:', result);
 
       if (result.valid && (result.session || stored)) {
         const nextSession = result.session ?? stored;
@@ -56,10 +58,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       persistSession(null);
       setError(null);
     } catch (err) {
+      console.error('SessionContext: checkSession error:', err);
       setSession(null);
       persistSession(null);
       setError(err instanceof Error ? err.message : 'Failed to check session');
     } finally {
+      console.log('SessionContext: Finished checkSession, setting isLoading false');
       setIsLoading(false);
     }
   }, []);

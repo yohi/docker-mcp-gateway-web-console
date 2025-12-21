@@ -2,7 +2,17 @@
 
 import { LoginCredentials, Session } from '../types/auth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+
+function getUrl(path: string): URL {
+  if (API_BASE_URL) {
+    return new URL(path, API_BASE_URL);
+  }
+  if (typeof window !== 'undefined') {
+    return new URL(path, window.location.origin);
+  }
+  return new URL(path, 'http://127.0.0.1:3000');
+}
 
 function getSessionId(): string {
   if (typeof window === 'undefined') return '';
@@ -32,7 +42,8 @@ export async function loginAPI(credentials: LoginCredentials): Promise<Session> 
     two_step_login_code: credentials.twoStepLoginCode,
   };
 
-  const response = await fetch(`${API_URL}/api/auth/login`, {
+  const url = getUrl('/api/auth/login');
+  const response = await fetch(url.toString(), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -55,13 +66,14 @@ export async function loginAPI(credentials: LoginCredentials): Promise<Session> 
 
 export async function logoutAPI(): Promise<void> {
   const sessionId = getSessionId();
-  const response = await fetch(`${API_URL}/api/auth/logout`, {
+  const url = getUrl('/api/auth/logout');
+  const response = await fetch(url.toString(), {
     method: 'POST',
     credentials: 'include',
     headers: sessionId
       ? {
-          Authorization: `Bearer ${sessionId}`,
-        }
+        Authorization: `Bearer ${sessionId}`,
+      }
       : {},
   });
 
@@ -82,7 +94,9 @@ export async function checkSessionAPI(): Promise<{ valid: boolean; session?: Ses
     return { valid: false };
   }
 
-  const response = await fetch(`${API_URL}/api/auth/session`, {
+  const url = getUrl('/api/auth/session');
+  console.log(`Checking session at ${url.toString()} with token: ${sessionId ? 'PRESENT' : 'NONE'}`);
+  const response = await fetch(url.toString(), {
     method: 'GET',
     credentials: 'include',
     headers: {
@@ -91,6 +105,7 @@ export async function checkSessionAPI(): Promise<{ valid: boolean; session?: Ses
   });
 
   if (!response.ok) {
+    console.error(`Session check failed: ${response.status} ${response.statusText}`);
     return { valid: false };
   }
 
