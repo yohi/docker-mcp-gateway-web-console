@@ -76,9 +76,9 @@ export async function mockAuthentication(page: Page) {
 
   // Mock the session validation API
   console.log('Registering session mock...');
-  await page.route(url => url.toString().includes('/api/auth/session'), route => {
+  await page.route(url => url.toString().includes('/api/auth/session'), async route => {
     console.log(`MOCK HIT (session): ${route.request().url()}`);
-    route.fulfill({
+    await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
@@ -165,14 +165,14 @@ export async function mockCatalogData(page: Page, customServers?: CatalogMockSer
   const servers = customServers ?? fixtureServers;
 
   console.log('Registering catalog mock...');
-  await page.route(url => url.toString().includes('/api/catalog'), route => {
+  await page.route(url => url.toString().includes('/api/catalog'), async route => {
     const url = new URL(route.request().url());
     if (url.pathname !== '/api/catalog' && url.pathname !== '/api/catalog/search') {
-      route.continue();
+      await route.continue();
       return;
     }
     if (route.request().method() !== 'GET') {
-      route.continue();
+      await route.continue();
       return;
     }
     console.log(`MOCK HIT (catalog): ${route.request().url()}`);
@@ -199,7 +199,7 @@ export async function mockCatalogData(page: Page, customServers?: CatalogMockSer
     const start = (pageParam - 1) * pageSize;
     const paged = filtered.slice(start, start + pageSize);
 
-    route.fulfill({
+    await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
@@ -219,10 +219,10 @@ export async function mockCatalogData(page: Page, customServers?: CatalogMockSer
  */
 export async function mockContainerList(page: Page, containers: any[] = []) {
   console.log('Registering containers mock...');
-  await page.route(url => url.toString().includes('/api/containers'), route => {
+  await page.route(url => url.toString().includes('/api/containers'), async route => {
     console.log(`MOCK HIT (containers): ${route.request().url()}`);
     if (route.request().method() === 'GET') {
-      route.fulfill({
+      await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
@@ -239,7 +239,7 @@ export async function mockContainerList(page: Page, containers: any[] = []) {
         }),
       });
     } else {
-      route.continue();
+      await route.continue();
     }
   });
 }
@@ -248,9 +248,9 @@ export async function mockContainerList(page: Page, containers: any[] = []) {
  * Mock MCP inspector data
  */
 export async function mockInspectorData(page: Page, containerId: string) {
-  await page.route(url => url.toString().includes(`/api/inspector/${containerId}/capabilities`), route => {
+  await page.route(url => url.toString().includes(`/api/inspector/${containerId}/capabilities`), async route => {
     console.log(`MOCK HIT (inspector capabilities): ${route.request().url()}`);
-    route.fulfill({
+    await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
@@ -265,9 +265,9 @@ export async function mockInspectorData(page: Page, containerId: string) {
   });
 
   // Mock tools
-  await page.route(url => url.toString().includes(`/api/inspector/${containerId}/tools`), route => {
+  await page.route(url => url.toString().includes(`/api/inspector/${containerId}/tools`), async route => {
     console.log(`MOCK HIT (inspector tools): ${route.request().url()}`);
-    route.fulfill({
+    await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify([]),
@@ -275,9 +275,9 @@ export async function mockInspectorData(page: Page, containerId: string) {
   });
 
   // Mock resources
-  await page.route(url => url.toString().includes(`/api/inspector/${containerId}/resources`), route => {
+  await page.route(url => url.toString().includes(`/api/inspector/${containerId}/resources`), async route => {
     console.log(`MOCK HIT (inspector resources): ${route.request().url()}`);
-    route.fulfill({
+    await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify([]),
@@ -285,9 +285,9 @@ export async function mockInspectorData(page: Page, containerId: string) {
   });
 
   // Mock prompts
-  await page.route(url => url.toString().includes(`/api/inspector/${containerId}/prompts`), route => {
+  await page.route(url => url.toString().includes(`/api/inspector/${containerId}/prompts`), async route => {
     console.log(`MOCK HIT (inspector prompts): ${route.request().url()}`);
-    route.fulfill({
+    await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify([]),

@@ -63,9 +63,9 @@ test.describe('MCP Inspector', () => {
     ).toBeVisible();
 
     // Should have tabs for Tools, Resources, and Prompts
-    const toolsTab = page.getByRole('button', { name: /tools/i });
-    const resourcesTab = page.getByRole('button', { name: /resources/i });
-    const promptsTab = page.getByRole('button', { name: /prompts/i });
+    const toolsTab = page.getByRole('tab', { name: /tools/i });
+    const resourcesTab = page.getByRole('tab', { name: /resources/i });
+    const promptsTab = page.getByRole('tab', { name: /prompts/i });
 
     // At least one tab should be visible
     const hasToolsTab = await toolsTab.isVisible().catch(() => false);
@@ -79,8 +79,8 @@ test.describe('MCP Inspector', () => {
     await page.goto('/inspector/test-container-id');
 
     // Find tabs
-    const toolsTab = page.getByRole('button', { name: /tools/i });
-    const resourcesTab = page.getByRole('button', { name: /resources/i });
+    const toolsTab = page.getByRole('tab', { name: /tools/i });
+    const resourcesTab = page.getByRole('tab', { name: /resources/i });
 
     const hasToolsTab = await toolsTab.isVisible().catch(() => false);
     const hasResourcesTab = await resourcesTab.isVisible().catch(() => false);
@@ -104,7 +104,7 @@ test.describe('MCP Inspector', () => {
     await page.goto('/inspector/test-container-id');
 
     // Make sure we're on Tools tab
-    const toolsTab = page.getByRole('button', { name: /tools/i });
+    const toolsTab = page.getByRole('tab', { name: /tools/i });
     const hasTab = await toolsTab.isVisible().catch(() => false);
 
     if (hasTab) {
@@ -130,7 +130,7 @@ test.describe('MCP Inspector', () => {
     await page.goto('/inspector/test-container-id');
 
     // Click on Resources tab
-    const resourcesTab = page.getByRole('button', { name: /resources/i });
+    const resourcesTab = page.getByRole('tab', { name: /resources/i });
     const hasTab = await resourcesTab.isVisible().catch(() => false);
 
     if (hasTab) {
@@ -156,7 +156,7 @@ test.describe('MCP Inspector', () => {
     await page.goto('/inspector/test-container-id');
 
     // Click on Prompts tab
-    const promptsTab = page.getByRole('button', { name: /prompts/i });
+    const promptsTab = page.getByRole('tab', { name: /prompts/i });
     const hasTab = await promptsTab.isVisible().catch(() => false);
 
     if (hasTab) {

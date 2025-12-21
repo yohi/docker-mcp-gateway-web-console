@@ -8,10 +8,17 @@ import {
   SessionJobStatusResponse,
 } from '../types/sessions';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:3000');
+
+function getUrl(path: string): URL {
+  return new URL(path, API_BASE_URL);
+}
 
 export async function createSession(payload: SessionCreateRequest): Promise<SessionCreateResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/sessions`, {
+  const url = getUrl('/api/sessions');
+  const response = await fetch(url.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -35,7 +42,8 @@ export async function createSession(payload: SessionCreateRequest): Promise<Sess
 export async function executeSession(
   payload: SessionExecRequest
 ): Promise<SessionExecSyncResponse | SessionExecAsyncResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/sessions/${payload.sessionId}/exec`, {
+  const url = getUrl(`/api/sessions/${payload.sessionId}/exec`);
+  const response = await fetch(url.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -59,7 +67,8 @@ export async function getJobStatus(
   sessionId: string,
   jobId: string
 ): Promise<SessionJobStatusResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/jobs/${jobId}`);
+  const url = getUrl(`/api/sessions/${sessionId}/jobs/${jobId}`);
+  const response = await fetch(url.toString());
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.detail || error.message || 'ジョブ状態の取得に失敗しました');

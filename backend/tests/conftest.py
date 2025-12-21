@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import stat
+from typing import Iterator
+from unittest.mock import patch
 
 from hypothesis import settings
 
@@ -30,10 +32,11 @@ if "HYPOTHESIS_PROFILE" not in os.environ:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _mock_docker_socket(tmp_path_factory) -> None:
+def _mock_docker_socket(tmp_path_factory) -> Iterator[None]:
     """
     CI 環境では Docker デーモンが無いので、Docker ソケット存在チェックをパスさせるために
     ダミーの Unix ソケットファイルパスを用意し、設定を上書きする。
+    実際の接続は行わない設計のため、Docker SDK のクライアントは常にモックする。
     """
     socket_dir = tmp_path_factory.mktemp("docker-socket")
     socket_path = socket_dir / "docker.sock"
@@ -41,9 +44,31 @@ def _mock_docker_socket(tmp_path_factory) -> None:
     socket_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
     fake_host = f"unix://{socket_path}"
+    previous_env = os.environ.get("DOCKER_HOST")
+    previous_setting = app_config.settings.docker_host
     os.environ["DOCKER_HOST"] = fake_host
     # ContainerService は settings を参照するため、設定オブジェクトも更新
     app_config.settings.docker_host = fake_host
+
+    docker_client_patcher = patch("docker.DockerClient")
+    docker_from_env_patcher = patch("docker.from_env")
+    docker_client_mock = docker_client_patcher.start()
+    docker_from_env_mock = docker_from_env_patcher.start()
+    mock_client = docker_client_mock.return_value
+    mock_client.ping.return_value = True
+    mock_client.close.return_value = None
+    docker_from_env_mock.return_value = mock_client
+
+    try:
+        yield
+    finally:
+        docker_from_env_patcher.stop()
+        docker_client_patcher.stop()
+        if previous_env is None:
+            os.environ.pop("DOCKER_HOST", None)
+        else:
+            os.environ["DOCKER_HOST"] = previous_env
+        app_config.settings.docker_host = previous_setting
 
 
 @pytest.fixture(autouse=True)

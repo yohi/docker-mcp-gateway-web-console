@@ -125,10 +125,14 @@ test.describe('Authentication Flow', () => {
     await page.goto('/dashboard');
 
     // Should redirect to login or show session expired message
-    await page.waitForURL(/\/login/, { timeout: 5000 }).catch(() => {
+    const redirected = await page
+      .waitForURL(/\/login/, { timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!redirected) {
       // If not redirected, check for error message
-      expect(page.getByText(/session expired|unauthorized/i)).toBeVisible();
-    });
+      await expect(page.getByText(/session expired|unauthorized/i)).toBeVisible();
+    }
   });
 
   test('should have logout functionality when authenticated', async ({ page }) => {

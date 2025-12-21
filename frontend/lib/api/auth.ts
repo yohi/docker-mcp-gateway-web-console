@@ -95,7 +95,9 @@ export async function checkSessionAPI(): Promise<{ valid: boolean; session?: Ses
   }
 
   const url = getUrl('/api/auth/session');
-  console.log(`Checking session at ${url.toString()} with token: ${sessionId ? 'PRESENT' : 'NONE'}`);
+  if (process.env.NODE_ENV === 'development') {
+    console.debug(`Checking session at ${url.toString()} (token present: ${sessionId ? 'yes' : 'no'})`);
+  }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
@@ -142,5 +144,4 @@ export async function checkSessionAPI(): Promise<{ valid: boolean; session?: Ses
     return { valid: false };
   }
 }
-
 
