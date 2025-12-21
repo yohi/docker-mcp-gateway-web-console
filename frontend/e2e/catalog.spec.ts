@@ -113,9 +113,6 @@ test.describe('Catalog Installed State', () => {
 
   test('should show installed status and disable install', async ({ page }) => {
     await page.waitForLoadState('networkidle');
-    await page.waitForResponse(
-      (resp) => resp.url().includes('/api/containers') && resp.request().method() === 'GET'
-    );
 
     const serverCards = page.locator('[data-testid="catalog-card"]');
     const fetchCard = serverCards.filter({
