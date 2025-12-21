@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mockAuthentication } from './helpers';
 
 /**
  * E2E tests for MCP Inspector functionality
@@ -11,6 +12,9 @@ import { test, expect } from '@playwright/test';
 
 test.describe('MCP Inspector', () => {
   test.beforeEach(async ({ page }) => {
+    // Mock authentication
+    await mockAuthentication(page);
+
     await page.goto('/dashboard');
   });
 

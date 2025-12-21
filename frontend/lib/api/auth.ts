@@ -96,36 +96,51 @@ export async function checkSessionAPI(): Promise<{ valid: boolean; session?: Ses
 
   const url = getUrl('/api/auth/session');
   console.log(`Checking session at ${url.toString()} with token: ${sessionId ? 'PRESENT' : 'NONE'}`);
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    credentials: 'include',
-    headers: {
-      Authorization: `Bearer ${sessionId}`,
-    },
-  });
-
-  if (!response.ok) {
-    console.error(`Session check failed: ${response.status} ${response.statusText}`);
-    return { valid: false };
-  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
   try {
-    const data = await response.json();
-    if (data.valid && data.session_id) {
-      return {
-        valid: true,
-        session: {
-          session_id: data.session_id,
-          user_email: data.user_email ?? '',
-          expires_at: data.expires_at,
-          created_at: data.created_at ?? new Date().toISOString(),
-        },
-      };
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        Authorization: `Bearer ${sessionId}`,
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.error(`Session check failed: ${response.status} ${response.statusText}`);
+      return { valid: false };
     }
-    return { valid: false };
+
+    try {
+      const data = await response.json();
+      if (data.valid && data.session_id) {
+        return {
+          valid: true,
+          session: {
+            session_id: data.session_id,
+            user_email: data.user_email ?? '',
+            expires_at: data.expires_at,
+            created_at: data.created_at ?? new Date().toISOString(),
+          },
+        };
+      }
+      return { valid: false };
+    } catch (error) {
+      console.error('Failed to parse session response as JSON:', error);
+      return { valid: false };
+    }
   } catch (error) {
-    // Log parse error for debugging
-    console.error('Failed to parse session response as JSON:', error);
+    if ((error as Error).name === 'AbortError') {
+      console.error('Session check timed out');
+    } else {
+      console.error('Session check network error:', error);
+    }
     return { valid: false };
   }
 }
+
+
