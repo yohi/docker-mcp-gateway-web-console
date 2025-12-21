@@ -18,7 +18,7 @@ services:
       node .next/standalone/server.js"
     shm_size: 1gb  # Chromium requires at least 1GB shared memory for E2E tests
     environment:
-      - NEXT_PUBLIC_API_URL=http://frontend:3000
+      - NEXT_PUBLIC_API_URL=
       - INTERNAL_API_URL=http://backend:8000
       - NODE_ENV=production
       - CI=true
