@@ -161,7 +161,12 @@ test.describe('MCP Inspector', () => {
 
     if (hasTab) {
       await promptsTab.click();
-      await expect(page.locator('[data-testid="prompts-list"], .prompts-list').or(page.getByText(/no prompts|empty/i)).first()).toBeVisible();
+      await expect(
+        page
+          .locator('[data-testid="prompts-list"], .prompts-list')
+          .or(page.getByText(/no prompts|empty|プロンプトがありません/i))
+          .first()
+      ).toBeVisible();
 
       // Look for prompts list or empty state
       const promptsList = page.locator('[data-testid="prompts-list"]').or(

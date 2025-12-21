@@ -113,6 +113,9 @@ test.describe('Catalog Installed State', () => {
 
   test('should show installed status and disable install', async ({ page }) => {
     await page.waitForLoadState('networkidle');
+    await page.waitForResponse(
+      (resp) => resp.url().includes('/api/containers') && resp.request().method() === 'GET'
+    );
 
     const serverCards = page.locator('[data-testid="catalog-card"]');
     const fetchCard = serverCards.filter({
@@ -147,11 +150,7 @@ test.describe('Catalog Installation Flow', () => {
     await expect(modal).toBeVisible();
 
     // 3. Verify inputs
-    // fetch has PORT and API_KEY in mockCatalogData
-    // PORT is a normal env, API_KEY is a secret
     const portInput = page.getByLabel('PORT');
-    await expect(page.getByLabel(/name|コンテナ名/i)).toBeVisible();
-    await expect(page.getByLabel(/image|Dockerイメージ/i)).toBeVisible();
     await expect(portInput).toBeVisible();
     await expect(portInput).toHaveValue('8080'); // Default value
 

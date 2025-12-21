@@ -158,7 +158,7 @@ export default function ContainerConfigurator({
       data-testid="container-configurator"
     >
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl my-8">
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
           {/* Header */}
           <div className="p-6 border-b border-gray-200">
             <h2 className="text-2xl font-bold text-gray-800">

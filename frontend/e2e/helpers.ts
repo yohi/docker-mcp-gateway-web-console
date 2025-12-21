@@ -60,11 +60,19 @@ export async function mockAuthentication(page: Page) {
   // Ensure session id is available for API headers used in hooks
   await page.addInitScript((args) => {
     try {
+      const now = new Date().toISOString();
+      const session = {
+        session_id: args.sessionId,
+        user_email: args.userEmail,
+        created_at: now,
+        expires_at: args.expiresAt,
+      };
+      window.localStorage.setItem('session', JSON.stringify(session));
       window.localStorage.setItem('session_id', args.sessionId);
     } catch (e) {
       // ignore storage errors in headless context
     }
-  }, { sessionId: TEST_SESSION_ID });
+  }, { sessionId: TEST_SESSION_ID, userEmail: TEST_LOGIN_CREDENTIALS.email, expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() });
 
   // Mock the session validation API
   console.log('Registering session mock...');
