@@ -251,7 +251,7 @@ jobs:
       - name: Start Docker Compose services
         run: |
           set -e
-          docker compose -f docker-compose.test.yml up -d --wait --wait-timeout 120 frontend backend
+          docker compose -f docker-compose.test.yml up -d --wait --wait-timeout 300 frontend backend
 
       - name: Debug Docker Services
         run: |

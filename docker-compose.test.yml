@@ -11,11 +11,11 @@ services:
     ports:
       # Default: dynamic host port (e.g., ":3000"). CI can override with "3001:3000".
       - "${E2E_FRONTEND_PORT_MAPPING:-:3000}"
-    command: ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
+    command: ["sh", "-c", "npm run build && npm run start -- --hostname 0.0.0.0 --port 3000"]
     shm_size: 1gb  # Chromium requires at least 1GB shared memory for E2E tests
     environment:
       - NEXT_PUBLIC_API_URL=http://backend:8000
-      - NODE_ENV=test
+      - NODE_ENV=production
       - CI=true
     depends_on:
       backend:
@@ -27,7 +27,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 6
-      start_period: 10s
+      start_period: 120s
 
   backend:
     build:
