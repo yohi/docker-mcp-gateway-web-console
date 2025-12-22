@@ -47,9 +47,11 @@ def ensure_docker_unix_adapter() -> None:
     if docker_version is not None and docker_version >= (7, 1, 0):
         return
 
-    # requests 2.32.0/2.32.1 regress Docker socket adapters.
+    # requests 2.32.x regress Docker socket adapters.
     requests_version = _parse_version_triplet(getattr(requests, "__version__", ""))
-    if requests_version not in {(2, 32, 0), (2, 32, 1)}:
+    if requests_version is None:
+        return
+    if requests_version < (2, 32, 0) or requests_version >= (2, 33, 0):
         return
     if hasattr(unixconn.UnixHTTPAdapter, "get_connection_with_tls_context"):
         adapter_patched = True
