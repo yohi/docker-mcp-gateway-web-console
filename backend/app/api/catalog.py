@@ -50,6 +50,7 @@ def _resolve_source_url(source_id: CatalogSourceId) -> str:
 def _catalog_error_response(
     error: CatalogError, *, status_code: int
 ) -> JSONResponse:
+    """Create structured error response for catalog errors."""
     payload = CatalogErrorResponse(
         detail=error.message,
         error_code=error.error_code,
@@ -58,7 +59,19 @@ def _catalog_error_response(
     return JSONResponse(status_code=status_code, content=payload)
 
 
-@router.get("", response_model=CatalogResponse)
+@router.get(
+    "",
+    response_model=CatalogResponse,
+    responses={
+        400: {
+            "model": CatalogErrorResponse,
+            "description": "Invalid request parameters (e.g., invalid source ID)",
+        },
+        503: {
+            "description": "Service unavailable - failed to fetch catalog"
+        },
+    },
+)
 async def get_catalog(
     source: Optional[str] = Query(None, description="Catalog source ID")
 ) -> CatalogResponse:
