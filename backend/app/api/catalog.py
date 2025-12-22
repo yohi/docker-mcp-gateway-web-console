@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import math
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import JSONResponse
@@ -74,7 +74,7 @@ def _catalog_error_response(
 )
 async def get_catalog(
     source: Optional[str] = Query(None, description="Catalog source ID")
-) -> CatalogResponse:
+) -> Union[CatalogResponse, JSONResponse]:
     """
     Fetch catalog data from a remote source.
     
