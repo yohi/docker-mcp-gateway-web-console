@@ -24,6 +24,20 @@ router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 # Initialize catalog service
 catalog_service = CatalogService()
 
+_CATALOG_ERROR_STATUS = {
+    CatalogErrorCode.INVALID_SOURCE: status.HTTP_400_BAD_REQUEST,
+    CatalogErrorCode.RATE_LIMITED: status.HTTP_429_TOO_MANY_REQUESTS,
+    CatalogErrorCode.UPSTREAM_UNAVAILABLE: status.HTTP_503_SERVICE_UNAVAILABLE,
+    CatalogErrorCode.INTERNAL_ERROR: status.HTTP_500_INTERNAL_SERVER_ERROR,
+}
+
+_CATALOG_ERROR_DETAILS = {
+    CatalogErrorCode.INVALID_SOURCE: "Invalid source value. Allowed: docker, official",
+    CatalogErrorCode.RATE_LIMITED: "Upstream rate limit exceeded. Please retry later.",
+    CatalogErrorCode.UPSTREAM_UNAVAILABLE: "Upstream registry is temporarily unavailable.",
+    CatalogErrorCode.INTERNAL_ERROR: "An internal error occurred.",
+}
+
 
 def _resolve_source_id(source: Optional[str]) -> CatalogSourceId:
     """Resolve catalog source ID from query param."""
@@ -48,13 +62,25 @@ def _resolve_source_url(source_id: CatalogSourceId) -> str:
 
 
 def _catalog_error_response(
-    error: CatalogError, *, status_code: int
+    error: CatalogError,
 ) -> JSONResponse:
     """Create structured error response for catalog errors."""
+    error_code = error.error_code or CatalogErrorCode.INTERNAL_ERROR
+    status_code = _CATALOG_ERROR_STATUS.get(
+        error_code, status.HTTP_500_INTERNAL_SERVER_ERROR
+    )
+    detail = _CATALOG_ERROR_DETAILS.get(
+        error_code, _CATALOG_ERROR_DETAILS[CatalogErrorCode.INTERNAL_ERROR]
+    )
+    retry_after = (
+        error.retry_after_seconds
+        if error_code == CatalogErrorCode.RATE_LIMITED
+        else None
+    )
     payload = CatalogErrorResponse(
-        detail=error.message,
-        error_code=error.error_code,
-        retry_after_seconds=error.retry_after_seconds,
+        detail=detail,
+        error_code=error_code,
+        retry_after_seconds=retry_after,
     ).model_dump(mode="json", exclude_none=True)
     return JSONResponse(status_code=status_code, content=payload)
 
@@ -67,8 +93,17 @@ def _catalog_error_response(
             "model": CatalogErrorResponse,
             "description": "Invalid request parameters (e.g., invalid source ID)",
         },
+        429: {
+            "model": CatalogErrorResponse,
+            "description": "Rate limited by upstream registry",
+        },
         503: {
-            "description": "Service unavailable - failed to fetch catalog"
+            "model": CatalogErrorResponse,
+            "description": "Service unavailable - failed to fetch catalog",
+        },
+        500: {
+            "model": CatalogErrorResponse,
+            "description": "Internal server error",
         },
     },
 )
@@ -135,19 +170,14 @@ async def get_catalog(
             
     except CatalogError as e:
         logger.error(f"Failed to fetch catalog: {e}")
-        if e.error_code == CatalogErrorCode.INVALID_SOURCE:
-            return _catalog_error_response(
-                e, status_code=status.HTTP_400_BAD_REQUEST
-            )
-        raise HTTPException(
-            status_code=503,
-            detail=f"Failed to fetch catalog: {str(e)}"
-        )
+        return _catalog_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error fetching catalog: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
+        return _catalog_error_response(
+            CatalogError(
+                "Internal error",
+                error_code=CatalogErrorCode.INTERNAL_ERROR,
+            )
         )
 
 
