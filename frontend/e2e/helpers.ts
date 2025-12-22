@@ -3,6 +3,39 @@
  */
 
 import { Page } from '@playwright/test';
+import type { CatalogItem } from '@/lib/types/catalog';
+import registryCatalog from './fixtures/mcp-registry.json';
+
+export const TEST_SESSION_ID = 'test-session-id';
+export const TEST_LOGIN_CREDENTIALS = {
+  method: 'api_key' as const,
+  email: 'test@example.com',
+  clientId: 'test-client-id',
+  clientSecret: 'test-client-secret',
+  masterPassword: 'test-master-password',
+};
+
+type MockLoginCredentials = {
+  method: 'api_key' | 'master_password';
+  email: string;
+  clientId?: string;
+  clientSecret?: string;
+  masterPassword: string;
+  twoStepLoginMethod?: number;
+  twoStepLoginCode?: string;
+};
+
+type MockLoginOptions = {
+  credentials?: MockLoginCredentials;
+  sessionId?: string;
+  createdAt?: string;
+  expiresAt?: string;
+};
+
+type CatalogMockServer =
+  & Partial<Pick<CatalogItem, 'id' | 'name' | 'description' | 'vendor' | 'category'>>
+  & Record<string, unknown>;
+type CatalogFixturePayload = { servers?: CatalogMockServer[] } | CatalogMockServer[];
 
 /**
  * Mock authentication by setting session cookie
@@ -16,7 +49,7 @@ export async function mockAuthentication(page: Page) {
   // Set a mock session cookie
   await page.context().addCookies([{
     name: 'session',
-    value: 'test-session-id',
+    value: TEST_SESSION_ID,
     domain: 'localhost',
     path: '/',
     httpOnly: true,
@@ -25,27 +58,97 @@ export async function mockAuthentication(page: Page) {
   }]);
 
   // Ensure session id is available for API headers used in hooks
-  await page.addInitScript(() => {
+  await page.addInitScript((args) => {
     try {
-      window.localStorage.setItem('session_id', 'test-session-id');
+      const now = new Date().toISOString();
+      const session = {
+        session_id: args.sessionId,
+        user_email: args.userEmail,
+        created_at: now,
+        expires_at: args.expiresAt,
+      };
+      window.localStorage.setItem('session', JSON.stringify(session));
+      window.localStorage.setItem('session_id', args.sessionId);
     } catch (e) {
       // ignore storage errors in headless context
     }
-  });
+  }, { sessionId: TEST_SESSION_ID, userEmail: TEST_LOGIN_CREDENTIALS.email, expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() });
 
   // Mock the session validation API
-  await page.route('**/api/auth/session', route => {
-    route.fulfill({
+  console.log('Registering session mock...');
+  await page.route(url => url.toString().includes('/api/auth/session'), async route => {
+    console.log(`MOCK HIT (session): ${route.request().url()}`);
+    await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         valid: true,
-        session: {
-          session_id: 'test-session-id',
-          user_email: 'test@example.com',
-          created_at: new Date(Date.now() - 60 * 1000).toISOString(),
-          expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-        },
+        session_id: TEST_SESSION_ID,
+        user_email: TEST_LOGIN_CREDENTIALS.email,
+        created_at: new Date(Date.now() - 60 * 1000).toISOString(),
+        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      }),
+    });
+  });
+}
+
+export async function mockLogin(page: Page, options: MockLoginOptions = {}) {
+  const credentials: MockLoginCredentials = {
+    ...TEST_LOGIN_CREDENTIALS,
+    ...options.credentials,
+  };
+  const sessionId = options.sessionId ?? TEST_SESSION_ID;
+  const now = Date.now();
+  const createdAt = options.createdAt ?? new Date(now - 60 * 1000).toISOString();
+  const expiresAt = options.expiresAt ?? new Date(now + 30 * 60 * 1000).toISOString();
+
+  await page.route(url => url.toString().includes('/api/auth/login'), async route => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+
+    let body: any = null;
+    try {
+      body = await route.request().postDataJSON();
+    } catch {
+      body = null;
+    }
+
+    const matchesMethod = body?.method === credentials.method;
+    const matchesEmail = body?.email === credentials.email;
+    const matchesMasterPassword = body?.master_password === credentials.masterPassword;
+    const matchesTwoStepMethod =
+      credentials.twoStepLoginMethod === undefined ||
+      body?.two_step_login_method === credentials.twoStepLoginMethod;
+    const matchesTwoStepCode =
+      credentials.twoStepLoginCode === undefined ||
+      body?.two_step_login_code === credentials.twoStepLoginCode;
+
+    let matchesApiKey = true;
+    if (credentials.method === 'api_key') {
+      matchesApiKey =
+        body?.client_id === credentials.clientId &&
+        body?.client_secret === credentials.clientSecret;
+    }
+
+    if (!matchesMethod || !matchesEmail || !matchesMasterPassword || !matchesApiKey || !matchesTwoStepMethod || !matchesTwoStepCode) {
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Invalid credentials' }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        session_id: sessionId,
+        user_email: credentials.email,
+        created_at: createdAt,
+        expires_at: expiresAt,
       }),
     });
   });
@@ -54,55 +157,57 @@ export async function mockAuthentication(page: Page) {
 /**
  * Mock catalog data for testing
  */
-export async function mockCatalogData(page: Page, customServers?: any[]) {
-  const servers = customServers || [
-    {
-      id: 'test-server-1',
-      name: 'Test MCP Server',
-      description: 'A test MCP server for E2E testing',
-      vendor: 'Test Vendor',
-      category: 'testing',
-      docker_image: 'test/mcp-server:latest',
-      default_env: {
-        PORT: '8080',
-        API_KEY: '{{ bw:test-id:api_key }}',
-      },
-      required_envs: ['PORT', 'API_KEY'],
-      required_secrets: ['API_KEY'],
-    },
-    {
-      id: 'test-server-2',
-      name: 'Another Test Server',
-      description: 'Another test server',
-      vendor: 'Another Vendor',
-      category: 'utilities',
-      docker_image: 'test/another-server:latest',
-      default_env: {},
-      required_envs: [],
-      required_secrets: [],
-    },
-  ];
+export async function mockCatalogData(page: Page, customServers?: CatalogMockServer[]) {
+  const catalogPayload = registryCatalog as unknown as CatalogFixturePayload;
+  const fixtureServers = Array.isArray(catalogPayload)
+    ? catalogPayload
+    : (catalogPayload.servers ?? []);
+  const servers = customServers ?? fixtureServers;
 
-  await page.route('**/api/catalog**', route => {
+  console.log('Registering catalog mock...');
+  await page.route(url => url.toString().includes('/api/catalog'), async route => {
     const url = new URL(route.request().url());
+    if (url.pathname !== '/api/catalog' && url.pathname !== '/api/catalog/search') {
+      await route.continue();
+      return;
+    }
+    if (route.request().method() !== 'GET') {
+      await route.continue();
+      return;
+    }
+    console.log(`MOCK HIT (catalog): ${route.request().url()}`);
     const q = url.searchParams.get('q') || url.searchParams.get('query') || '';
     const category = url.searchParams.get('category') || '';
+    const pageParam = Number(url.searchParams.get('page')) || 1;
+    const pageSize = Number(url.searchParams.get('page_size')) || 8;
 
     const filtered = servers.filter((item) => {
+      const name = (item.name || '').toLowerCase();
+      const description = (item.description || '').toLowerCase();
+      const id = (item.id || '').toLowerCase();
+      const vendor = (item.vendor || '').toLowerCase();
+      const query = q.toLowerCase();
       const matchesQuery =
         q === '' ||
-        item.name.toLowerCase().includes(q.toLowerCase()) ||
-        item.description.toLowerCase().includes(q.toLowerCase());
+        name.includes(query) ||
+        description.includes(query) ||
+        id.includes(query) ||
+        vendor.includes(query);
       const matchesCategory = category === '' || item.category === category;
       return matchesQuery && matchesCategory;
     });
+    const start = (pageParam - 1) * pageSize;
+    const paged = filtered.slice(start, start + pageSize);
 
-    route.fulfill({
+    await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        servers: filtered,
+        servers: paged,
         total: filtered.length,
+        page: pageParam,
+        page_size: pageSize,
+        categories: Array.from(new Set(servers.map(s => s.category))),
         cached: false,
       }),
     });
@@ -113,9 +218,11 @@ export async function mockCatalogData(page: Page, customServers?: any[]) {
  * Mock container list data
  */
 export async function mockContainerList(page: Page, containers: any[] = []) {
-  await page.route('**/api/containers**', route => {
+  console.log('Registering containers mock...');
+  await page.route(url => url.toString().includes('/api/containers'), async route => {
+    console.log(`MOCK HIT (containers): ${route.request().url()}`);
     if (route.request().method() === 'GET') {
-      route.fulfill({
+      await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
@@ -132,7 +239,7 @@ export async function mockContainerList(page: Page, containers: any[] = []) {
         }),
       });
     } else {
-      route.continue();
+      await route.continue();
     }
   });
 }
@@ -141,60 +248,49 @@ export async function mockContainerList(page: Page, containers: any[] = []) {
  * Mock MCP inspector data
  */
 export async function mockInspectorData(page: Page, containerId: string) {
-  // Mock tools
-  await page.route(`**/api/inspector/${containerId}/tools`, route => {
-    route.fulfill({
+  await page.route(url => url.toString().includes(`/api/inspector/${containerId}/capabilities`), async route => {
+    console.log(`MOCK HIT (inspector capabilities): ${route.request().url()}`);
+    await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        tools: [
-          {
-            name: 'test_tool',
-            description: 'A test tool',
-            input_schema: {
-              type: 'object',
-              properties: {
-                param1: { type: 'string' },
-              },
-            },
-          },
-        ],
+        tools: [],
+        resources: [],
+        prompts: [],
+        capabilities: {
+          logging: {},
+        },
       }),
+    });
+  });
+
+  // Mock tools
+  await page.route(url => url.toString().includes(`/api/inspector/${containerId}/tools`), async route => {
+    console.log(`MOCK HIT (inspector tools): ${route.request().url()}`);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([]),
     });
   });
 
   // Mock resources
-  await page.route(`**/api/inspector/${containerId}/resources`, route => {
-    route.fulfill({
+  await page.route(url => url.toString().includes(`/api/inspector/${containerId}/resources`), async route => {
+    console.log(`MOCK HIT (inspector resources): ${route.request().url()}`);
+    await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        resources: [
-          {
-            uri: 'test://resource',
-            name: 'Test Resource',
-            description: 'A test resource',
-            mime_type: 'application/json',
-          },
-        ],
-      }),
+      body: JSON.stringify([]),
     });
   });
 
   // Mock prompts
-  await page.route(`**/api/inspector/${containerId}/prompts`, route => {
-    route.fulfill({
+  await page.route(url => url.toString().includes(`/api/inspector/${containerId}/prompts`), async route => {
+    console.log(`MOCK HIT (inspector prompts): ${route.request().url()}`);
+    await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        prompts: [
-          {
-            name: 'test_prompt',
-            description: 'A test prompt',
-            arguments: [],
-          },
-        ],
-      }),
+      body: JSON.stringify([]),
     });
   });
 }

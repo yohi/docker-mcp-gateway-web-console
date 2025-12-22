@@ -32,12 +32,9 @@ test.describe('Remote Servers', () => {
 
     // OAuth リダイレクトをスタブ化（すべてのナビゲーション前に実行）
     await page.addInitScript(() => {
-      const original = window.location;
-      const stub = Object.create(original);
-      (stub as any).assign = (url: string) => {
+      (window as any).__oauthRedirect = (url: string) => {
         (window as any).__oauthRedirect = url;
       };
-      Object.defineProperty(window, 'location', { value: stub });
     });
 
     await mockRemoteServers(page, servers);

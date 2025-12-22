@@ -85,7 +85,12 @@ export default function RemoteServerDetail({ serverId }: Props) {
         );
       }
 
-      window.location.assign(start.auth_url);
+      const testRedirect = (window as any).__oauthRedirect;
+      if (typeof testRedirect === 'function') {
+        testRedirect(start.auth_url);
+      } else {
+        window.location.assign(start.auth_url);
+      }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : '認証開始に失敗しました');
     } finally {

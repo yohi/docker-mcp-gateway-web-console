@@ -6,21 +6,31 @@ on:
 jobs:
   e2e-tests:
     name: Run E2E Tests
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Prune Docker system
+        run: docker system prune -a -f --volumes
+
       - name: Set dummy Fernet key for tests
         run: |
-          key=$(python - <<'PY'
-import base64, os
-print(base64.urlsafe_b64encode(os.urandom(32)).decode())
-PY
-)
-          echo "OAUTH_TOKEN_ENCRYPTION_KEY=$key" >> "$GITHUB_ENV"
+          key="$(python -c "from base64 import urlsafe_b64encode; from os import urandom; print(urlsafe_b64encode(urandom(32)).decode())")"
+          echo "OAUTH_TOKEN_ENCRYPTION_KEY=${key}" >> "$GITHUB_ENV"
 
       - name: Install base packages (docker/compose & Playwright deps)
         run: |
@@ -72,6 +82,9 @@ PY
 
       - name: Start Docker Compose services
         run: |
+          export E2E_FRONTEND_PORT_MAPPING=3001:3000
+          export E2E_BACKEND_PORT_MAPPING=8001:8000
+
           docker compose -f docker-compose.test.yml up -d frontend backend
 
           # Wait for services to be healthy
@@ -103,7 +116,9 @@ PY
 
       - name: Run E2E tests
         working-directory: frontend
-        run: npm run test:e2e
+        run: |
+          mkdir -p test-results playwright-report
+          npx playwright test
         env:
           CI: true
           PLAYWRIGHT_BASE_URL: http://localhost:3001

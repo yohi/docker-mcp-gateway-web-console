@@ -66,14 +66,14 @@ describe('InspectorPanel', () => {
     expect(screen.getByText('A test tool')).toBeInTheDocument();
 
     // Check counts in tabs
-    const toolTab = screen.getByRole('button', { name: /Tools/i });
+    const toolTab = screen.getByRole('tab', { name: /Tools/i });
     expect(toolTab).toBeInTheDocument();
     expect(toolTab).toHaveTextContent('1');
     
-    const resourceTab = screen.getByRole('button', { name: /Resources/i });
+    const resourceTab = screen.getByRole('tab', { name: /Resources/i });
     expect(resourceTab).toHaveTextContent('1');
 
-    const promptTab = screen.getByRole('button', { name: /Prompts/i });
+    const promptTab = screen.getByRole('tab', { name: /Prompts/i });
     expect(promptTab).toHaveTextContent('1');
   });
 
@@ -88,13 +88,13 @@ describe('InspectorPanel', () => {
     await waitFor(() => expect(screen.queryByText('読み込み中...')).not.toBeInTheDocument());
 
     // Switch to Resources
-    fireEvent.click(screen.getByRole('button', { name: /Resources/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Resources/i }));
     expect(screen.getByTestId('resources-list')).toBeInTheDocument();
     expect(screen.getByText('test-resource')).toBeInTheDocument();
     expect(screen.queryByTestId('tools-list')).not.toBeInTheDocument();
 
     // Switch to Prompts
-    fireEvent.click(screen.getByRole('button', { name: /Prompts/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Prompts/i }));
     expect(screen.getByTestId('prompts-list')).toBeInTheDocument();
     expect(screen.getByText('test-prompt')).toBeInTheDocument();
     expect(screen.queryByTestId('resources-list')).not.toBeInTheDocument();

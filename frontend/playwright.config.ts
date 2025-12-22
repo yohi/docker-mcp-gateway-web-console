@@ -6,57 +6,85 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
-  
+
+  /* Maximum time one test can run for. */
+  timeout: 10 * 1000,
+
+  expect: {
+    /**
+     * Maximum time expect() should wait for the condition to be met.
+     * Default is 5000ms.
+     */
+    timeout: 10 * 1000,
+  },
+
   /* Run tests in files in parallel */
   fullyParallel: true,
-  
+
   /* Fail the build on CI if you accidentally left test.only in the source code */
   forbidOnly: !!process.env.CI,
-  
+
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  
-  /* Opt out of parallel tests on CI */
-  workers: process.env.CI ? 1 : undefined,
-  
+
+  /**
+   * CI ではブラウザを1種に絞っているので、workersを2にして時短
+   * (テストが重ければ1に戻してください)
+   */
+  workers: process.env.CI ? 2 : undefined,
+
   /* Reporter to use */
   reporter: 'html',
-  
+
   /* Shared settings for all the projects below */
   use: {
     /* Run headless in Docker/CI to avoid X server dependency */
     headless: true,
-    
+
     /* Stable viewport for screenshots and assertions */
     viewport: { width: 1280, height: 720 },
-    
-    /* Base URL to use in actions like `await page.goto('/')` */
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
-    
+
+    /* Base URL to use in actions like `await page.goto('/')`
+       CI では docker compose 内で frontend サービスが動くため、環境変数が無くても service 名を使う */
+    baseURL:
+      process.env.PLAYWRIGHT_BASE_URL ||
+      (process.env.CI ? 'http://frontend:3000' : 'http://localhost:3000'),
+
     /* Collect trace when retrying the failed test */
     trace: 'on-first-retry',
-    
+
     /* Screenshot on failure */
     screenshot: 'only-on-failure',
+
+    /* Maximum time each action such as `click()` can take. Defaults to 0 (no limit). */
+    actionTimeout: 10 * 1000,
+
+    /* Maximum time required for navigation resources to load. */
+    navigationTimeout: 10 * 1000,
   },
 
-  /* Configure projects for major browsers */
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-  ],
+  /* Configure projects (CI はchromiumのみで時短) */
+  projects: process.env.CI
+    ? [
+      {
+        name: 'chromium',
+        use: { ...devices['Desktop Chrome'] },
+      },
+    ]
+    : [
+      {
+        name: 'chromium',
+        use: { ...devices['Desktop Chrome'] },
+      },
+      {
+        name: 'firefox',
+        use: { ...devices['Desktop Firefox'] },
+      },
+      {
+        name: 'webkit',
+        use: { ...devices['Desktop Safari'] },
+      },
+    ],
 
   /* Run your local dev server before starting the tests */
   webServer: process.env.CI ? undefined : {

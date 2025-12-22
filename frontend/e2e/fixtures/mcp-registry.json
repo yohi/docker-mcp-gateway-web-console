@@ -1,0 +1,41 @@
+{
+  "servers": [
+    {
+      "id": "fetch",
+      "name": "fetch",
+      "description": "Fetch URLs and return their contents.",
+      "vendor": "Docker",
+      "category": "utilities",
+      "docker_image": "docker/mcp-fetch:latest",
+      "icon_url": "",
+      "default_env": {
+        "PORT": "8080",
+        "API_KEY": ""
+      },
+      "required_envs": [
+        "API_KEY"
+      ],
+      "required_secrets": [
+        "API_KEY"
+      ],
+      "required_scopes": [],
+      "verify_signatures": true
+    },
+    {
+      "id": "filesystem",
+      "name": "filesystem",
+      "description": "Read and write files inside a workspace.",
+      "vendor": "Docker",
+      "category": "storage",
+      "docker_image": "docker/mcp-filesystem:latest",
+      "icon_url": "",
+      "default_env": {
+        "ROOT_PATH": "/data"
+      },
+      "required_envs": [],
+      "required_secrets": [],
+      "required_scopes": [],
+      "verify_signatures": true
+    }
+  ]
+}

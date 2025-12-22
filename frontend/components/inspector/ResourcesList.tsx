@@ -29,7 +29,7 @@ export default function ResourcesList({ resources, loading, error }: ResourcesLi
   if (resources.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
-        <p>利用可能な Resources がありません</p>
+        <p>利用可能なリソースがありません</p>
       </div>
     );
   }

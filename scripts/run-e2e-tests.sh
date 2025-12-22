@@ -15,6 +15,10 @@ NC='\033[0m' # No Color
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$PROJECT_ROOT/docker-compose.test.yml"
 
+# Port mapping (allow dynamic host port when host-side is omitted)
+E2E_FRONTEND_PORT_MAPPING="${E2E_FRONTEND_PORT_MAPPING:-3001:3000}"
+E2E_BACKEND_PORT_MAPPING="${E2E_BACKEND_PORT_MAPPING:-8001:8000}"
+
 echo -e "${GREEN}Starting E2E test environment...${NC}"
 
 # Function to cleanup on exit
@@ -42,13 +46,13 @@ while [ $elapsed -lt $timeout ]; do
     if docker-compose -f "$COMPOSE_FILE" ps | grep -q "healthy"; then
         frontend_healthy=$(docker-compose -f "$COMPOSE_FILE" ps frontend | grep -c "healthy" || echo "0")
         backend_healthy=$(docker-compose -f "$COMPOSE_FILE" ps backend | grep -c "healthy" || echo "0")
-        
+
         if [ "$frontend_healthy" -gt 0 ] && [ "$backend_healthy" -gt 0 ]; then
             echo -e "${GREEN}Services are ready!${NC}"
             break
         fi
     fi
-    
+
     echo "Waiting for services to be healthy... ($elapsed/$timeout seconds)"
     sleep $interval
     elapsed=$((elapsed + interval))
@@ -58,6 +62,18 @@ if [ $elapsed -ge $timeout ]; then
     echo -e "${RED}Timeout waiting for services to be ready${NC}"
     docker-compose -f "$COMPOSE_FILE" logs
     exit 1
+fi
+
+# Detect the actual host port mapped to frontend:3000 for Playwright baseURL
+frontend_host_port="${E2E_FRONTEND_PORT_MAPPING%%:*}"
+if [ -z "$frontend_host_port" ] || [ "$frontend_host_port" = "$E2E_FRONTEND_PORT_MAPPING" ]; then
+    # Resolve dynamically when host port is omitted or complex mapping
+    port_output="$(docker-compose -f "$COMPOSE_FILE" port frontend 3000 | head -n1 || true)"
+    frontend_host_port="${port_output##*:}"
+fi
+
+if [ -z "$PLAYWRIGHT_BASE_URL" ]; then
+    export PLAYWRIGHT_BASE_URL="http://localhost:${frontend_host_port:-3000}"
 fi
 
 # Run E2E tests
@@ -76,14 +92,14 @@ if npm run test:e2e; then
     exit 0
 else
     echo -e "${RED}E2E tests failed!${NC}"
-    
+
     # Show logs on failure
     cd "$PROJECT_ROOT"
     echo -e "${YELLOW}Backend logs:${NC}"
     docker-compose -f "$COMPOSE_FILE" logs backend
-    
+
     echo -e "${YELLOW}Frontend logs:${NC}"
     docker-compose -f "$COMPOSE_FILE" logs frontend
-    
+
     exit 1
 fi

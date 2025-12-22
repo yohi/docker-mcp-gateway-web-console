@@ -29,7 +29,7 @@ export default function ToolsList({ tools, loading, error }: ToolsListProps) {
   if (tools.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
-        <p>利用可能な Tools がありません</p>
+        <p>利用可能なツールがありません</p>
       </div>
     );
   }

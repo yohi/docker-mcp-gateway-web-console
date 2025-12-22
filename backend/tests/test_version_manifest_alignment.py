@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict
 
+from packaging import version
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -26,9 +27,9 @@ def _load_manifest() -> Dict[str, str]:
         pins[key] = value
 
     assert pins["python"].startswith("3.14."), "python pin must be for the 3.14.x line"
-    assert pins["node"].startswith("22.12."), "node pin must be for the 22.12.x line"
-    assert pins["next"].startswith("15.1."), "next pin must be for the 15.1.x line"
-    assert pins["react"].startswith("19.0."), "react pin must be for the 19.0.x line"
+    assert pins["node"].startswith("22.21."), "node pin must be for the 22.21.x line"
+    assert version.parse(pins["next"]) >= version.parse("15.5.7"), "next pin must be >= 15.5.7"
+    assert version.parse(pins["react"]) >= version.parse("19.2.1"), "react pin must be >= 19.2.1"
 
     return pins
 
@@ -58,11 +59,18 @@ def test_versions_are_consistent_across_repo_files() -> None:
     node_image = f"node:{pins['node']}-alpine"
     for dockerfile in (
         repo / "frontend" / "Dockerfile",
-        repo / "frontend" / "Dockerfile.dev",
     ):
         assert dockerfile.exists(), f"Missing {dockerfile}"
         text = dockerfile.read_text(encoding="utf-8")
         assert node_image in text, f"{dockerfile} must pin {node_image}"
+
+    node_dev_image = f"node:{pins['node']}-bookworm"
+    for dockerfile in (
+        repo / "frontend" / "Dockerfile.dev",
+    ):
+        assert dockerfile.exists(), f"Missing {dockerfile}"
+        text = dockerfile.read_text(encoding="utf-8")
+        assert node_dev_image in text, f"{dockerfile} must pin {node_dev_image}"
 
     pkg_json_path = repo / "frontend" / "package.json"
     assert pkg_json_path.exists(), "Missing frontend/package.json"

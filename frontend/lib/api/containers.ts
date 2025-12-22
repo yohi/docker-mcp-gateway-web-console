@@ -11,7 +11,17 @@ import {
   ContainerSummary,
 } from '../types/containers';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+
+function getUrl(path: string): URL {
+  if (API_BASE_URL) {
+    return new URL(path, API_BASE_URL);
+  }
+  if (typeof window !== 'undefined') {
+    return new URL(path, window.location.origin);
+  }
+  return new URL(path, 'http://127.0.0.1:3000');
+}
 
 function getSessionId(): string {
   if (typeof window === 'undefined') return '';
@@ -20,15 +30,12 @@ function getSessionId(): string {
 
 function buildAuthHeaders(): Record<string, string> {
   const sessionId = getSessionId();
-  if (!sessionId) {
-    throw new Error('セッションが見つかりません。再ログインしてください。');
-  }
-  return { Authorization: `Bearer ${sessionId}` };
+  return sessionId ? { Authorization: `Bearer ${sessionId}` } : {};
 }
 
 export async function fetchContainers(all: boolean = true): Promise<ContainerListResponse> {
   const headers = buildAuthHeaders();
-  const url = new URL(`${API_BASE_URL}/api/containers`);
+  const url = getUrl('/api/containers');
   url.searchParams.append('all', String(all));
 
   const response = await fetch(url.toString(), {
@@ -45,7 +52,7 @@ export async function fetchContainers(all: boolean = true): Promise<ContainerLis
 
 export async function createContainer(config: ContainerConfig): Promise<ContainerCreateResponse> {
   const headers = buildAuthHeaders();
-  const url = `${API_BASE_URL}/api/containers`;
+  const url = getUrl('/api/containers');
 
   const response = await fetch(url, {
     method: 'POST',
@@ -68,7 +75,7 @@ export async function installContainer(
   payload: ContainerInstallPayload
 ): Promise<ContainerInstallResponse> {
   const headers = buildAuthHeaders();
-  const url = `${API_BASE_URL}/api/containers/install`;
+  const url = getUrl('/api/containers/install');
 
   let response: Response;
   try {
@@ -107,7 +114,7 @@ export async function installContainer(
 
 export async function startContainer(containerId: string): Promise<ContainerActionResponse> {
   const headers = buildAuthHeaders();
-  const url = `${API_BASE_URL}/api/containers/${containerId}/start`;
+  const url = getUrl(`/api/containers/${containerId}/start`);
 
   const response = await fetch(url, {
     method: 'POST',
@@ -124,7 +131,7 @@ export async function startContainer(containerId: string): Promise<ContainerActi
 
 export async function stopContainer(containerId: string, timeout: number = 10): Promise<ContainerActionResponse> {
   const headers = buildAuthHeaders();
-  const url = new URL(`${API_BASE_URL}/api/containers/${containerId}/stop`);
+  const url = getUrl(`/api/containers/${containerId}/stop`);
   url.searchParams.append('timeout', String(timeout));
 
   const response = await fetch(url.toString(), {
@@ -142,7 +149,7 @@ export async function stopContainer(containerId: string, timeout: number = 10): 
 
 export async function restartContainer(containerId: string, timeout: number = 10): Promise<ContainerActionResponse> {
   const headers = buildAuthHeaders();
-  const url = new URL(`${API_BASE_URL}/api/containers/${containerId}/restart`);
+  const url = getUrl(`/api/containers/${containerId}/restart`);
   url.searchParams.append('timeout', String(timeout));
 
   const response = await fetch(url.toString(), {
@@ -160,7 +167,7 @@ export async function restartContainer(containerId: string, timeout: number = 10
 
 export async function deleteContainer(containerId: string, force: boolean = false): Promise<ContainerActionResponse> {
   const headers = buildAuthHeaders();
-  const url = new URL(`${API_BASE_URL}/api/containers/${containerId}`);
+  const url = getUrl(`/api/containers/${containerId}`);
   url.searchParams.append('force', String(force));
 
   const response = await fetch(url.toString(), {
@@ -177,13 +184,14 @@ export async function deleteContainer(containerId: string, force: boolean = fals
 }
 
 export function createLogWebSocket(containerId: string): WebSocket {
-  const wsUrl = API_BASE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+  const base = API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:3000');
+  const wsUrl = base.replace('http://', 'ws://').replace('https://', 'wss://');
   return new WebSocket(`${wsUrl}/api/containers/${containerId}/logs`);
 }
 
 export async function fetchContainerConfig(containerId: string): Promise<ContainerConfig> {
   const headers = buildAuthHeaders();
-  const url = `${API_BASE_URL}/api/containers/${containerId}/config`;
+  const url = getUrl(`/api/containers/${containerId}/config`);
 
   const response = await fetch(url, { headers });
   if (!response.ok) {
@@ -196,7 +204,7 @@ export async function fetchContainerConfig(containerId: string): Promise<Contain
 
 export async function fetchContainerSummaries(): Promise<{ warning?: string | null; containers: ContainerSummary[] }> {
   const headers = buildAuthHeaders();
-  const url = new URL(`${API_BASE_URL}/api/containers`);
+  const url = getUrl('/api/containers');
   url.searchParams.append('all', 'true');
 
   const response = await fetch(url.toString(), {

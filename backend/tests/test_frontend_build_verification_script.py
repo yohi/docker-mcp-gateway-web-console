@@ -15,7 +15,7 @@ def _write_fake_docker(
     script_path: Path,
     log_path: Path,
     *,
-    node_version: str = "v22.12.0",
+    node_version: str = "v22.21.1",
     health_body: str = "ok",
     fail_health: bool = False,
 ) -> None:
@@ -153,7 +153,7 @@ def test_verify_frontend_build_script_fails_on_wrong_node_version(tmp_path: Path
 
     assert result.returncode != 0
     combined_output = f"{result.stdout}\n{result.stderr}"
-    assert "v22.12" in combined_output, "Expected error mentioning required Node.js version"
+    assert "v22.21" in combined_output, "Expected error mentioning required Node.js version"
     commands = log_path.read_text(encoding="utf-8").splitlines()
     assert any("node --version" in cmd for cmd in commands), "node version check not invoked before failure"
     assert any("logs frontend" in cmd for cmd in commands), "docker compose logs should be emitted on failure"

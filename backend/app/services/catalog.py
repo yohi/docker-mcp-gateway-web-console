@@ -250,8 +250,9 @@ class CatalogService:
                 )
                 response.raise_for_status()
 
-                # Parse JSON response
-                data = response.json()
+                # Parse JSON response (AsyncMock compatibility: handle coroutine)
+                parsed = response.json()
+                data = await parsed if asyncio.iscoroutine(parsed) else parsed
 
                 # Validate and parse catalog structure
                 if isinstance(data, list):

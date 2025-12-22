@@ -9,16 +9,21 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
     ports:
-      - "3001:3000"  # Use different port to avoid conflicts
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
+      # Default: dynamic host port (e.g., ":3000"). CI can override with "3001:3000".
+      - "${E2E_FRONTEND_PORT_MAPPING:-:3000}"
+    command: >
+      sh -c "npm run build &&
+      if [ -d public ]; then rm -rf .next/standalone/public && cp -r public .next/standalone/; fi &&
+      rm -rf .next/standalone/.next/static && mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/ &&
+      node .next/standalone/server.js"
     shm_size: 1gb  # Chromium requires at least 1GB shared memory for E2E tests
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
-      - NODE_ENV=test
+      - NEXT_PUBLIC_API_URL=
+      - INTERNAL_API_URL=http://backend:8000
+      - NODE_ENV=production
       - CI=true
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
     depends_on:
       backend:
         condition: service_healthy
@@ -26,28 +31,23 @@ services:
       - mcp-gateway-test
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 6
+      start_period: 120s
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
-    working_dir: /workspace/backend
+    working_dir: /app
     ports:
-      - "8001:8000"  # Use different port to avoid conflicts
-    volumes:
-      - ./:/workspace
-      - ./backend:/app
-      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
-      - /run/user:/run/user:ro
-      - "bw-cli-config:/root/.config/Bitwarden CLI"
-      - "bw-cli-cache:/root/.cache/Bitwarden CLI"
+      # Default: dynamic host port (e.g., ":8000"). CI can override with "8001:8000".
+      - "${E2E_BACKEND_PORT_MAPPING:-:8000}"
     environment:
       - BITWARDEN_CLI_PATH=/usr/local/bin/bw
       - DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/var/run/docker.sock}}
+      - PYTHONPATH=/app
       - SESSION_TIMEOUT_MINUTES=30
       - CATALOG_CACHE_TTL_SECONDS=3600
       - CORS_ORIGINS=http://localhost:3001
@@ -58,19 +58,16 @@ services:
       - mcp-gateway-test
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 6
+      start_period: 10s
 
   # Playwright test runner
   playwright:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
     shm_size: 1gb  # Chromium requires at least 1GB shared memory for E2E tests
     environment:
       - PLAYWRIGHT_BASE_URL=http://frontend:3000

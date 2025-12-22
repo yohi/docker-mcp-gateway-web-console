@@ -66,6 +66,16 @@ export default function InspectorPanel({ containerId, containerName, onClose }: 
     { id: 'resources', label: 'Resources', count: resources.length },
     { id: 'prompts', label: 'Prompts', count: prompts.length },
   ];
+  const tabIds: Record<TabType, string> = {
+    tools: 'inspector-tab-tools',
+    resources: 'inspector-tab-resources',
+    prompts: 'inspector-tab-prompts',
+  };
+  const panelIds: Record<TabType, string> = {
+    tools: 'inspector-panel-tools',
+    resources: 'inspector-panel-resources',
+    prompts: 'inspector-panel-prompts',
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-lg overflow-hidden">
@@ -100,10 +110,14 @@ export default function InspectorPanel({ containerId, containerName, onClose }: 
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
-        <nav className="flex -mb-px">
+        <nav className="flex -mb-px" role="tablist">
           {tabs.map((tab) => (
             <button
               key={tab.id}
+              id={tabIds[tab.id]}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              aria-controls={panelIds[tab.id]}
               onClick={() => setActiveTab(tab.id)}
               className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.id
@@ -155,13 +169,31 @@ export default function InspectorPanel({ containerId, containerName, onClose }: 
         ) : (
           <>
             {activeTab === 'tools' && (
-              <ToolsList tools={tools} loading={loading} error={error} />
+              <div
+                id={panelIds.tools}
+                role="tabpanel"
+                aria-labelledby={tabIds.tools}
+              >
+                <ToolsList tools={tools} loading={loading} error={error} />
+              </div>
             )}
             {activeTab === 'resources' && (
-              <ResourcesList resources={resources} loading={loading} error={error} />
+              <div
+                id={panelIds.resources}
+                role="tabpanel"
+                aria-labelledby={tabIds.resources}
+              >
+                <ResourcesList resources={resources} loading={loading} error={error} />
+              </div>
             )}
             {activeTab === 'prompts' && (
-              <PromptsList prompts={prompts} loading={loading} error={error} />
+              <div
+                id={panelIds.prompts}
+                role="tabpanel"
+                aria-labelledby={tabIds.prompts}
+              >
+                <PromptsList prompts={prompts} loading={loading} error={error} />
+              </div>
             )}
           </>
         )}

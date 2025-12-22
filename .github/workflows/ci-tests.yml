@@ -2,7 +2,6 @@ name: CI Tests
 
 on:
   pull_request:
-  workflow_dispatch:
 
 env:
   CI: true
@@ -12,6 +11,18 @@ jobs:
     name: Backend Unit (Pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      DOCKER_HOST: tcp://127.0.0.1:2375
+      DOCKER_TLS_CERTDIR: ""
+      DOCKER_CLI_EXPERIMENTAL: "enabled"
+    services:
+      docker:
+        image: docker:27-dind
+        options: --privileged
+        env:
+          DOCKER_TLS_CERTDIR: ""
+        ports:
+          - 2375:2375
 
     steps:
       - name: Checkout code
@@ -20,10 +31,10 @@ jobs:
       - name: Set dummy Fernet key for tests
         run: |
           key=$(python - <<'PY'
-import base64, os
-print(base64.urlsafe_b64encode(os.urandom(32)).decode())
-PY
-)
+          import base64, os
+          print(base64.urlsafe_b64encode(os.urandom(32)).decode())
+          PY
+          )
           echo "OAUTH_TOKEN_ENCRYPTION_KEY=$key" >> "$GITHUB_ENV"
 
       - name: Install base packages (docker/compose & Playwright deps)
@@ -31,25 +42,49 @@ PY
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ca-certificates curl git jq \
-            docker.io \
             libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
             libxdamage1 libxfixes3 libxrandr2 libxshmfence1 libgbm1 libasound2t64 \
             libpangocairo-1.0-0 libpango-1.0-0 libatspi2.0-0 libx11-6 libx11-xcb1 libxcb1 libxcursor1 \
             libxrender1 libxi6 libxtst6 fonts-noto-color-emoji
           sudo mkdir -p /usr/lib/docker/cli-plugins /usr/local/lib/docker/cli-plugins
-          if [ -x /usr/libexec/docker/cli-plugins/docker-compose ]; then
-            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose
-            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+          if [ ! -x /usr/lib/docker/cli-plugins/docker-compose ]; then
+            compose_version="v2.33.1"
+            compose_url="https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-x86_64"
+            sudo curl -sSL "$compose_url" -o /usr/lib/docker/cli-plugins/docker-compose
+            sudo chmod +x /usr/lib/docker/cli-plugins/docker-compose
           fi
-          sudo systemctl start docker || sudo service docker start || true
-          sudo usermod -aG docker "$USER" || true
+          docker_cli_version="27.3.1"
+          tmp_cli="/tmp/docker-${docker_cli_version}.tgz"
+          curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${docker_cli_version}.tgz" -o "${tmp_cli}"
+          sudo tar -xzf "${tmp_cli}" -C /usr/local/bin --strip-components=1 docker/docker
+          rm -f "${tmp_cli}"
+          sudo ln -sf /usr/lib/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
           docker --version || true
           docker compose version || true
 
+      - name: Wait for Docker daemon (dind)
+        run: |
+          for i in $(seq 1 30); do
+            if docker info >/dev/null 2>&1; then
+              echo "docker daemon is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "docker daemon not ready"
+          docker info
+
+      - name: Configure Docker context for dind
+        run: |
+          docker context rm ci-dind >/dev/null 2>&1 || true
+          docker context create ci-dind --docker "host=${DOCKER_HOST}"
+          docker context use ci-dind
+          docker info
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.14"
           cache: "pip"
           cache-dependency-path: backend/requirements.txt
 
@@ -68,7 +103,7 @@ PY
 
   frontend-unit:
     name: Frontend Unit (Jest)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 20
 
     steps:
@@ -78,16 +113,16 @@ PY
       - name: Set dummy Fernet key for tests
         run: |
           key=$(python - <<'PY'
-import base64, os
-print(base64.urlsafe_b64encode(os.urandom(32)).decode())
-PY
-)
+          import base64, os
+          print(base64.urlsafe_b64encode(os.urandom(32)).decode())
+          PY
+          )
           echo "OAUTH_TOKEN_ENCRYPTION_KEY=$key" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "22.12.0"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
@@ -102,21 +137,42 @@ PY
         run: npm test -- --runInBand --ci
 
   e2e-playwright:
-    name: E2E (Playwright)
-    runs-on: ubuntu-slim
+    name: E2E (Playwright) - Shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+    runs-on: ubuntu-latest
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3, 4, 5, 6]
+        shardTotal: [6]
+    env:
+      E2E_FRONTEND_PORT: 3001
+      E2E_BACKEND_PORT: 8001
+      E2E_FRONTEND_PORT_MAPPING: 3001:3000
+      E2E_BACKEND_PORT_MAPPING: 8001:8000
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Set dummy Fernet key for tests
         run: |
           key=$(python - <<'PY'
-import base64, os
-print(base64.urlsafe_b64encode(os.urandom(32)).decode())
-PY
-)
+          import base64, os
+          print(base64.urlsafe_b64encode(os.urandom(32)).decode())
+          PY
+          )
           echo "OAUTH_TOKEN_ENCRYPTION_KEY=$key" >> "$GITHUB_ENV"
 
       - name: Install base packages (docker/compose & Playwright deps)
@@ -124,32 +180,34 @@ PY
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ca-certificates curl git jq \
-            docker.io \
             libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
             libxdamage1 libxfixes3 libxrandr2 libxshmfence1 libgbm1 libasound2t64 \
             libpangocairo-1.0-0 libpango-1.0-0 libatspi2.0-0 libx11-6 libx11-xcb1 libxcb1 libxcursor1 \
             libxrender1 libxi6 libxtst6 fonts-noto-color-emoji
           sudo mkdir -p /usr/lib/docker/cli-plugins /usr/local/lib/docker/cli-plugins
-          if [ -x /usr/libexec/docker/cli-plugins/docker-compose ]; then
-            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose
-            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+          if [ ! -x /usr/lib/docker/cli-plugins/docker-compose ]; then
+            compose_version="v2.33.1"
+            compose_url="https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-x86_64"
+            sudo curl -sSL "$compose_url" -o /usr/lib/docker/cli-plugins/docker-compose
+            sudo chmod +x /usr/lib/docker/cli-plugins/docker-compose
           fi
+          sudo ln -sf /usr/lib/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
           sudo systemctl start docker || sudo service docker start || true
-          sudo usermod -aG docker "$USER" || true
+          sudo usermod -aG docker "$(whoami)" || true
           docker --version || true
           docker compose version || true
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "22.12.0"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.14"
           cache: "pip"
           cache-dependency-path: backend/requirements.txt
 
@@ -167,43 +225,58 @@ PY
         working-directory: frontend
         run: npx playwright install --with-deps
 
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Pre-build frontend image (cacheable)
+        run: |
+          docker buildx build \
+            --file frontend/Dockerfile.dev \
+            --tag docker-mcp-gateway-web-console-frontend:latest \
+            --cache-from type=gha,scope=frontend \
+            --cache-to type=gha,mode=max,scope=frontend \
+            --load \
+            frontend
+
+      - name: Pre-build backend image (cacheable)
+        run: |
+          docker buildx build \
+            --file backend/Dockerfile.dev \
+            --tag docker-mcp-gateway-web-console-backend:latest \
+            --cache-from type=gha,scope=backend \
+            --cache-to type=gha,mode=max,scope=backend \
+            --load \
+            backend
+
       - name: Start Docker Compose services
         run: |
-          docker compose -f docker-compose.test.yml up -d frontend backend
-          timeout=150
-          elapsed=0
-          interval=5
-          while [ $elapsed -lt $timeout ]; do
-            if docker compose -f docker-compose.test.yml ps | grep -q "healthy"; then
-              frontend_healthy=$(docker compose -f docker-compose.test.yml ps frontend | grep -c "healthy" || echo "0")
-              backend_healthy=$(docker compose -f docker-compose.test.yml ps backend | grep -c "healthy" || echo "0")
-              if [ "$frontend_healthy" -gt 0 ] && [ "$backend_healthy" -gt 0 ]; then
-                echo "Services are ready!"
-                break
-              fi
-            fi
-            echo "Waiting for services... ($elapsed/$timeout seconds)"
-            sleep $interval
-            elapsed=$((elapsed + interval))
-          done
-          if [ $elapsed -ge $timeout ]; then
-            echo "Timeout waiting for services"
-            docker compose -f docker-compose.test.yml logs
-            exit 1
-          fi
+          set -e
+          docker compose -f docker-compose.test.yml up -d --wait --wait-timeout 300 frontend backend
 
-      - name: Run E2E tests
-        working-directory: frontend
+      - name: Debug Docker Services
+        run: |
+          echo "=== Docker Containers ==="
+          docker compose -f docker-compose.test.yml ps -a
+          echo "=== Frontend Logs ==="
+          docker compose -f docker-compose.test.yml logs frontend
+          echo "=== Curl Test (Frontend) ==="
+          curl -v http://127.0.0.1:3001 || echo "Curl failed"
+
+      - name: Run E2E tests (Shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
         env:
           CI: true
-          PLAYWRIGHT_BASE_URL: http://localhost:3001
-        run: npm run test:e2e
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3001
+        working-directory: frontend
+        run: |
+          set -e
+          mkdir -p test-results playwright-report
+          npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shardIndex }}
           path: frontend/playwright-report/
           retention-days: 30
 
@@ -211,7 +284,7 @@ PY
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-shard-${{ matrix.shardIndex }}
           path: frontend/test-results/
           retention-days: 30
 

@@ -25,7 +25,7 @@ def test_workspace_dockerfile_has_pinned_versions_and_tools() -> None:
     for tool in ("git", "curl"):
         assert re.search(rf"\b{re.escape(tool)}\b", text), f"Must install {tool}"
 
-    assert re.search(r"22\.12\.0", text), "Must pin Node.js to 22.12.0"
+    assert re.search(r"22\.21\.1", text), "Must pin Node.js to 22.21.1"
 
     assert re.search(
         r"(get\.docker\.com|docker-ce-cli|docker\.io)",

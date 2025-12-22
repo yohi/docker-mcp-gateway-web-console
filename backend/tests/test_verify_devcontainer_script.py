@@ -43,7 +43,7 @@ def test_verify_devcontainer_script_passes_with_fake_tools(tmp_path: Path) -> No
     _write_executable(
         fake_bin / "node",
         "#!/usr/bin/env sh\n"
-        'echo "v22.12.0"\n',
+        'echo "v22.21.1"\n',
     )
     _write_executable(
         fake_bin / "pip",
@@ -87,6 +87,8 @@ def test_verify_devcontainer_script_passes_with_fake_tools(tmp_path: Path) -> No
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH','')}"
 
+    env["VERIFY_DEVCONTAINER_SKIP_EXTENSIONS"] = "1"
+
     result = subprocess.run(
         ["bash", str(script_under_test)],
         cwd=repo_root,
@@ -124,7 +126,7 @@ def test_verify_devcontainer_script_fails_on_wrong_python_version(tmp_path: Path
     _write_executable(
         fake_bin / "node",
         "#!/usr/bin/env sh\n"
-        'echo "v22.12.0"\n',
+        'echo "v22.21.1"\n',
     )
     _write_executable(
         fake_bin / "pip",
@@ -163,4 +165,3 @@ def test_verify_devcontainer_script_fails_on_wrong_python_version(tmp_path: Path
     )
     assert result.returncode != 0
     assert "Python 3.14" in (result.stdout + result.stderr)
-

@@ -131,8 +131,12 @@ export default function ContainerConfigurator({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    if (!config.name.trim() || !config.image.trim()) {
+      setError('必須項目を入力してください');
+      return;
+    }
+    setLoading(true);
 
     try {
       if (onSubmit) {
@@ -149,9 +153,12 @@ export default function ContainerConfigurator({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto"
+      data-testid="container-configurator"
+    >
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl my-8">
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
           {/* Header */}
           <div className="p-6 border-b border-gray-200">
             <h2 className="text-2xl font-bold text-gray-800">
@@ -175,10 +182,14 @@ export default function ContainerConfigurator({
             {/* Basic settings */}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label
+                  htmlFor="containerName"
+                  className="block text-sm font-semibold text-gray-700 mb-2"
+                >
                   コンテナ名 *
                 </label>
                 <input
+                  id="containerName"
                   type="text"
                   required
                   value={config.name}
@@ -189,10 +200,14 @@ export default function ContainerConfigurator({
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label
+                  htmlFor="containerImage"
+                  className="block text-sm font-semibold text-gray-700 mb-2"
+                >
                   Dockerイメージ *
                 </label>
                 <input
+                  id="containerImage"
                   type="text"
                   required
                   value={config.image}
@@ -203,10 +218,14 @@ export default function ContainerConfigurator({
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label
+                  htmlFor="containerNetworkMode"
+                  className="block text-sm font-semibold text-gray-700 mb-2"
+                >
                   ネットワークモード
                 </label>
                 <input
+                  id="containerNetworkMode"
                   type="text"
                   value={config.network_mode || ''}
                   onChange={(e) =>
@@ -376,6 +395,7 @@ export default function ContainerConfigurator({
             </button>
             <button
               type="submit"
+              data-testid="container-submit"
               disabled={loading || isSubmitting}
               className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors"
             >
