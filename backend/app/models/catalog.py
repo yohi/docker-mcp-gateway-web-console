@@ -5,6 +5,32 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 
+class CatalogSourceId(str, Enum):
+    """Catalog source identifiers."""
+
+    DOCKER = "docker"
+    OFFICIAL = "official"
+
+
+class CatalogErrorCode(str, Enum):
+    """Catalog error codes."""
+
+    INVALID_SOURCE = "invalid_source"
+    RATE_LIMITED = "rate_limited"
+    UPSTREAM_UNAVAILABLE = "upstream_unavailable"
+    INTERNAL_ERROR = "internal_error"
+
+
+class CatalogErrorResponse(BaseModel):
+    """構造化カタログエラーレスポンス。"""
+
+    detail: str = Field(..., description="人間可読なエラーメッセージ")
+    error_code: CatalogErrorCode = Field(..., description="機械可読なエラーコード")
+    retry_after_seconds: int | None = Field(
+        default=None, description="再試行までの秒数"
+    )
+
+
 class OAuthConfig(BaseModel):
     """OAuth configuration for remote MCP servers."""
     client_id: str = Field(..., description="OAuth client ID")
