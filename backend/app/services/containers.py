@@ -24,6 +24,42 @@ from .secrets import SecretManager
 from .state_store import StateStore
 
 
+def ensure_docker_unix_adapter() -> None:
+    """
+    Patch docker's UnixHTTPAdapter for requests 2.32+ compatibility.
+    """
+    try:
+        from docker.transport import unixconn
+        from requests.adapters import HTTPAdapter
+    except Exception:
+        return
+    if hasattr(unixconn.UnixHTTPAdapter, "get_connection_with_tls_context"):
+        adapter_patched = True
+    else:
+        adapter_patched = False
+
+    if not adapter_patched:
+        def _get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+            return self.get_connection(request.url, proxies)
+
+        unixconn.UnixHTTPAdapter.get_connection_with_tls_context = _get_connection_with_tls_context
+
+    if hasattr(HTTPAdapter, "get_connection_with_tls_context"):
+        original = HTTPAdapter.get_connection_with_tls_context
+        if not getattr(original, "_docker_http_compat", False):
+            def _patched_get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+                url = getattr(request, "url", "") or ""
+                if url.startswith("http+docker://") or url.startswith("http+unix://"):
+                    return self.get_connection(url, proxies)
+                return original(self, request, verify, proxies=proxies, cert=cert)
+
+            _patched_get_connection_with_tls_context._docker_http_compat = True
+            HTTPAdapter.get_connection_with_tls_context = _patched_get_connection_with_tls_context
+
+
+ensure_docker_unix_adapter()
+
+
 class ContainerError(Exception):
     """Exception raised for container operation errors."""
     pass
@@ -88,6 +124,7 @@ class ContainerService:
         self._state_store = state_store or StateStore()
         self._last_client_error: Optional[ContainerUnavailableError] = None
         self._last_client_error_at: Optional[float] = None
+        ensure_docker_unix_adapter()
 
     def _normalize_container_name(self, name: str) -> str:
         """

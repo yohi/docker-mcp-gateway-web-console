@@ -48,7 +48,7 @@ services:
       - "${E2E_BACKEND_PORT_MAPPING:-:8000}"
     environment:
       - BITWARDEN_CLI_PATH=/usr/local/bin/bw
-      - DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/var/run/docker.sock}}
+      - DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}}
       - PYTHONPATH=/app
       - SESSION_TIMEOUT_MINUTES=30
       - CATALOG_CACHE_TTL_SECONDS=3600

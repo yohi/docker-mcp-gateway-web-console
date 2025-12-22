@@ -9,7 +9,7 @@ services:
     restart: unless-stopped
     environment:
       - BITWARDEN_CLI_PATH=/usr/local/bin/bw
-      - DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/var/run/docker.sock}}
+      - DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}}
       - SESSION_TIMEOUT_MINUTES=${SESSION_TIMEOUT_MINUTES:-30}
       - CATALOG_CACHE_TTL_SECONDS=${CATALOG_CACHE_TTL_SECONDS:-3600}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://yourdomain.com}
@@ -24,7 +24,7 @@ services:
       - SECRET_CACHE_TTL_SECONDS=${SECRET_CACHE_TTL_SECONDS:-1800}
       - MAX_LOG_LINES=${MAX_LOG_LINES:-1000}
     volumes:
-      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:ro
+      - ${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}:${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}:ro
       - /run/user:/run/user:ro
       - backend-data:/app/data
       - "bw-cli-config:/root/.config/Bitwarden CLI"
