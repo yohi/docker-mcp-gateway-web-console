@@ -136,10 +136,59 @@ jobs:
           CI: true
         run: npm test -- --runInBand --ci
 
+  e2e-build-images:
+    name: Build E2E images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      E2E_FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/e2e-frontend:${{ github.sha }}
+      E2E_BACKEND_IMAGE: ghcr.io/${{ github.repository }}/e2e-backend:${{ github.sha }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build frontend image (cacheable)
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile.dev
+          push: true
+          tags: ${{ env.E2E_FRONTEND_IMAGE }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Build backend image (cacheable)
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile.dev
+          push: true
+          tags: ${{ env.E2E_BACKEND_IMAGE }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
   e2e-playwright:
     name: E2E (Playwright) - Shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+    needs: [e2e-build-images]
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: read
     strategy:
       fail-fast: false
       matrix:
@@ -150,12 +199,26 @@ jobs:
       E2E_BACKEND_PORT: 8001
       E2E_FRONTEND_PORT_MAPPING: 3001:3000
       E2E_BACKEND_PORT_MAPPING: 8001:8000
+      E2E_FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/e2e-frontend:${{ github.sha }}
+      E2E_BACKEND_IMAGE: ghcr.io/${{ github.repository }}/e2e-backend:${{ github.sha }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check disk space
+        id: disk-space
+        run: |
+          free_kb=$(df -Pk / | tail -1 | awk '{print $4}')
+          threshold_kb=12582912
+          if [ "$free_kb" -lt "$threshold_kb" ]; then
+            echo "run_free_disk_space=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_free_disk_space=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Free Disk Space (Ubuntu)
+        if: steps.disk-space.outputs.run_free_disk_space == 'true'
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -197,6 +260,13 @@ jobs:
           docker --version || true
           docker compose version || true
 
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -221,37 +291,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
       - name: Install Playwright browsers
         working-directory: frontend
         run: npx playwright install --with-deps
 
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Pre-build frontend image (cacheable)
+      - name: Pull prebuilt images
         run: |
-          docker buildx build \
-            --file frontend/Dockerfile.dev \
-            --tag docker-mcp-gateway-web-console-frontend:latest \
-            --cache-from type=gha,scope=frontend \
-            --cache-to type=gha,mode=max,scope=frontend \
-            --load \
-            frontend
-
-      - name: Pre-build backend image (cacheable)
-        run: |
-          docker buildx build \
-            --file backend/Dockerfile.dev \
-            --tag docker-mcp-gateway-web-console-backend:latest \
-            --cache-from type=gha,scope=backend \
-            --cache-to type=gha,mode=max,scope=backend \
-            --load \
-            backend
+          docker compose -f docker-compose.test.yml pull frontend backend
 
       - name: Start Docker Compose services
         run: |
           set -e
-          docker compose -f docker-compose.test.yml up -d --wait --wait-timeout 300 frontend backend
+          docker compose -f docker-compose.test.yml up -d --wait --wait-timeout 300 --no-build frontend backend
 
       - name: Debug Docker Services
         run: |

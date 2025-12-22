@@ -5,6 +5,7 @@ version: '3.8'
 
 services:
   frontend:
+    image: "${E2E_FRONTEND_IMAGE:-docker-mcp-gateway-web-console-frontend:latest}"
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
@@ -37,6 +38,7 @@ services:
       start_period: 120s
 
   backend:
+    image: "${E2E_BACKEND_IMAGE:-docker-mcp-gateway-web-console-backend:latest}"
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
