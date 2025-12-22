@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     catalog_github_fetch_retry_base_delay_seconds: float = 0.5
     # 公式MCPレジストリ (github.com/docker/mcp-registry) を既定とする
     catalog_default_url: str = "https://api.github.com/repos/docker/mcp-registry/contents/servers"
+    # Official MCP Registry の既定URL
+    catalog_official_url: str = "https://registry.modelcontextprotocol.io/v0/servers"
     # GitHub API のレート制限回避用トークン(任意)
     github_token: str = ""
     # 開発用途でのみ HTTP/localhost を許可するフラグ
@@ -115,6 +117,11 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
         return [origin.strip() for origin in self.cors_origins.split(",")]
+
+    @property
+    def catalog_docker_url(self) -> str:
+        """Docker カタログ URL の後方互換エイリアス."""
+        return self.catalog_default_url
 
     @property
     def oauth_allowed_domains_list(self) -> list[str]:

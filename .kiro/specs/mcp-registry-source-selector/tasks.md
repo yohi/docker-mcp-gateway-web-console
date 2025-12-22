@@ -21,8 +21,8 @@
   - エラーレスポンスのスキーマを定義する
   - _Requirements: 4.1, 4.2_
 
-- [ ] 2. 環境設定にOfficial MCP Registry URLを追加する
-- [ ] 2.1 設定クラスにOfficial Registry用のURL設定を追加する
+- [x] 2. 環境設定にOfficial MCP Registry URLを追加する
+- [x] 2.1 設定クラスにOfficial Registry用のURL設定を追加する
   - Official MCP Registry のデフォルト URL を定義する
   - 環境変数による上書きをサポートする
   - 既存の Docker カタログ URL 設定を維持する（後方互換性）
