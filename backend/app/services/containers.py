@@ -24,14 +24,32 @@ from .secrets import SecretManager
 from .state_store import StateStore
 
 
+def _parse_version_triplet(value: str) -> Optional[tuple[int, int, int]]:
+    match = re.match(r"^\s*(\d+)\.(\d+)(?:\.(\d+))?", value)
+    if not match:
+        return None
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3) or 0))
+
+
 def ensure_docker_unix_adapter() -> None:
     """
-    Patch docker's UnixHTTPAdapter for requests 2.32+ compatibility.
+    Patch docker's UnixHTTPAdapter for requests 2.32.0/2.32.1 compatibility
+    on docker SDK < 7.1.0.
     """
     try:
         from docker.transport import unixconn
         from requests.adapters import HTTPAdapter
+        import requests
     except Exception:
+        return
+
+    docker_version = _parse_version_triplet(getattr(docker, "__version__", ""))
+    if docker_version is not None and docker_version >= (7, 1, 0):
+        return
+
+    # requests 2.32.0/2.32.1 regress Docker socket adapters.
+    requests_version = _parse_version_triplet(getattr(requests, "__version__", ""))
+    if requests_version not in {(2, 32, 0), (2, 32, 1)}:
         return
     if hasattr(unixconn.UnixHTTPAdapter, "get_connection_with_tls_context"):
         adapter_patched = True
@@ -124,7 +142,6 @@ class ContainerService:
         self._state_store = state_store or StateStore()
         self._last_client_error: Optional[ContainerUnavailableError] = None
         self._last_client_error_at: Optional[float] = None
-        ensure_docker_unix_adapter()
 
     def _normalize_container_name(self, name: str) -> str:
         """
