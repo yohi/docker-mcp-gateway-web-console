@@ -69,7 +69,7 @@ async def test_oauth_initiate_returns_state_and_auth_url(reset_oauth_service):
     code_verifier = "test-verifier"
     code_challenge = OAuthService._compute_code_challenge(code_verifier)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -96,7 +96,7 @@ async def test_oauth_initiate_persists_state(reset_oauth_service):
     code_challenge = OAuthService._compute_code_challenge(code_verifier)
     store = reset_oauth_service.state_store
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -124,7 +124,7 @@ async def test_oauth_start_alias_endpoint_returns_state(reset_oauth_service):
     code_verifier = "alias-verifier"
     code_challenge = OAuthService._compute_code_challenge(code_verifier)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.post(
             "/api/oauth/start",
             json={
@@ -147,7 +147,7 @@ async def test_oauth_start_returns_404_for_unknown_server(reset_oauth_service):
     code_verifier = "unknown-verifier"
     code_challenge = OAuthService._compute_code_challenge(code_verifier)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.post(
             "/api/oauth/start",
             json={
@@ -166,7 +166,7 @@ async def test_oauth_start_rejects_non_s256_method(reset_oauth_service):
     code_verifier = "test-verifier"
     code_challenge = OAuthService._compute_code_challenge(code_verifier)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.post(
             "/api/oauth/start",
             json={
@@ -187,7 +187,7 @@ async def test_oauth_callback_pkce_mismatch_returns_400(reset_oauth_service):
     code_verifier = "correct-verifier"
     code_challenge = OAuthService._compute_code_challenge(code_verifier)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/oauth/start",
             json={
@@ -216,7 +216,7 @@ async def test_oauth_callback_pkce_mismatch_returns_400(reset_oauth_service):
 
 @pytest.mark.asyncio
 async def test_oauth_callback_state_mismatch_returns_401(reset_oauth_service):
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get(
             "/api/catalog/oauth/callback",
             params={"code": "abc", "state": "invalid"},
@@ -246,7 +246,7 @@ async def test_oauth_callback_rejects_expired_state(reset_oauth_service):
     store.save_oauth_state(expired)
     reset_oauth_service._state_store_mem.clear()
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get(
             "/api/catalog/oauth/callback",
             params={
@@ -288,7 +288,7 @@ async def test_oauth_callback_provider_4xx_returns_400(monkeypatch, reset_oauth_
             )
 
     monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", DummyClient)
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -347,7 +347,7 @@ async def test_oauth_callback_provider_5xx_retries_then_502(monkeypatch, reset_o
     monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", FailingClient)
     monkeypatch.setattr(oauth_service_module.asyncio, "sleep", immediate_sleep)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -406,7 +406,7 @@ async def test_oauth_callback_success_returns_status(monkeypatch, reset_oauth_se
             )
 
     monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", SuccessClient)
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -468,7 +468,7 @@ async def test_oauth_callback_consumes_persisted_state(monkeypatch, reset_oauth_
     monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", SuccessClient)
     store = reset_oauth_service.state_store
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -533,7 +533,7 @@ async def test_oauth_callback_saves_credential_and_returns_key(
     monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", SuccessClient)
     store = reset_oauth_service.state_store
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -596,7 +596,7 @@ async def test_oauth_tokens_persist_and_reload(monkeypatch, reset_oauth_service)
     monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", SuccessClient)
     store = reset_oauth_service.state_store
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -701,7 +701,7 @@ async def test_oauth_refresh_rotates_token_when_expiring(monkeypatch, reset_oaut
     monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", RefreshClient)
     store = reset_oauth_service.state_store
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -786,7 +786,7 @@ async def test_oauth_refresh_keeps_old_credential_when_save_fails(
     monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", RefreshClient)
     store = reset_oauth_service.state_store
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -864,7 +864,7 @@ async def test_oauth_refresh_invalid_grant_deletes_credential(
     monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", InvalidGrantClient)
     store = reset_oauth_service.state_store
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -943,7 +943,7 @@ async def test_oauth_refresh_provider_5xx_keeps_credential(
     monkeypatch.setattr(oauth_service_module.asyncio, "sleep", immediate_sleep)
     store = reset_oauth_service.state_store
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -1010,7 +1010,7 @@ async def test_oauth_refresh_server_id_mismatch_returns_422(monkeypatch, reset_o
     store = reset_oauth_service.state_store
     monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", SuccessClient)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -1049,7 +1049,7 @@ async def test_oauth_initiate_rejects_unpermitted_scope(monkeypatch, reset_oauth
     code_verifier = "test-verifier"
     code_challenge = OAuthService._compute_code_challenge(code_verifier)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.post(
             "/api/catalog/oauth/initiate",
             json={
@@ -1131,7 +1131,7 @@ async def test_scope_update_by_admin_invalidates_credentials(monkeypatch, reset_
     monkeypatch.setattr(oauth_service_module.httpx, "AsyncClient", SuccessClient)
     store = reset_oauth_service.state_store
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         init_resp = await ac.post(
             "/api/catalog/oauth/initiate",
             json={

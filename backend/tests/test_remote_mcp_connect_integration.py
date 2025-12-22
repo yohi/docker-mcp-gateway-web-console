@@ -227,7 +227,7 @@ async def test_remote_server_register_auth_and_connect_flow(monkeypatch, setup_s
     # OAuthService 内で使用する httpx.AsyncClient をスタブに差し替える
     monkeypatch.setattr("app.services.oauth.httpx.AsyncClient", DummyTokenClient)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         register_resp = await ac.post(
             "/api/remote-servers",
             json={
@@ -303,7 +303,7 @@ async def test_concurrent_oauth_flows_handle_10_parallel(monkeypatch, load_test_
 
     monkeypatch.setattr("app.services.oauth.httpx.AsyncClient", DummyTokenClient)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         register_resp = await ac.post(
             "/api/remote-servers",
             json={
@@ -366,7 +366,7 @@ async def test_connect_returns_429_when_connection_limit_exceeded(
 
     monkeypatch.setattr("app.services.oauth.httpx.AsyncClient", DummyTokenClient)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         register_resp = await ac.post(
             "/api/remote-servers",
             json={
@@ -428,7 +428,7 @@ async def test_oauth_state_persisted_and_deleted_after_callback(
     # OAuthService 内の httpx.AsyncClient をスタブに差し替える
     monkeypatch.setattr("app.services.oauth.httpx.AsyncClient", DummyTokenClient)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         register_resp = await ac.post(
             "/api/remote-servers",
             json={

@@ -1,3 +1,4 @@
+import httpx
 import pytest
 from httpx import AsyncClient
 from unittest.mock import patch, AsyncMock
@@ -28,8 +29,8 @@ async def test_get_catalog_background_fetch():
         mock_service.get_cached_catalog = AsyncMock(return_value=cached_items)
         mock_service.fetch_catalog = AsyncMock()
         
-        async with AsyncClient(app=app, base_url="http://test") as ac:
-            response = await ac.get("/api/catalog?source=http://example.com")
+        async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.get("/api/catalog?source=docker")
             
         # Verify response
         assert response.status_code == 200
@@ -39,7 +40,11 @@ async def test_get_catalog_background_fetch():
         assert data["servers"][0]["id"] == "test-1"
         
         # Verify get_cached_catalog was called
-        mock_service.get_cached_catalog.assert_awaited_once_with("http://example.com")
+        from app.config import settings
+
+        mock_service.get_cached_catalog.assert_awaited_once_with(
+            settings.catalog_docker_url
+        )
         
         # Verify fetch_catalog was scheduled/called
         # Note: exact timing depends on event loop, but usually it gets scheduled
@@ -73,16 +78,20 @@ async def test_get_catalog_no_cache():
         mock_service.get_cached_catalog = AsyncMock(return_value=None)
         mock_service.fetch_catalog = AsyncMock(return_value=(fresh_items, False))
         
-        async with AsyncClient(app=app, base_url="http://test") as ac:
-            response = await ac.get("/api/catalog?source=http://example.com")
+        async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.get("/api/catalog?source=official")
             
         assert response.status_code == 200
         data = response.json()
         assert data["cached"] is False
         assert data["servers"][0]["id"] == "fresh-1"
         
-        mock_service.get_cached_catalog.assert_awaited_once()
-        mock_service.fetch_catalog.assert_awaited_once()
+        from app.config import settings
+
+        mock_service.get_cached_catalog.assert_awaited_once_with(
+            settings.catalog_official_url
+        )
+        mock_service.fetch_catalog.assert_awaited_once_with(settings.catalog_official_url)
 
 @pytest.mark.asyncio
 async def test_get_catalog_default_url():
@@ -93,7 +102,7 @@ async def test_get_catalog_default_url():
         mock_service.get_cached_catalog = AsyncMock(return_value=None)
         mock_service.fetch_catalog = AsyncMock(return_value=([], False))
         
-        async with AsyncClient(app=app, base_url="http://test") as ac:
+        async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
             # call without source
             response = await ac.get("/api/catalog")
             
@@ -102,6 +111,20 @@ async def test_get_catalog_default_url():
         # Expect default URL from settings (mocked or real)
         # We assume the default settings value is used
         from app.config import settings
-        expected_url = settings.catalog_default_url
-        
+        expected_url = settings.catalog_docker_url
+
         mock_service.get_cached_catalog.assert_awaited_once_with(expected_url)
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_invalid_source_returns_400():
+    """Invalid source value should return structured 400 response."""
+    with patch("app.api.catalog.catalog_service") as mock_service:
+        async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.get("/api/catalog?source=invalid-source")
+
+        assert response.status_code == 400
+        payload = response.json()
+        assert payload["error_code"] == "invalid_source"
+        assert "detail" in payload
+        mock_service.get_cached_catalog.assert_not_called()

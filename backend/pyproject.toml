@@ -7,6 +7,7 @@ python_functions = ["test_*"]
 filterwarnings = [
   "ignore:.*asyncio\\.iscoroutinefunction.*:DeprecationWarning:pytest_asyncio.*",
   "ignore:.*asyncio\\.get_event_loop_policy.*:DeprecationWarning:pytest_asyncio.*",
+  "ignore:.*asyncio\\.set_event_loop_policy.*:DeprecationWarning:pytest_asyncio.*",
 ]
 
 [tool.black]

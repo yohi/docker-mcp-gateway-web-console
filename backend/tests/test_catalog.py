@@ -3,7 +3,7 @@
 import base64
 import json
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from httpx import AsyncClient, Response
@@ -213,7 +213,7 @@ class TestCatalogService:
         """Registry required_envs should map to required_envs and secrets heuristic."""
         mock_response = AsyncMock()
         mock_response.json.return_value = sample_catalog_data
-        mock_response.raise_for_status.return_value = None
+        mock_response.raise_for_status = Mock(return_value=None)
 
         client_instance = AsyncMock()
         client_instance.get.return_value = mock_response

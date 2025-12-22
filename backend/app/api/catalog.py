@@ -5,11 +5,17 @@ import logging
 import math
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 
-from ..models.catalog import CatalogResponse
-from ..services.catalog import CatalogError, CatalogService
 from ..config import settings
+from ..models.catalog import (
+    CatalogErrorCode,
+    CatalogErrorResponse,
+    CatalogResponse,
+    CatalogSourceId,
+)
+from ..services.catalog import CatalogError, CatalogService
 
 logger = logging.getLogger(__name__)
 
@@ -19,19 +25,52 @@ router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 catalog_service = CatalogService()
 
 
+def _resolve_source_id(source: Optional[str]) -> CatalogSourceId:
+    """Resolve catalog source ID from query param."""
+    if source is None:
+        return CatalogSourceId.DOCKER
+    try:
+        return CatalogSourceId(source)
+    except ValueError as exc:
+        raise CatalogError(
+            "Invalid source value. Allowed: docker, official",
+            error_code=CatalogErrorCode.INVALID_SOURCE,
+        ) from exc
+
+
+def _resolve_source_url(source_id: CatalogSourceId) -> str:
+    """Resolve source ID to upstream catalog URL."""
+    mapping = {
+        CatalogSourceId.DOCKER: settings.catalog_docker_url,
+        CatalogSourceId.OFFICIAL: settings.catalog_official_url,
+    }
+    return mapping[source_id]
+
+
+def _catalog_error_response(
+    error: CatalogError, *, status_code: int
+) -> JSONResponse:
+    payload = CatalogErrorResponse(
+        detail=error.message,
+        error_code=error.error_code,
+        retry_after_seconds=error.retry_after_seconds,
+    ).model_dump(mode="json", exclude_none=True)
+    return JSONResponse(status_code=status_code, content=payload)
+
+
 @router.get("", response_model=CatalogResponse)
 async def get_catalog(
-    source: Optional[str] = Query(None, description="URL of the catalog JSON file")
+    source: Optional[str] = Query(None, description="Catalog source ID")
 ) -> CatalogResponse:
     """
     Fetch catalog data from a remote source.
     
-    This endpoint fetches the catalog of available MCP servers from the specified URL.
-    if no URL is provided, it uses the default registry URL.
+    This endpoint fetches the catalog of available MCP servers from a preset source ID.
+    If no source is provided, it uses the Docker catalog source.
     If the fetch fails, it attempts to return cached data if available.
     
     Args:
-        source: URL of the catalog JSON file (optional)
+        source: Catalog source ID (optional)
         
     Returns:
         CatalogResponse with list of available MCP servers
@@ -39,10 +78,10 @@ async def get_catalog(
     Raises:
         HTTPException: If catalog cannot be fetched and no cache is available
     """
-    # Use default URL if source is not provided
-    source_url = source or settings.catalog_default_url
-    
     try:
+        source_id = _resolve_source_id(source)
+        source_url = _resolve_source_url(source_id)
+
         # Check if we have valid cached data first
         cached_items = await catalog_service.get_cached_catalog(source_url)
         warning_msg = str(catalog_service.warning) if catalog_service.warning else None
@@ -83,6 +122,10 @@ async def get_catalog(
             
     except CatalogError as e:
         logger.error(f"Failed to fetch catalog: {e}")
+        if e.error_code == CatalogErrorCode.INVALID_SOURCE:
+            return _catalog_error_response(
+                e, status_code=status.HTTP_400_BAD_REQUEST
+            )
         raise HTTPException(
             status_code=503,
             detail=f"Failed to fetch catalog: {str(e)}"

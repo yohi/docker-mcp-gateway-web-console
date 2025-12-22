@@ -34,11 +34,11 @@ def create_test_app():
     
     return app
 
-test_app = create_test_app()
-client = TestClient(test_app, raise_server_exceptions=False)
+error_test_app = create_test_app()
+client = TestClient(error_test_app, raise_server_exceptions=False)
 
 # Helper route to trigger exceptions
-@test_app.get("/raise/{error_type}")
+@error_test_app.get("/raise/{error_type}")
 def raise_error(error_type: str, message: str = "Test error"):
     if error_type == "AuthError":
         raise AuthError(message)
@@ -176,4 +176,3 @@ class TestErrorProperties:
         # Note: In main.py, it logs `exc` which is the exception object.
         # formatting `exc` usually gives the message.
         assert found, "Fatal error should be logged with details"
-
