@@ -251,7 +251,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         error_messages.append(f"{field}: {message}")
 
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={
             "error_code": "VALIDATION_ERROR",
             "message": "Invalid request data",

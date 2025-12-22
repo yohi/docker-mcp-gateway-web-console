@@ -285,7 +285,7 @@ async def install_container(
     try:
         if not config.image:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="コンテナイメージが指定されていません",
             )
         return await _create_container_internal(

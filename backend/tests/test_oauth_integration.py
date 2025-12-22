@@ -90,7 +90,7 @@ async def test_oauth_flow_register_to_callback(monkeypatch, setup_services):
     # OAuthService 内で使用する httpx.AsyncClient を差し替える
     monkeypatch.setattr("app.services.oauth.httpx.AsyncClient", DummyTokenClient)
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         register_resp = await ac.post(
             "/api/remote-servers",
             json={
