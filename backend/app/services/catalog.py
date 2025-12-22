@@ -15,7 +15,7 @@ import yaml
 from pydantic import ValidationError
 
 from ..config import settings
-from ..models.catalog import Catalog, CatalogItem, OAuthConfig
+from ..models.catalog import Catalog, CatalogErrorCode, CatalogItem, OAuthConfig
 from ..schemas.catalog import RegistryItem
 from .github_token import GitHubTokenError, GitHubTokenService
 
@@ -32,7 +32,22 @@ SERVER_SEARCH_MAX_DEPTH = max(
 class CatalogError(Exception):
     """Custom exception for catalog-related errors."""
 
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: CatalogErrorCode | str = CatalogErrorCode.INTERNAL_ERROR,
+        retry_after_seconds: int | None = None,
+    ) -> None:
+        resolved_code = (
+            error_code
+            if isinstance(error_code, CatalogErrorCode)
+            else CatalogErrorCode(error_code)
+        )
+        super().__init__(message)
+        self.error_code = resolved_code
+        self.message = message
+        self.retry_after_seconds = retry_after_seconds
 
 
 class CatalogService:
