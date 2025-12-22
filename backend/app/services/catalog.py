@@ -184,6 +184,7 @@ class CatalogService:
         self._warning_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
             "catalog_warning", default=None
         )
+        self._url_validator = AllowedURLsValidator()
 
     def _append_warning(self, message: str) -> None:
         """警告メッセージを追記する(複数要因がある場合に備える)。"""
@@ -314,6 +315,8 @@ class CatalogService:
             return catalog_items, False
 
         except Exception as e:
+            if isinstance(e, CatalogError) and e.error_code == CatalogErrorCode.INVALID_SOURCE:
+                raise
             if source_url in {LEGACY_RAW_URL, settings.catalog_default_url}:
                 # primary失敗時はもう片方へフェイルオーバー
                 fallback = (
@@ -363,6 +366,8 @@ class CatalogService:
             CatalogError: If fetch or parsing fails
         """
         try:
+            normalized_url = self._url_validator.validate(source_url)
+            source_url = normalized_url
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
                     source_url,
@@ -444,6 +449,8 @@ class CatalogService:
                     catalog = Catalog(**data)
                     return self._filter_items_missing_image(catalog.servers)
 
+        except CatalogError:
+            raise
         except httpx.HTTPStatusError as e:
             raise CatalogError(
                 f"HTTP error {e.response.status_code} while fetching catalog: {e}"
