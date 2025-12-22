@@ -1,6 +1,6 @@
 # Technology Stack
 
-最終更新: 2025-12-14
+最終更新: 2025-12-22
 
 ## アーキテクチャ
 
@@ -12,10 +12,10 @@
 
 ## コア技術
 
-- **言語**: TypeScript、Python 3.11+
-- **フレームワーク**: Next.js 14、FastAPI
-- **ランタイム**: Node.js 18+、Python 3.11+
-- **UI/スタイル**: React 18、Tailwind CSS
+- **言語**: TypeScript、Python 3.14+
+- **フレームワーク**: Next.js 15、FastAPI
+- **ランタイム**: Node.js 22+、Python 3.14+
+- **UI/スタイル**: React 19、Tailwind CSS
 - **データフェッチ**: SWR
 - **バリデーション**: Pydantic v2
 - **コンテナ制御**: docker SDK for Python
@@ -33,8 +33,8 @@
 ## 開発環境・必須ツール
 
 - Docker Engine / Docker Compose
-- Node.js 18+（フロントビルド）
-- Python 3.11+（バックエンド）
+- Node.js 22+（フロントビルド）
+- Python 3.14+（バックエンド）
 - Bitwarden CLI (`bw` ログインが前提)
 
 ## 主な環境変数
