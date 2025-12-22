@@ -65,6 +65,13 @@ class AllowedURLsValidator:
             self._normalize_url(url) for url in allowed if url
         )
 
+        if not self._allowed_urls:
+            raise ValueError(
+                "カタログURLの許可リストが空です。"
+                "少なくとも次のいずれかの設定が必要です: "
+                "CATALOG_DOCKER_URL, CATALOG_OFFICIAL_URL, CATALOG_DEFAULT_URL"
+            )
+
     def validate(self, url: str) -> str:
         """Return normalized URL if allowed, otherwise raise CatalogError."""
         normalized = self._normalize_url(url)
