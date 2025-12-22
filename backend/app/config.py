@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -8,6 +9,19 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER = "PLEASE_SET_OAUTH_TOKEN_ENCRYPTION_KEY"
 logger = logging.getLogger(__name__)
+
+
+def _default_docker_host() -> str:
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime_dir:
+        return f"unix://{runtime_dir}/docker.sock"
+    try:
+        uid = os.getuid()
+    except AttributeError:
+        uid = None
+    if isinstance(uid, int):
+        return f"unix:///run/user/{uid}/docker.sock"
+    return "unix:///var/run/docker.sock"
 
 
 class Settings(BaseSettings):
@@ -24,7 +38,7 @@ class Settings(BaseSettings):
     bitwarden_cli_timeout_seconds: int = 30
 
     # Docker Configuration
-    docker_host: str = "unix:///var/run/docker.sock"
+    docker_host: str = Field(default_factory=_default_docker_host)
 
     # Session Configuration
     session_timeout_minutes: int = 30

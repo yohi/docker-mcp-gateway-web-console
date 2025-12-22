@@ -88,8 +88,10 @@ describe('Container Properties', () => {
         );
 
         // We find the card by text content
-        const nameElements = screen.getAllByText(container.name);
-        const nameElement = nameElements.find(el => el.tagName === 'H3') || nameElements[0];
+        const nameElements = screen.getAllByText(
+          (_, element) => element?.textContent === container.name
+        );
+        const nameElement = nameElements.find(el => el.tagName === 'H3') ?? nameElements[0];
         const card = nameElement.closest('.rounded-lg');
 
         expect(card).toBeInTheDocument();

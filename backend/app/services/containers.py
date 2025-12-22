@@ -24,6 +24,60 @@ from .secrets import SecretManager
 from .state_store import StateStore
 
 
+def _parse_version_triplet(value: str) -> Optional[tuple[int, int, int]]:
+    match = re.match(r"^\s*(\d+)\.(\d+)(?:\.(\d+))?", value)
+    if not match:
+        return None
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3) or 0))
+
+
+def ensure_docker_unix_adapter() -> None:
+    """
+    Patch docker's UnixHTTPAdapter for requests 2.32.0/2.32.1 compatibility
+    on docker SDK < 7.1.0.
+    """
+    try:
+        from docker.transport import unixconn
+        from requests.adapters import HTTPAdapter
+        import requests
+    except Exception:
+        return
+
+    docker_version = _parse_version_triplet(getattr(docker, "__version__", ""))
+    if docker_version is not None and docker_version >= (7, 1, 0):
+        return
+
+    # requests 2.32.0/2.32.1 regress Docker socket adapters.
+    requests_version = _parse_version_triplet(getattr(requests, "__version__", ""))
+    if requests_version not in {(2, 32, 0), (2, 32, 1)}:
+        return
+    if hasattr(unixconn.UnixHTTPAdapter, "get_connection_with_tls_context"):
+        adapter_patched = True
+    else:
+        adapter_patched = False
+
+    if not adapter_patched:
+        def _get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+            return self.get_connection(request.url, proxies)
+
+        unixconn.UnixHTTPAdapter.get_connection_with_tls_context = _get_connection_with_tls_context
+
+    if hasattr(HTTPAdapter, "get_connection_with_tls_context"):
+        original = HTTPAdapter.get_connection_with_tls_context
+        if not getattr(original, "_docker_http_compat", False):
+            def _patched_get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+                url = getattr(request, "url", "") or ""
+                if url.startswith("http+docker://") or url.startswith("http+unix://"):
+                    return self.get_connection(url, proxies)
+                return original(self, request, verify, proxies=proxies, cert=cert)
+
+            _patched_get_connection_with_tls_context._docker_http_compat = True
+            HTTPAdapter.get_connection_with_tls_context = _patched_get_connection_with_tls_context
+
+
+ensure_docker_unix_adapter()
+
+
 class ContainerError(Exception):
     """Exception raised for container operation errors."""
     pass
