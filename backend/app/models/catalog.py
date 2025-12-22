@@ -1,8 +1,16 @@
 """Catalog models."""
 
+from enum import Enum
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, HttpUrl, model_validator
+
+
+class CatalogSourceId(str, Enum):
+    """Catalog source identifiers."""
+
+    DOCKER = "docker"
+    OFFICIAL = "official"
 
 
 class OAuthConfig(BaseModel):
