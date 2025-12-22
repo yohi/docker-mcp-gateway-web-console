@@ -37,13 +37,13 @@
 既存の `CatalogPage` と `CatalogService` を拡張して対応する。
 
 - **Frontend**:
-    - `frontend/app/catalog/page.tsx`: テキスト入力を `<select>` またはカスタム Select コンポーネントに置き換える。
-    - `frontend/lib/api/catalog.ts`: API 呼び出し時に URL ではなく ID を送信するように変更する (API仕様の合意による)。
+  - `frontend/app/catalog/page.tsx`: テキスト入力を `<select>` またはカスタム Select コンポーネントに置き換える。
+  - `frontend/lib/api/catalog.ts`: API 呼び出し時に URL ではなく ID を送信するように変更する (API仕様の合意による)。
 - **Backend**:
-    - `backend/app/config.py`: `CATALOG_SOURCES` 定数 (辞書型) を定義し、ID と URL のマッピングを管理。
-    - `backend/app/api/catalog.py`: `source` パラメータが URL か ID かを判定、あるいは ID 必須に変更し、`CATALOG_SOURCES` に基づいて URL を解決。未知の `source` の場合は 400 Bad Request を返す。
+  - `backend/app/config.py`: `CATALOG_SOURCES` 定数 (辞書型) を定義し、ID と URL のマッピングを管理。
+  - `backend/app/api/catalog.py`: `source` パラメータが URL か ID かを判定、あるいは ID 必須に変更し、`CATALOG_SOURCES` に基づいて URL を解決。未知の `source` の場合は 400 Bad Request を返す。
 - **Data Processing**:
-    - `CatalogService` の既存変換ロジックを必要に応じて調整。
+  - `CatalogService` の既存変換ロジックを必要に応じて調整。
 
 **Trade-offs**:
 - ✅ 既存のデータフローを維持し、最小限の変更で実現可能。
@@ -65,11 +65,11 @@
 ## 4. Implementation Complexity & Risk
 
 - **Effort**: **S (1-3 days)**
-    - フロントエンドの UI 変更は軽微。
-    - バックエンドのロジック変更もマッピング層の追加とバリデーションのみで、既存のフェッチ/パースロジックを流用できる。
+  - フロントエンドの UI 変更は軽微。
+  - バックエンドのロジック変更もマッピング層の追加とバリデーションのみで、既存のフェッチ/パースロジックを流用できる。
 - **Risk**: **Low**
-    - 既存のDockerカタログへの影響は最小限に抑えられる。
-    - Official Registry のスキーマ解析で多少の調整が必要になる可能性がある程度。
+  - 既存のDockerカタログへの影響は最小限に抑えられる。
+  - Official Registry のスキーマ解析で多少の調整が必要になる可能性がある程度。
 
 ## 5. Recommendations
 

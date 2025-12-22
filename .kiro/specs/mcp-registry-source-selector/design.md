@@ -212,21 +212,25 @@ sequenceDiagram
 | Intent | プリセットされたカタログソースをセレクタから選択できる UI を提供 |
 | Requirements | 1.1, 5.3 |
 
-**Responsibilities & Constraints**
+#### Responsibilities & Constraints
+
 - Docker と Official の 2 つのプリセットを `<select>` で表示
 - フリーフォームの URL 入力は提供しない
 - 選択変更時に親コンポーネントへコールバック
 
-**Dependencies**
+#### Dependencies
+
 - Outbound: CatalogPage — 選択値の通知 (P0)
 
 **Contracts**: State [x]
 
 ##### State Management
+
 - **State model**: Props 経由で `selectedSource` と `onSourceChange` を受け取る制御コンポーネント
 - **Persistence**: なし（親コンポーネントで管理）
 
-**Implementation Notes**
+#### Implementation Notes
+
 - Integration: 既存の `<input>` を置き換え、同じスタイルを適用
 - Validation: 選択肢は固定であり追加バリデーション不要
 
@@ -237,22 +241,26 @@ sequenceDiagram
 | Intent | カタログソースの状態管理と切替時のリスト再取得をオーケストレーション |
 | Requirements | 1.2, 1.3, 4.5, 6.2, 6.5 |
 
-**Responsibilities & Constraints**
+#### Responsibilities & Constraints
+
 - デフォルトソースを `docker` に設定
 - ソース変更時に `catalogSource` ステートを更新し、`CatalogList` へ伝播
 - エラー発生時も選択ソースを保持
 
-**Dependencies**
+#### Dependencies
+
 - Inbound: CatalogSourceSelector — ソース選択通知 (P0)
 - Outbound: CatalogList — カタログデータ取得指示 (P0)
 
 **Contracts**: State [x]
 
 ##### State Management
+
 - **State model**: `useState<CatalogSourceId>('docker')`
 - **Persistence**: なし（セッション中のみ）
 
-**Implementation Notes**
+#### Implementation Notes
+
 - Integration: `inputSource` と `catalogSource` の 2 段階管理を廃止し、セレクタからの即時反映に変更
 - Validation: セレクタが固定値のみを返すためフロント側バリデーションは不要
 
@@ -263,7 +271,8 @@ sequenceDiagram
 | Intent | カタログ一覧表示、ローディング、構造化エラーコードに基づくエラー表示 |
 | Requirements | 1.4, 1.5, 4.3, 4.4 |
 
-**Responsibilities & Constraints**
+#### Responsibilities & Constraints
+
 - `error_code` に基づいてエラーメッセージを出し分け
 - `retry_after_seconds` がある場合はカウントダウン表示
 - 再試行ボタンを提供
@@ -294,14 +303,16 @@ switch (error.error_code) {
 | Intent | source パラメータを受け取り、ソース解決後にカタログデータを返却 |
 | Requirements | 2.1, 2.2, 2.5, 5.4, 6.1 |
 
-**Responsibilities & Constraints**
+#### Responsibilities & Constraints
+
 - `source` クエリパラメータを `CatalogSourceId` Enum でバリデーション
 - 省略時は `docker` として扱う
 - 未知の値は 400 Bad Request を返却
 - エラーレスポンスに内部 URL や認証情報を含めない
 - 構造化エラーレスポンス (`error_code`, `retry_after_seconds`) を返却
 
-**Dependencies**
+#### Dependencies
+
 - Inbound: Frontend — HTTP リクエスト (P0)
 - Outbound: SourceResolver — ソース解決 (P0)
 - Outbound: CatalogService — データ取得 (P0)
@@ -343,7 +354,8 @@ class CatalogErrorCode(str, Enum):
 - `UPSTREAM_UNAVAILABLE` → 503 Service Unavailable
 - `INTERNAL_ERROR` → 500 Internal Server Error
 
-**Implementation Notes**
+#### Implementation Notes
+
 - Integration: 既存の `source: Optional[str]` を `source: CatalogSourceId = CatalogSourceId.DOCKER` に変更
 - Validation: Pydantic/FastAPI が自動でバリデーション
 - Risks: 既存クライアントが URL を送信している場合は 400 になるが、Web Console は自己完結しているため影響なし
@@ -357,11 +369,13 @@ class CatalogErrorCode(str, Enum):
 | Intent | ソース ID を対応する URL に解決し、未知 ID を拒否する |
 | Requirements | 2.3, 2.4, 5.1, 5.2 |
 
-**Responsibilities & Constraints**
+#### Responsibilities & Constraints
+
 - `CatalogSourceId` Enum の各値を `Settings` の URL にマッピング
 - Enum で定義されていない値は処理前に拒否済み（Pydantic バリデーション）
 
-**Dependencies**
+#### Dependencies
+
 - Inbound: CatalogAPI — ソース解決リクエスト (P0)
 - Outbound: Settings — URL 定義参照 (P0)
 
@@ -390,7 +404,8 @@ def resolve_source_url(source: CatalogSourceId, settings: Settings) -> str:
 - Postconditions: 有効な URL 文字列を返却
 - Invariants: `Settings` で定義された URL のみを返却
 
-**Implementation Notes**
+#### Implementation Notes
+
 - Integration: `catalog.py` の `get_catalog` 関数内にインライン実装可能（独立クラス化は不要）
 
 ### Backend/Security
@@ -402,12 +417,14 @@ def resolve_source_url(source: CatalogSourceId, settings: Settings) -> str:
 | Intent | サービス層で URL が許可リストに含まれているか検証し、SSRF を多層防御 |
 | Requirements | 5.1, 5.2 |
 
-**Responsibilities & Constraints**
+#### Responsibilities & Constraints
+
 - `CatalogService` がフェッチを実行する前に URL を検証
 - 許可リストは `Settings` から取得
 - 許可リスト外の URL は `CatalogError` をスロー
 
-**Dependencies**
+#### Dependencies
+
 - Inbound: CatalogService — URL 検証リクエスト (P0)
 - Outbound: Settings — 許可リスト参照 (P0)
 
@@ -443,7 +460,8 @@ class AllowedURLsValidator:
             )
 ```
 
-**Implementation Notes**
+#### Implementation Notes
+
 - Integration: `CatalogService._fetch_from_url` の先頭で呼び出し
 - Validation: 完全一致で検証（プレフィックス攻撃を防止）
 - Risks: 許可リストが大きくなる場合はパフォーマンス影響を検討
@@ -457,14 +475,16 @@ class AllowedURLsValidator:
 | Intent | 上流レジストリからデータを取得し、統一スキーマに変換してキャッシュ |
 | Requirements | 3.1-3.5, 4.1, 4.2, 5.5, 6.3, 6.4 |
 
-**Responsibilities & Constraints**
+#### Responsibilities & Constraints
+
 - 複数のスキーマ形式（Docker GitHub Contents API、Official Registry JSON）を `CatalogItem` に正規化
 - マッピング不可の項目は除外
 - **フェッチ前に `AllowedURLsValidator` で URL を検証（SSRF 多層防御）**
 - レート制限（429）やタイムアウトを構造化エラーとして返却
 - 認証情報はバックエンドで管理し、レスポンスに露出させない
 
-**Dependencies**
+#### Dependencies
+
 - Inbound: CatalogAPI — データ取得リクエスト (P0)
 - Outbound: AllowedURLsValidator — URL 検証 (P0)
 - External: Docker MCP Registry — HTTP fetch (P1)
@@ -523,7 +543,8 @@ async def fetch_catalog(
 - Postconditions: `CatalogResult` を返却、または `CatalogError` をスロー
 - Invariants: 許可リスト外の URL はフェッチしない
 
-**Implementation Notes**
+#### Implementation Notes
+
 - Integration: `_convert_explore_server` で Official Registry 形式を処理済み、追加調整は軽微
 - Validation: 上流レスポンスのスキーマ検証は Pydantic モデルで実施
 - Risks: Official Registry のスキーマ変更時はパース失敗の可能性あり（ログ記録で早期検知）
@@ -537,7 +558,8 @@ async def fetch_catalog(
 | Intent | カタログソースの URL 定義と関連パラメータを管理 |
 | Requirements | 6.3 |
 
-**Responsibilities & Constraints**
+#### Responsibilities & Constraints
+
 - `catalog_docker_url` および `catalog_official_url` を定義
 - 環境変数で上書き可能
 - **後方互換**: 既存の `catalog_default_url` を `catalog_docker_url` のエイリアスとして維持
@@ -566,6 +588,7 @@ class Settings(BaseSettings):
 - 将来バージョンで `catalog_default_url` を完全に削除する際は deprecation warning をログ出力
 
 **Environment Variables**:
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CATALOG_DEFAULT_URL` | GitHub API URL | Docker カタログ URL（既存/非推奨） |
