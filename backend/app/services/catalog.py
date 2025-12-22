@@ -2,10 +2,11 @@
 
 import asyncio
 import base64
+import contextvars
+import ipaddress
 import json
 import logging
 import re
-import contextvars
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -14,7 +15,7 @@ import httpx
 import yaml
 from pydantic import ValidationError
 
-from ..config import settings
+from ..config import Settings, settings
 from ..models.catalog import Catalog, CatalogErrorCode, CatalogItem, OAuthConfig
 from ..schemas.catalog import RegistryItem
 from .github_token import GitHubTokenError, GitHubTokenService
@@ -48,6 +49,103 @@ class CatalogError(Exception):
         self.error_code = resolved_code
         self.message = message
         self.retry_after_seconds = retry_after_seconds
+
+
+class AllowedURLsValidator:
+    """Validate catalog URLs against an allowlist with normalization."""
+
+    def __init__(self, settings_obj: Settings | None = None) -> None:
+        use_settings = settings_obj or settings
+        allowed = [
+            use_settings.catalog_docker_url,
+            use_settings.catalog_official_url,
+            use_settings.catalog_default_url,
+        ]
+        self._allowed_urls = frozenset(
+            self._normalize_url(url) for url in allowed if url
+        )
+
+    def validate(self, url: str) -> str:
+        """Return normalized URL if allowed, otherwise raise CatalogError."""
+        normalized = self._normalize_url(url)
+        if normalized not in self._allowed_urls:
+            raise CatalogError(
+                "URL is not in the allowed list",
+                error_code=CatalogErrorCode.INVALID_SOURCE,
+            )
+        return normalized
+
+    @staticmethod
+    def _normalize_url(url: str) -> str:
+        raw = (url or "").strip()
+        if not raw:
+            raise CatalogError(
+                "Catalog URL is empty",
+                error_code=CatalogErrorCode.INVALID_SOURCE,
+            )
+
+        try:
+            parsed = urlparse(raw)
+        except Exception as exc:  # noqa: BLE001
+            raise CatalogError(
+                "Catalog URL is invalid",
+                error_code=CatalogErrorCode.INVALID_SOURCE,
+            ) from exc
+
+        scheme = (parsed.scheme or "").lower()
+        if scheme not in {"http", "https"}:
+            raise CatalogError(
+                "Catalog URL must use http or https",
+                error_code=CatalogErrorCode.INVALID_SOURCE,
+            )
+
+        hostname = parsed.hostname
+        if not hostname:
+            raise CatalogError(
+                "Catalog URL is missing a host",
+                error_code=CatalogErrorCode.INVALID_SOURCE,
+            )
+
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise CatalogError(
+                "Catalog URL has an invalid port",
+                error_code=CatalogErrorCode.INVALID_SOURCE,
+            ) from exc
+
+        host = AllowedURLsValidator._normalize_hostname(hostname)
+
+        port_part = ""
+        if port is not None and not AllowedURLsValidator._is_default_port(scheme, port):
+            port_part = f":{port}"
+
+        path = parsed.path or ""
+        if path in {"", "/"}:
+            path = ""
+        else:
+            path = path.rstrip("/")
+
+        query = f"?{parsed.query}" if parsed.query else ""
+        fragment = f"#{parsed.fragment}" if parsed.fragment else ""
+
+        return f"{scheme}://{host}{port_part}{path}{query}{fragment}"
+
+    @staticmethod
+    def _normalize_hostname(hostname: str) -> str:
+        try:
+            ip = ipaddress.ip_address(hostname)
+        except ValueError:
+            return hostname.lower()
+        if isinstance(ip, ipaddress.IPv6Address):
+            return f"[{ip.compressed}]"
+        return ip.compressed
+
+    @staticmethod
+    def _is_default_port(scheme: str, port: int) -> bool:
+        return (scheme == "http" and port == 80) or (
+            scheme == "https" and port == 443
+        )
 
 
 class CatalogService:
