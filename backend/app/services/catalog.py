@@ -86,7 +86,7 @@ class AllowedURLsValidator:
 
         try:
             parsed = urlparse(raw)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise CatalogError(
                 "Catalog URL is invalid",
                 error_code=CatalogErrorCode.INVALID_SOURCE,
