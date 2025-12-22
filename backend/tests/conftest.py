@@ -34,7 +34,7 @@ if "HYPOTHESIS_PROFILE" not in os.environ:
 
 
 @pytest.fixture(autouse=True)
-def _mock_docker_socket(tmp_path) -> Iterator[None]:
+def _mock_docker_socket(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
     """
     CI 環境では Docker デーモンが無いので、Docker ソケット存在チェックをパスさせるために
     ダミーの Unix ソケットファイルパスを用意し、設定を上書きする。
@@ -42,7 +42,8 @@ def _mock_docker_socket(tmp_path) -> Iterator[None]:
     テスト間でモック状態が共有されないよう、function スコープで初期化する。
     個別の挙動が必要な場合はテスト側で patch して上書きする。
     """
-    socket_path = tmp_path / "docker.sock"
+    socket_root = tmp_path_factory.mktemp("docker-socket")
+    socket_path = socket_root / "docker.sock"
     socket_path.touch()
     socket_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
@@ -197,6 +198,11 @@ def _mock_docker_socket(tmp_path) -> Iterator[None]:
     finally:
         docker_from_env_patcher.stop()
         docker_client_patcher.stop()
+        try:
+            socket_path.unlink(missing_ok=True)
+            socket_root.rmdir()
+        except Exception:
+            pass
         if previous_env is None:
             os.environ.pop("DOCKER_HOST", None)
         else:
