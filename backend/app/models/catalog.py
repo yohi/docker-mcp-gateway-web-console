@@ -1,9 +1,9 @@
 """Catalog models."""
 
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Annotated, Dict, List, Optional
 
-from pydantic import AnyUrl, BaseModel, Field, model_validator
+from pydantic import AnyUrl, BaseModel, Field, UrlConstraints, model_validator
 
 
 class CatalogSourceId(str, Enum):
@@ -63,7 +63,12 @@ class CatalogItem(BaseModel):
         default=None,
         description="Server type classification: 'docker' or 'remote'. Derived if not provided.",
     )
-    remote_endpoint: Optional[AnyUrl] = Field(
+    remote_endpoint: Optional[
+        Annotated[
+            AnyUrl,
+            UrlConstraints(allowed_schemes=["https", "wss", "http", "ws"]),
+        ]
+    ] = Field(
         default=None,
         description="Remote MCP server SSE endpoint (used when docker_image is absent).",
     )
