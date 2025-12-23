@@ -3,7 +3,7 @@
 from enum import Enum
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field, HttpUrl, model_validator
+from pydantic import AnyUrl, BaseModel, Field, model_validator
 
 
 class CatalogSourceId(str, Enum):
@@ -63,9 +63,21 @@ class CatalogItem(BaseModel):
         default=None,
         description="Server type classification: 'docker' or 'remote'. Derived if not provided.",
     )
-    remote_endpoint: Optional[HttpUrl] = Field(
+    remote_endpoint: Optional[AnyUrl] = Field(
         default=None,
         description="Remote MCP server SSE endpoint (used when docker_image is absent).",
+    )
+    homepage_url: str | None = Field(
+        default=None,
+        description="Project homepage URL (optional; informational).",
+    )
+    tags: List[str] = Field(
+        default_factory=list,
+        description="Tags for categorization/search (optional).",
+    )
+    capabilities: List[str] = Field(
+        default_factory=list,
+        description="High-level capability labels (optional).",
     )
     is_remote: bool = Field(
         default=False,

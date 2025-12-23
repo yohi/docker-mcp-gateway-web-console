@@ -10,7 +10,7 @@ import re
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import httpx
 import yaml
@@ -262,10 +262,10 @@ class CatalogService:
         if not scheme or not host:
             return False
 
-        if scheme == "https":
+        if scheme in {"https", "wss"}:
             return True
 
-        if scheme == "http":
+        if scheme in {"http", "ws"}:
             if not allow_insecure:
                 return False
             return host in {"localhost", "127.0.0.1"}
@@ -488,13 +488,30 @@ class CatalogService:
                             logger.warning(f"Skipping invalid registry item: {e}")
                     return self._filter_items_missing_image(items)
                 else:
+                    # Catalog 形式は先にパースして後方互換を保つ
+                    try:
+                        catalog = Catalog(**data)
+                        return self._filter_items_missing_image(catalog.servers)
+                    except Exception:
+                        pass
+
                     # Attempt to parse Hub explore.data structure
                     servers = self._extract_servers(data)
                     if servers is not None:
-                        converted = [self._convert_explore_server(item) for item in servers if item]
+                        used_ids: Set[str] = set()
+                        converted: List[CatalogItem] = []
+                        for server in servers:
+                            if not server:
+                                continue
+                            item = self._convert_explore_server(
+                                server, used_ids=used_ids
+                            )
+                            if item is None:
+                                continue
+                            converted.append(item)
                         return self._filter_items_missing_image(converted)
 
-                    # Legacy or Catalog format
+                    # Legacy format
                     catalog = Catalog(**data)
                     return self._filter_items_missing_image(catalog.servers)
 
@@ -728,23 +745,72 @@ class CatalogService:
                     return res
         return None
 
-    def _convert_explore_server(self, item: dict) -> CatalogItem:
+    def _convert_explore_server(
+        self, item: dict, *, used_ids: Set[str] | None = None
+    ) -> CatalogItem | None:
         """
         外部レジストリのサーバー要素を CatalogItem に変換する。
         registry.modelcontextprotocol.io 形式と旧 hub explore 形式の両方を扱う。
         """
+        if used_ids is None:
+            used_ids = set()
+
+        def _slug(text: str) -> str:
+            s = re.sub(r"\s+", "-", text.strip().lower())
+            return re.sub(r"[^a-z0-9_-]", "", s)
+
+        def _unique_id(base: str) -> str:
+            candidate = base
+            suffix = 2
+            while candidate in used_ids:
+                candidate = f"{base}-{suffix}"
+                suffix += 1
+            used_ids.add(candidate)
+            return candidate
+
+        def _coerce_str(value: Any) -> str | None:
+            if isinstance(value, str):
+                stripped = value.strip()
+                return stripped if stripped else None
+            return None
+
+        def _normalize_url(value: Any, allowed_schemes: set[str]) -> str | None:
+            raw = _coerce_str(value)
+            if raw is None:
+                return None
+            parsed = urlparse(raw)
+            scheme = (parsed.scheme or "").lower()
+            if scheme not in allowed_schemes:
+                return None
+            if not parsed.netloc:
+                return None
+            return raw
+
         # MCP Registry (registry.modelcontextprotocol.io) 形式
         if isinstance(item, dict) and isinstance(item.get("server"), dict):
             server_data = item["server"]
-            name = server_data.get("name") or "unknown"
-            description = server_data.get("description") or ""
+            raw_name = _coerce_str(server_data.get("name"))
+            raw_display = _coerce_str(
+                server_data.get("display_name")
+                or server_data.get("displayName")
+                or server_data.get("title")
+            )
+            if raw_name is None and raw_display is None:
+                logger.warning(
+                    "Official Registry item missing name/display_name; skipping"
+                )
+                return None
+
+            name = _unique_id(raw_name or _slug(raw_display or "unknown"))
+            display_name = raw_display or raw_name or name
+            description = _coerce_str(server_data.get("description")) or ""
 
             repository = server_data.get("repository") or {}
             vendor = ""
             if isinstance(repository, dict):
                 vendor = repository.get("source") or repository.get("url") or ""
-            if not vendor and "/" in name:
-                vendor = name.split("/")[0]
+            if not vendor and raw_name and "/" in raw_name:
+                vendor = raw_name.split("/")[0]
 
             packages = server_data.get("packages") or []
             docker_image = ""
@@ -783,7 +849,7 @@ class CatalogService:
 
             return CatalogItem(
                 id=name,
-                name=name,
+                name=display_name,
                 description=description,
                 vendor=vendor,
                 category=server_data.get("category", "general"),
@@ -798,20 +864,91 @@ class CatalogService:
                 oauth_redirect_uri=oauth_redirect_uri,
             )
 
-        def _slug(text: str) -> str:
-            s = re.sub(r"\s+", "-", text.strip().lower())
-            return re.sub(r"[^a-z0-9_-]", "", s)
+        # Official MCP Registry (flat) 形式
+        if isinstance(item, dict) and (
+            "display_name" in item or "homepage_url" in item or "client" in item
+        ):
+            raw_name = _coerce_str(item.get("name"))
+            raw_display = _coerce_str(item.get("display_name"))
+            if raw_name is None and raw_display is None:
+                logger.warning(
+                    "Official Registry item missing name/display_name; skipping"
+                )
+                return None
 
-        title = item.get("title") or item.get("name") or "unknown"
+            item_id = _unique_id(raw_name or _slug(raw_display or "unknown"))
+            display_name = raw_display or raw_name or item_id
+
+            description = _coerce_str(item.get("description")) or ""
+            homepage_url = _normalize_url(
+                item.get("homepage_url"), {"http", "https"}
+            )
+
+            tags: List[str] = []
+            raw_tags = item.get("tags")
+            if isinstance(raw_tags, list):
+                tags = [t for t in raw_tags if isinstance(t, str)]
+
+            capabilities: List[str] = []
+            client = item.get("client")
+            if isinstance(client, dict):
+                mcp = client.get("mcp")
+                if isinstance(mcp, dict):
+                    raw_caps = mcp.get("capabilities")
+                    if isinstance(raw_caps, list):
+                        capabilities = [
+                            c for c in raw_caps if isinstance(c, str)
+                        ]
+
+            endpoint_url = None
+            if isinstance(client, dict):
+                mcp = client.get("mcp")
+                if isinstance(mcp, dict):
+                    transport = mcp.get("transport")
+                    if isinstance(transport, dict):
+                        endpoint_url = _normalize_url(
+                            transport.get("url"),
+                            {"http", "https", "ws", "wss"},
+                        )
+
+            vendor = ""
+            if raw_name and "/" in raw_name:
+                vendor = raw_name.split("/")[0]
+
+            return CatalogItem(
+                id=item_id,
+                name=display_name,
+                description=description,
+                vendor=vendor,
+                category="general",
+                docker_image="",
+                default_env={},
+                required_envs=[],
+                required_secrets=[],
+                remote_endpoint=endpoint_url,
+                homepage_url=homepage_url,
+                tags=tags,
+                capabilities=capabilities,
+            )
+
+        title = (
+            _coerce_str(item.get("title"))
+            or _coerce_str(item.get("name"))
+            or _coerce_str(item.get("id"))
+        )
+        if title is None:
+            logger.warning("Catalog item missing title/name/id; skipping")
+            return None
         slug = item.get("slug") or item.get("id") or _slug(title)
+        slug = _unique_id(slug)
         image = (
             item.get("image")
             or item.get("container")
             or item.get("docker_image")
             or ""
         )
-        vendor = item.get("owner") or item.get("publisher") or ""
-        description = item.get("description") or ""
+        vendor = _coerce_str(item.get("owner")) or _coerce_str(item.get("publisher")) or ""
+        description = _coerce_str(item.get("description")) or ""
         remote_endpoint = item.get("remote_endpoint")
         server_type = item.get("server_type")
 
