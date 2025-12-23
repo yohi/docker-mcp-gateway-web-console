@@ -7,6 +7,7 @@ import ipaddress
 import json
 import logging
 import re
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -317,6 +318,12 @@ class CatalogService:
         except Exception as e:
             if isinstance(e, CatalogError) and e.error_code == CatalogErrorCode.INVALID_SOURCE:
                 raise
+            base_error_code = (
+                e.error_code if isinstance(e, CatalogError) else CatalogErrorCode.INTERNAL_ERROR
+            )
+            base_retry_after = (
+                e.retry_after_seconds if isinstance(e, CatalogError) else None
+            )
             if source_url in {LEGACY_RAW_URL, settings.catalog_default_url}:
                 # primary失敗時はもう片方へフェイルオーバー
                 fallback = (
@@ -344,13 +351,38 @@ class CatalogService:
 
             # No cache available, raise error
             raise CatalogError(
-                f"Failed to fetch catalog from {source_url} and no cached data available: {e}"
+                f"Failed to fetch catalog from {source_url} and no cached data available: {e}",
+                error_code=base_error_code,
+                retry_after_seconds=base_retry_after,
             ) from e
 
     @property
     def warning(self) -> Optional[str]:
         """直近の警告(GitHub トークン復号失敗など)を返す。"""
         return self._warning_var.get()
+
+    @staticmethod
+    def _parse_retry_after_seconds(value: str | None) -> int | None:
+        if not value:
+            return None
+        raw = value.strip()
+        if not raw:
+            return None
+        if raw.isdigit():
+            return int(raw)
+        try:
+            target = parsedate_to_datetime(raw)
+        except Exception:
+            return None
+        if target is None:
+            return None
+        if target.tzinfo is None:
+            target = target.replace(tzinfo=datetime.now().astimezone().tzinfo)
+        now = datetime.now(tz=target.tzinfo)
+        delta = (target - now).total_seconds()
+        if delta <= 0:
+            return 0
+        return int(delta)
 
     async def _fetch_from_url(self, source_url: str) -> List[CatalogItem]:
         """
@@ -373,6 +405,23 @@ class CatalogService:
                     source_url,
                     headers=self._github_headers(source_url),
                 )
+
+                status_code = getattr(response, "status_code", None)
+                if isinstance(status_code, int) and status_code == 429:
+                    retry_after = self._parse_retry_after_seconds(
+                        response.headers.get("Retry-After")
+                    )
+                    raise CatalogError(
+                        "Upstream rate limited",
+                        error_code=CatalogErrorCode.RATE_LIMITED,
+                        retry_after_seconds=retry_after,
+                    )
+                if isinstance(status_code, int) and 500 <= status_code <= 599:
+                    raise CatalogError(
+                        "Upstream registry unavailable",
+                        error_code=CatalogErrorCode.UPSTREAM_UNAVAILABLE,
+                    )
+
                 response.raise_for_status()
 
                 # Parse JSON response (AsyncMock compatibility: handle coroutine)
@@ -455,8 +504,16 @@ class CatalogService:
             raise CatalogError(
                 f"HTTP error {e.response.status_code} while fetching catalog: {e}"
             ) from e
+        except httpx.TimeoutException as e:
+            raise CatalogError(
+                "Upstream registry unavailable",
+                error_code=CatalogErrorCode.UPSTREAM_UNAVAILABLE,
+            ) from e
         except httpx.RequestError as e:
-            raise CatalogError(f"Network error while fetching catalog: {e}") from e
+            raise CatalogError(
+                "Upstream registry unavailable",
+                error_code=CatalogErrorCode.UPSTREAM_UNAVAILABLE,
+            ) from e
         except json.JSONDecodeError as e:
             raise CatalogError(f"Invalid JSON in catalog response: {e}") from e
         except Exception as e:
