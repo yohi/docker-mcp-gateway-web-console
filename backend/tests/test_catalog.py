@@ -933,6 +933,182 @@ class TestCatalogFetch:
         assert any("name" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
+    async def test_fetch_official_flat_shape_handles_type_mismatches(
+        self, catalog_service, monkeypatch
+    ):
+        """型不一致時（文字列フィールドが配列の場合など）に安全にフォールバックすること。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        official_payload = {
+            "servers": [
+                {
+                    "name": "modelcontextprotocol/type-mismatch",
+                    "display_name": ["Not", "A", "String"],  # 配列（不正）
+                    "description": 12345,  # 数値（不正だが文字列化可能）
+                    "homepage_url": ["not", "a", "url"],  # 配列（不正）
+                    "tags": "not-an-array",  # 文字列（不正）
+                    "client": {
+                        "mcp": {
+                            "capabilities": "not-an-array",  # 文字列（不正）
+                            "transport": {
+                                "type": "http",
+                                "url": "https://type-mismatch.example.com/mcp",
+                            },
+                        }
+                    },
+                }
+            ]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = official_payload
+        mock_response.raise_for_status = MagicMock()
+
+        mock_get = AsyncMock(return_value=mock_response)
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                return await mock_get(*args, **kwargs)
+
+        import httpx
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        items = await catalog_service._fetch_from_url(settings.catalog_official_url)
+
+        # アイテム自体は生成されるが、不正フィールドは破棄/フォールバック
+        assert len(items) == 1
+        item = items[0]
+        assert item.id == "modelcontextprotocol/type-mismatch"
+        assert item.name == "modelcontextprotocol/type-mismatch"  # display_name が配列なので name を利用
+        assert item.description == ""  # 数値は文字列化できないため空文字列
+        assert item.homepage_url is None  # 配列は無効なURLなので破棄
+        assert item.tags == []  # 文字列は配列でないため空配列
+        assert item.capabilities == []  # 文字列は配列でないため空配列
+
+    @pytest.mark.asyncio
+    async def test_fetch_official_flat_shape_validates_url_protocols(
+        self, catalog_service, monkeypatch
+    ):
+        """URLフィールドが無効なプロトコル（file:, javascript:等）を含む場合は破棄されること。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        official_payload = {
+            "servers": [
+                {
+                    "name": "modelcontextprotocol/invalid-protocol",
+                    "display_name": "Invalid Protocol",
+                    "homepage_url": "file:///etc/passwd",  # 不正なプロトコル
+                    "client": {
+                        "mcp": {
+                            "transport": {
+                                "type": "custom",
+                                "url": "javascript:alert('xss')",  # 不正なプロトコル
+                            }
+                        }
+                    },
+                }
+            ]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = official_payload
+        mock_response.raise_for_status = MagicMock()
+
+        mock_get = AsyncMock(return_value=mock_response)
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                return await mock_get(*args, **kwargs)
+
+        import httpx
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        items = await catalog_service._fetch_from_url(settings.catalog_official_url)
+
+        assert len(items) == 1
+        item = items[0]
+        assert item.homepage_url is None  # file:// は破棄
+        assert item.remote_endpoint is None  # javascript: は破棄
+
+    @pytest.mark.asyncio
+    async def test_fetch_official_flat_shape_ignores_unknown_fields(
+        self, catalog_service, monkeypatch
+    ):
+        """未知のフィールドはCatalogItemにコピーされず無視されること。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        official_payload = {
+            "servers": [
+                {
+                    "name": "modelcontextprotocol/unknown-fields",
+                    "display_name": "Unknown Fields Test",
+                    "description": "Test item",
+                    "unknown_field_1": "should be ignored",
+                    "unknown_field_2": {"nested": "data"},
+                    "client": {
+                        "mcp": {
+                            "transport": {
+                                "type": "http",
+                                "url": "https://unknown.example.com/mcp",
+                            }
+                        }
+                    },
+                }
+            ]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = official_payload
+        mock_response.raise_for_status = MagicMock()
+
+        mock_get = AsyncMock(return_value=mock_response)
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                return await mock_get(*args, **kwargs)
+
+        import httpx
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        items = await catalog_service._fetch_from_url(settings.catalog_official_url)
+
+        assert len(items) == 1
+        item = items[0]
+        # CatalogItemモデルに定義されていないフィールドが存在しないことを確認
+        assert not hasattr(item, "unknown_field_1")
+        assert not hasattr(item, "unknown_field_2")
+
+    @pytest.mark.asyncio
     async def test_fetch_catalog_fallback_to_cache(self, catalog_service, sample_catalog_items, monkeypatch):
         """Test fallback to cache when fetch fails."""
         import httpx
