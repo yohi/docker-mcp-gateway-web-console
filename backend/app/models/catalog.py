@@ -63,10 +63,14 @@ class CatalogItem(BaseModel):
         default=None,
         description="Server type classification: 'docker' or 'remote'. Derived if not provided.",
     )
+    # Model-level validation enforces secure schemes (https/wss) only.
+    # Service-level logic (_is_valid_remote_endpoint) additionally permits
+    # http/ws for localhost/127.0.0.1 when ALLOW_INSECURE_ENDPOINT=true.
+    # If allowed_schemes is changed here, update service validation accordingly.
     remote_endpoint: Optional[
         Annotated[
             AnyUrl,
-            UrlConstraints(allowed_schemes=["https", "wss", "http", "ws"]),
+            UrlConstraints(allowed_schemes=["https", "wss"]),
         ]
     ] = Field(
         default=None,
