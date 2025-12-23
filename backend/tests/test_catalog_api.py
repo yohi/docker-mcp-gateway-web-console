@@ -203,3 +203,87 @@ async def test_get_catalog_unexpected_exception_returns_500():
         assert payload["detail"] == "An internal error occurred."
         assert "retry_after_seconds" not in payload
         assert "internal.example.com" not in payload["detail"]
+
+
+@pytest.mark.asyncio
+async def test_search_catalog_default_source_is_docker():
+    """When source is omitted, /api/catalog/search should use docker source."""
+    items = [
+        CatalogItem(
+            id="test-1",
+            name="Test",
+            description="Desc",
+            vendor="Vendor",
+            category="test",
+            docker_image="img",
+            required_envs=[],
+            required_secrets=[],
+        )
+    ]
+
+    with patch("app.api.catalog.catalog_service") as mock_service:
+        mock_service.fetch_catalog = AsyncMock(return_value=(items, False))
+        mock_service.search_catalog = AsyncMock(return_value=items)
+
+        async with AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            response = await ac.get("/api/catalog/search?q=test")
+
+        assert response.status_code == 200
+
+        from app.config import settings
+
+        mock_service.fetch_catalog.assert_awaited_once_with(settings.catalog_docker_url)
+
+
+@pytest.mark.asyncio
+async def test_search_catalog_official_source_id():
+    """/api/catalog/search should resolve source ID to the upstream URL."""
+    items = [
+        CatalogItem(
+            id="test-1",
+            name="Test",
+            description="Desc",
+            vendor="Vendor",
+            category="test",
+            docker_image="img",
+            required_envs=[],
+            required_secrets=[],
+        )
+    ]
+
+    with patch("app.api.catalog.catalog_service") as mock_service:
+        mock_service.fetch_catalog = AsyncMock(return_value=(items, False))
+        mock_service.search_catalog = AsyncMock(return_value=items)
+
+        async with AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            response = await ac.get("/api/catalog/search?source=official&q=test")
+
+        assert response.status_code == 200
+
+        from app.config import settings
+
+        mock_service.fetch_catalog.assert_awaited_once_with(
+            settings.catalog_official_url
+        )
+
+
+@pytest.mark.asyncio
+async def test_search_catalog_invalid_source_returns_400():
+    """Invalid source value should return structured 400 response."""
+    with patch("app.api.catalog.catalog_service") as mock_service:
+        mock_service.fetch_catalog = AsyncMock(return_value=([], False))
+        mock_service.search_catalog = AsyncMock(return_value=[])
+        async with AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            response = await ac.get("/api/catalog/search?source=invalid-source&q=test")
+
+        assert response.status_code == 400
+        payload = response.json()
+        assert payload["error_code"] == "invalid_source"
+        assert "detail" in payload
+        mock_service.fetch_catalog.assert_not_called()
