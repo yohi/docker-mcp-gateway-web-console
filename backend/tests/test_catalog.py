@@ -760,6 +760,136 @@ class TestCatalogFetch:
         assert "no cached data available" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
+    async def test_fetch_from_url_429_maps_to_rate_limited(
+        self, catalog_service, monkeypatch
+    ):
+        """上流 429 + Retry-After を rate_limited として扱うこと。"""
+        import httpx
+
+        url = settings.catalog_default_url
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                request = httpx.Request("GET", url)
+                return httpx.Response(
+                    429,
+                    headers={"Retry-After": "42"},
+                    request=request,
+                )
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        with pytest.raises(CatalogError) as exc_info:
+            await catalog_service._fetch_from_url(url)
+
+        assert exc_info.value.error_code == CatalogErrorCode.RATE_LIMITED
+        assert exc_info.value.retry_after_seconds == 42
+
+    @pytest.mark.asyncio
+    async def test_fetch_catalog_no_cache_propagates_rate_limited(
+        self, catalog_service, monkeypatch
+    ):
+        """キャッシュ無し時も rate_limited を API 層へ伝播できること。"""
+        import httpx
+
+        url = settings.catalog_default_url
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                request = httpx.Request("GET", url)
+                return httpx.Response(
+                    429,
+                    headers={"Retry-After": "42"},
+                    request=request,
+                )
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        with pytest.raises(CatalogError) as exc_info:
+            await catalog_service.fetch_catalog(url, force_refresh=True)
+
+        assert exc_info.value.error_code == CatalogErrorCode.RATE_LIMITED
+        assert exc_info.value.retry_after_seconds == 42
+
+    @pytest.mark.asyncio
+    async def test_fetch_from_url_5xx_maps_to_upstream_unavailable(
+        self, catalog_service, monkeypatch
+    ):
+        """上流 5xx を upstream_unavailable として扱うこと。"""
+        import httpx
+
+        url = settings.catalog_default_url
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                request = httpx.Request("GET", url)
+                return httpx.Response(503, request=request)
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        with pytest.raises(CatalogError) as exc_info:
+            await catalog_service._fetch_from_url(url)
+
+        assert exc_info.value.error_code == CatalogErrorCode.UPSTREAM_UNAVAILABLE
+
+    @pytest.mark.asyncio
+    async def test_fetch_from_url_timeout_maps_to_upstream_unavailable(
+        self, catalog_service, monkeypatch
+    ):
+        """上流タイムアウトを upstream_unavailable として扱うこと。"""
+        import httpx
+
+        url = settings.catalog_default_url
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                request = httpx.Request("GET", url)
+                raise httpx.ReadTimeout("timed out", request=request)
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        with pytest.raises(CatalogError) as exc_info:
+            await catalog_service._fetch_from_url(url)
+
+        assert exc_info.value.error_code == CatalogErrorCode.UPSTREAM_UNAVAILABLE
+
+    @pytest.mark.asyncio
     async def test_fetch_catalog_invalid_json(self, catalog_service, monkeypatch):
         """Test handling of invalid JSON response."""
         from unittest.mock import MagicMock, AsyncMock
