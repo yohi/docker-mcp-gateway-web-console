@@ -944,7 +944,7 @@ class TestCatalogFetch:
                 {
                     "name": "modelcontextprotocol/type-mismatch",
                     "display_name": ["Not", "A", "String"],  # 配列（不正）
-                    "description": 12345,  # 数値（不正だが文字列化可能）
+                    "description": 12345,  # 数値（不正で空文字列にフォールバック）
                     "homepage_url": ["not", "a", "url"],  # 配列（不正）
                     "tags": "not-an-array",  # 文字列（不正）
                     "client": {
