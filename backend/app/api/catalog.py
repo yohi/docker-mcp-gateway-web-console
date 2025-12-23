@@ -5,7 +5,7 @@ import logging
 import math
 from typing import Optional, Union
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query, status
 from fastapi.responses import JSONResponse
 
 from ..config import settings
@@ -181,9 +181,30 @@ async def get_catalog(
         )
 
 
-@router.get("/search", response_model=CatalogResponse)
+@router.get(
+    "/search",
+    response_model=CatalogResponse,
+    responses={
+        400: {
+            "model": CatalogErrorResponse,
+            "description": "Invalid request parameters (e.g., invalid source ID)",
+        },
+        429: {
+            "model": CatalogErrorResponse,
+            "description": "Rate limited by upstream registry",
+        },
+        503: {
+            "model": CatalogErrorResponse,
+            "description": "Service unavailable - failed to fetch catalog",
+        },
+        500: {
+            "model": CatalogErrorResponse,
+            "description": "Internal server error",
+        },
+    },
+)
 async def search_catalog(
-    source: Optional[str] = Query(None, description="URL of the catalog JSON file"),
+    source: Optional[str] = Query(None, description="Catalog source ID"),
     q: str = Query(default="", description="Search keyword"),
     category: Optional[str] = Query(default=None, description="Category filter"),
     page: int = Query(default=1, ge=1, description="1始まりのページ番号"),
@@ -193,28 +214,26 @@ async def search_catalog(
         le=200,
         description="1ページあたりの件数。過大指定での負荷を防ぐため上限200件。",
     ),
-) -> CatalogResponse:
+) -> Union[CatalogResponse, JSONResponse]:
     """
     Search and filter catalog items.
     
     This endpoint allows searching the catalog by keyword and filtering by category.
     The search looks for matches in both the name and description fields.
-    if no URL is provided, it uses the default registry URL.
+    If no source is provided, it uses the Docker catalog source.
     
     Args:
-        source: URL of the catalog JSON file (optional)
+        source: Catalog source ID (optional)
         q: Search keyword (searches in name and description)
         category: Category filter (exact match)
         
     Returns:
         CatalogResponse with filtered list of MCP servers
-        
-    Raises:
-        HTTPException: If catalog cannot be fetched
     """
-    source_url = source or settings.catalog_default_url
-    
     try:
+        source_id = _resolve_source_id(source)
+        source_url = _resolve_source_url(source_id)
+
         # Fetch catalog data (will use cache if available)
         items, is_cached = await catalog_service.fetch_catalog(source_url)
         
@@ -257,15 +276,14 @@ async def search_catalog(
         
     except CatalogError as e:
         logger.error(f"Failed to search catalog: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail=f"Failed to fetch catalog for search: {str(e)}"
-        )
+        return _catalog_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error searching catalog: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
+        return _catalog_error_response(
+            CatalogError(
+                "Internal error",
+                error_code=CatalogErrorCode.INTERNAL_ERROR,
+            )
         )
 
 
