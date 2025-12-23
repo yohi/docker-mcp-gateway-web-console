@@ -67,7 +67,7 @@
   - エラー情報を構造化してAPI層へ伝播する
   - _Requirements: 4.1, 4.2_
 
-- [ ] 5.3 Official MCP Registry形式のJSONパースと変換を実装する
+- [x] 5.3 Official MCP Registry形式のJSONパースと変換を実装する
   - Official Registry から返されるスキーマを既存のCatalogItemモデルへマッピングする
   - マッピング不可能な項目は除外する
   - 未知のフィールドは無視する

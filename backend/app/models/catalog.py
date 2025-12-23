@@ -1,9 +1,9 @@
 """Catalog models."""
 
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Annotated, Dict, List, Optional
 
-from pydantic import BaseModel, Field, HttpUrl, model_validator
+from pydantic import AnyUrl, BaseModel, Field, UrlConstraints, model_validator
 
 
 class CatalogSourceId(str, Enum):
@@ -63,9 +63,30 @@ class CatalogItem(BaseModel):
         default=None,
         description="Server type classification: 'docker' or 'remote'. Derived if not provided.",
     )
-    remote_endpoint: Optional[HttpUrl] = Field(
+    # Model-level validation enforces secure schemes (https/wss) only.
+    # Service-level logic (_is_valid_remote_endpoint) additionally permits
+    # http/ws for localhost/127.0.0.1 when ALLOW_INSECURE_ENDPOINT=true.
+    # If allowed_schemes is changed here, update service validation accordingly.
+    remote_endpoint: Optional[
+        Annotated[
+            AnyUrl,
+            UrlConstraints(allowed_schemes=["https", "wss"]),
+        ]
+    ] = Field(
         default=None,
         description="Remote MCP server SSE endpoint (used when docker_image is absent).",
+    )
+    homepage_url: str | None = Field(
+        default=None,
+        description="Project homepage URL (optional; informational).",
+    )
+    tags: List[str] = Field(
+        default_factory=list,
+        description="Tags for categorization/search (optional).",
+    )
+    capabilities: List[str] = Field(
+        default_factory=list,
+        description="High-level capability labels (optional).",
     )
     is_remote: bool = Field(
         default=False,

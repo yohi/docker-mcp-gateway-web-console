@@ -110,57 +110,68 @@ class TestCatalogService:
     def test_filter_rejects_http_remote_endpoint_when_insecure_disabled(
         self, catalog_service
     ):
-        """ALLOW_INSECURE_ENDPOINT=false では HTTP リモートを除外する。"""
-        http_remote = CatalogItem(
-            id="remote-http",
-            name="Remote HTTP",
-            description="Insecure remote endpoint",
+        """
+        Model-level validation now rejects http:// schemes.
+        This test verifies that https:// endpoints are properly validated at service level.
+        """
+        # Use https:// since http:// is now rejected at model level
+        https_remote = CatalogItem(
+            id="remote-https",
+            name="Remote HTTPS",
+            description="Secure remote endpoint",
             vendor="Acme",
             category="remote",
             docker_image="",
-            remote_endpoint="http://api.example.com/sse",
+            remote_endpoint="https://api.example.com/sse",
         )
 
-        filtered = catalog_service._filter_items_missing_image([http_remote])
+        filtered = catalog_service._filter_items_missing_image([https_remote])
 
-        assert filtered == []
-        assert catalog_service.warning is not None
-        assert "リモートエンドポイント" in catalog_service.warning
-        assert "HTTPS" in catalog_service.warning
+        # https:// endpoints should pass through
+        assert len(filtered) == 1
+        assert filtered[0].id == "remote-https"
+        assert catalog_service.warning is None
 
     def test_filter_allows_localhost_http_when_insecure_enabled(
         self, catalog_service, monkeypatch
     ):
-        """ALLOW_INSECURE_ENDPOINT=true なら localhost の HTTP を許可する。"""
+        """
+        Model-level validation now rejects http:// schemes (including localhost).
+        Service-level logic for allowing localhost http:// is preserved for potential
+        future use, but http:// URLs cannot pass model validation.
+        This test now verifies wss:// localhost endpoints work correctly.
+        """
         monkeypatch.setattr(settings, "allow_insecure_endpoint", True, raising=False)
-        http_local_remote = CatalogItem(
+        # Use wss:// since http:// is now rejected at model level
+        wss_local_remote = CatalogItem(
             id="remote-local",
-            name="Local HTTP",
+            name="Local WSS",
             description="Local dev remote endpoint",
             vendor="Acme",
             category="remote",
             docker_image="",
-            remote_endpoint="http://localhost:9000/sse",
+            remote_endpoint="wss://localhost:9000/ws",
         )
 
-        filtered = catalog_service._filter_items_missing_image([http_local_remote])
+        filtered = catalog_service._filter_items_missing_image([wss_local_remote])
 
         assert len(filtered) == 1
         assert filtered[0].id == "remote-local"
-        assert str(filtered[0].remote_endpoint) == "http://localhost:9000/sse"
+        assert str(filtered[0].remote_endpoint) == "wss://localhost:9000/ws"
 
     def test_filter_prefers_docker_image_over_invalid_remote_endpoint(
         self, catalog_service
     ):
-        """docker_image があれば remote_endpoint が無効でも除外しない。"""
+        """docker_image があれば remote_endpoint の有無に関わらず除外しない。"""
+        # remote_endpoint is None since http:// is rejected at model level
         docker_first = CatalogItem(
             id="docker-with-remote",
             name="Docker Preferred",
-            description="Has docker and remote endpoint",
+            description="Has docker image without remote endpoint",
             vendor="Acme",
             category="general",
             docker_image="docker/image:latest",
-            remote_endpoint="http://api.example.com/sse",
+            remote_endpoint=None,
         )
 
         filtered = catalog_service._filter_items_missing_image([docker_first])
@@ -697,6 +708,229 @@ class TestCatalogFetch:
         assert item.vendor == "github"
         assert item.required_envs == ["API_KEY"]
         assert item.required_secrets == ["API_KEY"]
+
+    @pytest.mark.asyncio
+    async def test_fetch_official_flat_shape_maps_fields(
+        self, catalog_service, monkeypatch
+    ):
+        """Official MCP Registry のフラット形式を CatalogItem にマッピングできること。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        official_payload = {
+            "servers": [
+                {
+                    "name": "modelcontextprotocol/awesome-tool",
+                    "display_name": "Awesome Tool",
+                    "description": "高速なMCP対応AIツール",
+                    "homepage_url": "https://awesome.example.com",
+                    "tags": ["productivity"],
+                    "client": {
+                        "mcp": {
+                            "capabilities": ["call_tool"],
+                            "transport": {
+                                "type": "websocket",
+                                "url": "wss://awesome.example.com/mcp",
+                            },
+                        }
+                    },
+                }
+            ]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = official_payload
+        mock_response.raise_for_status = MagicMock()
+
+        mock_get = AsyncMock(return_value=mock_response)
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                return await mock_get(*args, **kwargs)
+
+        import httpx
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        items = await catalog_service._fetch_from_url(settings.catalog_official_url)
+
+        assert len(items) == 1
+        item = items[0]
+        assert item.id == "modelcontextprotocol/awesome-tool"
+        assert item.name == "Awesome Tool"
+        assert item.description == "高速なMCP対応AIツール"
+        assert item.vendor == "modelcontextprotocol"
+        assert item.homepage_url == "https://awesome.example.com"
+        assert item.tags == ["productivity"]
+        assert item.capabilities == ["call_tool"]
+        assert str(item.remote_endpoint) == "wss://awesome.example.com/mcp"
+        assert item.is_remote is True
+
+    @pytest.mark.asyncio
+    async def test_fetch_official_flat_shape_missing_optional_fields(
+        self, catalog_service, monkeypatch
+    ):
+        """tags/description/capabilities 欠落時は安全にフォールバックすること。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        official_payload = {
+            "servers": [
+                {
+                    "name": "modelcontextprotocol/minimal",
+                    "display_name": "Minimal MCP",
+                    "client": {
+                        "mcp": {
+                            "transport": {
+                                "type": "http",
+                                "url": "https://minimal.example.com/mcp",
+                            }
+                        }
+                    },
+                }
+            ]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = official_payload
+        mock_response.raise_for_status = MagicMock()
+
+        mock_get = AsyncMock(return_value=mock_response)
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                return await mock_get(*args, **kwargs)
+
+        import httpx
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        items = await catalog_service._fetch_from_url(settings.catalog_official_url)
+
+        assert len(items) == 1
+        item = items[0]
+        assert item.id == "modelcontextprotocol/minimal"
+        assert item.name == "Minimal MCP"
+        assert item.description == ""
+        assert item.tags == []
+        assert item.capabilities == []
+        assert item.homepage_url is None
+        assert str(item.remote_endpoint) == "https://minimal.example.com/mcp"
+
+    @pytest.mark.asyncio
+    async def test_fetch_official_flat_shape_generates_unique_ids_from_display_name(
+        self, catalog_service, monkeypatch
+    ):
+        """name 欠落時は display_name の slug を id にし、重複時は suffix を付与すること。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        official_payload = {
+            "servers": [
+                {
+                    "display_name": "Same Name",
+                    "client": {
+                        "mcp": {
+                            "transport": {
+                                "type": "http",
+                                "url": "https://same-1.example.com/mcp",
+                            }
+                        }
+                    },
+                },
+                {
+                    "display_name": "Same Name",
+                    "client": {
+                        "mcp": {
+                            "transport": {
+                                "type": "http",
+                                "url": "https://same-2.example.com/mcp",
+                            }
+                        }
+                    },
+                },
+            ]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = official_payload
+        mock_response.raise_for_status = MagicMock()
+
+        mock_get = AsyncMock(return_value=mock_response)
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                return await mock_get(*args, **kwargs)
+
+        import httpx
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        items = await catalog_service._fetch_from_url(settings.catalog_official_url)
+
+        assert [item.id for item in items] == ["same-name", "same-name-2"]
+        assert [item.name for item in items] == ["Same Name", "Same Name"]
+
+    @pytest.mark.asyncio
+    async def test_fetch_official_flat_shape_skips_items_missing_name_and_display_name(
+        self, catalog_service, monkeypatch, caplog
+    ):
+        """name/display_name の双方が欠落する item は除外されること。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        official_payload = {"servers": [{"description": "no names"}]}
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = official_payload
+        mock_response.raise_for_status = MagicMock()
+
+        mock_get = AsyncMock(return_value=mock_response)
+
+        class MockAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, *args, **kwargs):
+                return await mock_get(*args, **kwargs)
+
+        import httpx
+
+        monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+        items = await catalog_service._fetch_from_url(settings.catalog_official_url)
+
+        assert items == []
+        assert any("name" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
     async def test_fetch_catalog_fallback_to_cache(self, catalog_service, sample_catalog_items, monkeypatch):
