@@ -1,5 +1,5 @@
-import { fetchCatalog, searchCatalog, clearCatalogCache } from '../../../lib/api/catalog';
-import { CatalogResponse } from '../../../lib/types/catalog';
+import { fetchCatalog, searchCatalog, clearCatalogCache, CatalogError } from '../../../lib/api/catalog';
+import { CatalogResponse, CatalogErrorCode } from '../../../lib/types/catalog';
 
 // Mock fetch globally
 const mockFetch = jest.fn();
@@ -69,6 +69,81 @@ describe('Catalog API', () => {
             });
 
             await expect(fetchCatalog()).rejects.toThrow('Fetch error');
+        });
+
+        it('parses structured error response with error_code', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: false,
+                json: async () => ({
+                    detail: 'Invalid source value. Allowed: docker, official',
+                    error_code: 'invalid_source',
+                }),
+            });
+
+            try {
+                await fetchCatalog('invalid');
+            } catch (error) {
+                expect(error).toBeInstanceOf(CatalogError);
+                const catalogError = error as CatalogError;
+                expect(catalogError.message).toBe('Invalid source value. Allowed: docker, official');
+                expect(catalogError.error_code).toBe('invalid_source');
+                expect(catalogError.retry_after_seconds).toBeUndefined();
+            }
+        });
+
+        it('parses rate_limited error with retry_after_seconds', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: false,
+                json: async () => ({
+                    detail: 'Upstream rate limit exceeded. Please retry later.',
+                    error_code: 'rate_limited',
+                    retry_after_seconds: 60,
+                }),
+            });
+
+            try {
+                await fetchCatalog('docker');
+            } catch (error) {
+                expect(error).toBeInstanceOf(CatalogError);
+                const catalogError = error as CatalogError;
+                expect(catalogError.message).toBe('Upstream rate limit exceeded. Please retry later.');
+                expect(catalogError.error_code).toBe('rate_limited');
+                expect(catalogError.retry_after_seconds).toBe(60);
+            }
+        });
+
+        it('parses upstream_unavailable error', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: false,
+                json: async () => ({
+                    detail: 'Upstream registry is temporarily unavailable.',
+                    error_code: 'upstream_unavailable',
+                }),
+            });
+
+            try {
+                await fetchCatalog('official');
+            } catch (error) {
+                expect(error).toBeInstanceOf(CatalogError);
+                const catalogError = error as CatalogError;
+                expect(catalogError.error_code).toBe('upstream_unavailable');
+            }
+        });
+
+        it('handles malformed error response gracefully', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: false,
+                json: async () => { throw new Error('JSON parse error'); },
+            });
+
+            try {
+                await fetchCatalog();
+            } catch (error) {
+                expect(error).toBeInstanceOf(CatalogError);
+                const catalogError = error as CatalogError;
+                expect(catalogError.message).toBe('Failed to fetch catalog');
+                expect(catalogError.error_code).toBeUndefined();
+            }
         });
     });
 
