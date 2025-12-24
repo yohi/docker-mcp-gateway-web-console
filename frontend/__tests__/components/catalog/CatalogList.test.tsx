@@ -126,7 +126,7 @@ const mockIntersectionObserver = jest.fn(() => ({
 
 describe('CatalogList', () => {
   const mockOnInstall = jest.fn();
-  const catalogSource = 'http://test.com/catalog.json';
+  const catalogSource = 'docker' as const;
   const mockOnSelect = jest.fn();
   const emptyRemoteResponse = {
     data: [],
@@ -363,4 +363,144 @@ describe('CatalogList', () => {
       expect(screen.getByText('Network error')).toBeInTheDocument();
     });
   });
+
+  // Task 9 Tests: Structured error code handling (Requirements: 1.4, 1.5, 4.3, 4.4)
+  describe('structured error handling', () => {
+    // Helper to create a CatalogError with error_code
+    const createCatalogError = (code: string, detail: string, retryAfter?: number) => {
+      const error = new Error(detail) as any;
+      error.error_code = code;
+      error.retry_after_seconds = retryAfter;
+      return error;
+    };
+
+    it('displays rate limit error with countdown when error_code is rate_limited', async () => {
+      const rateLimitError = createCatalogError('rate_limited', '上流サービスのレート制限に達しました', 60);
+
+      setMockSWRResponses({
+        data: undefined,
+        error: rateLimitError,
+        isLoading: false,
+        mutate: jest.fn(),
+      });
+
+      render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
+
+      // Should display rate limit specific title
+      expect(screen.getByRole('heading', { name: /レート制限に達しました/ })).toBeInTheDocument();
+      // Should display countdown timer
+      expect(screen.getByText(/60/)).toBeInTheDocument();
+      // Should have retry timer indicator
+      expect(screen.getByTestId('rate-limit-countdown')).toBeInTheDocument();
+    });
+
+    it('displays upstream unavailable error with retry button when error_code is upstream_unavailable', async () => {
+      const upstreamError = createCatalogError('upstream_unavailable', 'カタログサービスに一時的にアクセスできません');
+
+      setMockSWRResponses({
+        data: undefined,
+        error: upstreamError,
+        isLoading: false,
+        mutate: jest.fn(),
+      });
+
+      render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
+
+      // Should display upstream unavailable specific title
+      expect(screen.getByRole('heading', { name: /上流サービスが利用できません/ })).toBeInTheDocument();
+      // Should have retry button
+      const retryButton = screen.getByRole('button', { name: /再試行/ });
+      expect(retryButton).toBeInTheDocument();
+      expect(retryButton).not.toBeDisabled();
+    });
+
+    it('displays invalid source error appropriately when error_code is invalid_source', async () => {
+      const invalidSourceError = createCatalogError('invalid_source', '指定されたカタログソースは無効です');
+
+      setMockSWRResponses({
+        data: undefined,
+        error: invalidSourceError,
+        isLoading: false,
+        mutate: jest.fn(),
+      });
+
+      render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
+
+      // Should display invalid source error title
+      expect(screen.getByRole('heading', { name: /無効なソースです/ })).toBeInTheDocument();
+    });
+
+    it('displays generic error for internal_error code', async () => {
+      const internalError = createCatalogError('internal_error', 'サーバーで問題が発生しました');
+
+      setMockSWRResponses({
+        data: undefined,
+        error: internalError,
+        isLoading: false,
+        mutate: jest.fn(),
+      });
+
+      render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
+
+      // Should display internal error title
+      expect(screen.getByRole('heading', { name: /内部エラーが発生しました/ })).toBeInTheDocument();
+      // Should have retry button for recovery
+      expect(screen.getByRole('button', { name: /再試行/ })).toBeInTheDocument();
+    });
+
+    it('countdown timer decrements and enables retry when reaching zero', async () => {
+      jest.useFakeTimers();
+
+      const rateLimitError = createCatalogError('rate_limited', 'レート制限に達しました', 3);
+      const mockMutate = jest.fn();
+
+      setMockSWRResponses({
+        data: undefined,
+        error: rateLimitError,
+        isLoading: false,
+        mutate: mockMutate,
+      });
+
+      render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
+
+      // Initial countdown
+      expect(screen.getByText(/3/)).toBeInTheDocument();
+
+      // Advance timer by 1 second
+      jest.advanceTimersByTime(1000);
+      await waitFor(() => {
+        expect(screen.getByText(/2/)).toBeInTheDocument();
+      });
+
+      // Advance to zero
+      jest.advanceTimersByTime(2000);
+      await waitFor(() => {
+        // When countdown reaches zero, retry button should be enabled
+        const retryButton = screen.getByRole('button', { name: /再試行/ });
+        expect(retryButton).not.toBeDisabled();
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('retry button triggers mutate for upstream unavailable error', async () => {
+      const upstreamError = createCatalogError('upstream_unavailable', 'カタログサービスに一時的にアクセスできません');
+      const mockMutate = jest.fn();
+
+      setMockSWRResponses({
+        data: undefined,
+        error: upstreamError,
+        isLoading: false,
+        mutate: mockMutate,
+      });
+
+      render(<CatalogList catalogSource={catalogSource} onInstall={mockOnInstall} onSelect={mockOnSelect} />);
+
+      const retryButton = screen.getByRole('button', { name: /再試行/ });
+      fireEvent.click(retryButton);
+
+      expect(mockMutate).toHaveBeenCalled();
+    });
+  });
 });
+
