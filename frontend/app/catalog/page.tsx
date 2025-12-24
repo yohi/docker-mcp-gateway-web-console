@@ -5,17 +5,15 @@ import { mutate } from 'swr';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { MainLayout } from '@/components/layout';
 import CatalogList from '@/components/catalog/CatalogList';
+import CatalogSourceSelector from '@/components/catalog/CatalogSourceSelector';
 import InstallModal from '@/components/catalog/InstallModal';
 import CatalogDetailModal from '@/components/catalog/CatalogDetailModal';
 import OAuthModal from '@/components/catalog/OAuthModal';
 import { CatalogItem } from '@/lib/types/catalog';
+import { CatalogSourceId, DEFAULT_CATALOG_SOURCE } from '@/lib/constants/catalogSources';
 import { isRemoteCatalogItem } from '@/lib/utils/catalogUtils';
 import { createRemoteServer } from '@/lib/api/remoteServers';
 import { useToast } from '@/contexts/ToastContext';
-
-const DEFAULT_CATALOG_URL =
-  process.env.NEXT_PUBLIC_CATALOG_URL ||
-  'https://api.github.com/repos/docker/mcp-registry/contents/servers';
 
 function RemoteRegisterModal({
   item,
@@ -103,8 +101,8 @@ function RemoteRegisterModal({
 }
 
 export default function CatalogPage() {
-  const [catalogSource, setCatalogSource] = useState(DEFAULT_CATALOG_URL);
-  const [inputSource, setInputSource] = useState(catalogSource);
+  // State management for catalog source using preset ID (Requirement 1.3: default to docker)
+  const [catalogSource, setCatalogSource] = useState<CatalogSourceId>(DEFAULT_CATALOG_SOURCE);
 
   const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
   const [detailItem, setDetailItem] = useState<CatalogItem | null>(null);
@@ -112,6 +110,16 @@ export default function CatalogPage() {
   const [remoteConfirmItem, setRemoteConfirmItem] = useState<CatalogItem | null>(null);
   const [isRegisteringRemote, setIsRegisteringRemote] = useState(false);
   const { showSuccess, showError } = useToast();
+
+  /**
+   * Handle source change from CatalogSourceSelector
+   * Requirements 1.2: Refresh catalog list when source changes
+   * Requirements 6.5: Source switching without page reload (state-only update)
+   * Requirements 4.5: Preserve selected source on error (handled by not changing state on error)
+   */
+  const handleSourceChange = (source: CatalogSourceId) => {
+    setCatalogSource(source);
+  };
 
   const handleInstall = async (item: CatalogItem) => {
     setDetailItem(null);
@@ -152,10 +160,6 @@ export default function CatalogPage() {
     setRemoteConfirmItem(null);
   };
 
-  const handleSourceChange = () => {
-    setCatalogSource(inputSource);
-  };
-
   return (
     <ProtectedRoute>
       <MainLayout>
@@ -168,31 +172,15 @@ export default function CatalogPage() {
             </p>
           </div>
 
-          {/* Catalog source input */}
+          {/* Catalog source selector (Requirement 1.1: preset selector, Requirement 5.3: no free-form URL input) */}
           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-6">
-            <label htmlFor="catalog-source" className="block text-sm font-medium text-gray-700 mb-2">
-              Catalog Source URL
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                id="catalog-source"
-                value={inputSource}
-                onChange={(e) => setInputSource(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder={DEFAULT_CATALOG_URL}
-              />
-              <button
-                onClick={handleSourceChange}
-                disabled={inputSource === catalogSource}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                読み込み
-              </button>
-            </div>
+            <CatalogSourceSelector
+              selectedSource={catalogSource}
+              onSourceChange={handleSourceChange}
+            />
           </div>
 
-          {/* Catalog list */}
+          {/* Catalog list - receives source ID instead of URL */}
           <CatalogList catalogSource={catalogSource} onInstall={handleInstall} onSelect={handleSelect} />
 
           {/* Install Modal */}
