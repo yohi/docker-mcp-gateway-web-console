@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import useSWR from 'swr';
 import { CatalogItem } from '@/lib/types/catalog';
 import { searchCatalog } from '@/lib/api/catalog';
+import { CatalogSourceId } from '@/lib/constants/catalogSources';
 import SearchBar from './SearchBar';
 import CatalogCard from './CatalogCard'; // Changed import
 import CatalogRow from './CatalogRow';
@@ -15,7 +16,7 @@ const DEFAULT_PAGE_SIZE = 8;
 const BACKEND_PAGE_SIZE = 8;
 
 interface CatalogListProps {
-  catalogSource: string;
+  catalogSource: CatalogSourceId;
   onInstall: (item: CatalogItem) => void;
   onSelect: (item: CatalogItem) => void;
   warning?: string;
