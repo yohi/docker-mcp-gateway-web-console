@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import useSWR from 'swr';
 import { CatalogItem, CatalogErrorCode } from '@/lib/types/catalog';
-import { searchCatalog } from '@/lib/api/catalog';
+import { searchCatalog, CatalogError } from '@/lib/api/catalog';
 import { CatalogSourceId } from '@/lib/constants/catalogSources';
 import SearchBar from './SearchBar';
 import CatalogCard from './CatalogCard'; // Changed import
@@ -167,6 +167,8 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
   }, [remoteServers]);
 
   const activeData = data || cachedData;
+  // CatalogError型にキャスト: searchCatalog関数がスローするCatalogErrorには
+  // error_codeとretry_after_secondsが含まれる
   const loadError = error as (Error & { error_code?: CatalogErrorCode; retry_after_seconds?: number }) | undefined;
   const usingFallbackCache = !!loadError && !!cachedData && !data;
 

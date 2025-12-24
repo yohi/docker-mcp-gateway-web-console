@@ -1,8 +1,26 @@
 // Catalog API client
 
-import { CatalogResponse, CatalogSearchParams } from '../types/catalog';
+import { CatalogResponse, CatalogSearchParams, CatalogErrorResponse, CatalogErrorCode } from '../types/catalog';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+
+/**
+ * カスタムエラークラス：構造化されたカタログエラー情報を保持
+ */
+export class CatalogError extends Error {
+  public readonly error_code?: CatalogErrorCode;
+  public readonly retry_after_seconds?: number;
+
+  constructor(message: string, errorCode?: CatalogErrorCode, retryAfterSeconds?: number) {
+    super(message);
+    this.name = 'CatalogError';
+    this.error_code = errorCode;
+    this.retry_after_seconds = retryAfterSeconds;
+
+    // TypeScriptのビルトインErrorクラスの継承で必要
+    Object.setPrototypeOf(this, CatalogError.prototype);
+  }
+}
 
 function getUrl(path: string): URL {
   if (API_BASE_URL) {
@@ -23,9 +41,17 @@ export async function fetchCatalog(source?: string): Promise<CatalogResponse> {
   const response = await fetch(url.toString());
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to fetch catalog' }));
-    console.error('Fetch catalog failed:', error, url.toString());
-    throw new Error(error.detail || 'Failed to fetch catalog');
+    const errorResponse = await response.json().catch(() => ({
+      detail: 'Failed to fetch catalog'
+    })) as Partial<CatalogErrorResponse>;
+
+    console.error('Fetch catalog failed:', errorResponse, url.toString());
+
+    throw new CatalogError(
+      errorResponse.detail || 'Failed to fetch catalog',
+      errorResponse.error_code,
+      errorResponse.retry_after_seconds
+    );
   }
 
   return response.json();
@@ -56,8 +82,15 @@ export async function searchCatalog(params: CatalogSearchParams): Promise<Catalo
   const response = await fetch(url.toString());
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to search catalog' }));
-    throw new Error(error.detail || 'Failed to search catalog');
+    const errorResponse = await response.json().catch(() => ({
+      detail: 'Failed to search catalog'
+    })) as Partial<CatalogErrorResponse>;
+
+    throw new CatalogError(
+      errorResponse.detail || 'Failed to search catalog',
+      errorResponse.error_code,
+      errorResponse.retry_after_seconds
+    );
   }
 
   return response.json();
@@ -75,7 +108,14 @@ export async function clearCatalogCache(source?: string): Promise<void> {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to clear cache' }));
-    throw new Error(error.detail || 'Failed to clear cache');
+    const errorResponse = await response.json().catch(() => ({
+      detail: 'Failed to clear cache'
+    })) as Partial<CatalogErrorResponse>;
+
+    throw new CatalogError(
+      errorResponse.detail || 'Failed to clear cache',
+      errorResponse.error_code,
+      errorResponse.retry_after_seconds
+    );
   }
 }
