@@ -224,18 +224,18 @@
   - 既存クライアント互換性を確認する
   - _Requirements: 2.2, 2.5, 5.2, 6.1, 6.2_
 
-- [ ] 12.4 不正なsource値でのエラーレスポンスをテストする
+- [x] 12.4 不正なsource値でのエラーレスポンスをテストする
   - 400 Bad Requestが返されることを確認する
   - error_code: invalid_source が含まれることを確認する
   - 上流へのリクエストが発生しないことを確認する
   - _Requirements: 2.5, 5.2_
 
-- [ ] 12.5 上流レート制限時の動作をテストする
+- [x] 12.5 上流レート制限時の動作をテストする
   - 上流が429を返した場合、APIが429を返すことを確認する
   - error_code: rate_limited と retry_after_seconds が含まれることを確認する
   - _Requirements: 4.1_
 
-- [ ] 12.6 上流タイムアウト時の動作をテストする
+- [x] 12.6 上流タイムアウト時の動作をテストする
   - 上流がタイムアウトした場合、503 Service Unavailableが返されることを確認する
   - error_code: upstream_unavailable が含まれることを確認する
   - _Requirements: 4.2_
