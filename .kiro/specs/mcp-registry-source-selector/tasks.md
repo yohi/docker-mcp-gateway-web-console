@@ -270,10 +270,12 @@
   - _Implementation verified: CatalogSourceSelector, CatalogPage components working correctly_
   - _Unit tests passing: CatalogSourceSelector.test.tsx, page.test.tsx_
 
-- [ ] 14.2 Officialソース選択時のカタログ表示をテストする
+- [x] 14.2 Officialソース選択時のカタログ表示をテストする
   - セレクタでOfficialを選択した際にカタログが表示されることを確認する
   - ソース切替でページリロードが発生しないことを確認する
   - _Requirements: 1.1, 1.2, 6.5_
+  - _Test file: frontend/e2e/catalog.spec.ts (lines 302-382)_
+  - _Implementation verified: 2 E2E tests passing on chromium_
 
 - [ ] 14.3 レート制限エラーのUI動作をテストする
   - レート制限エラー時にカウントダウンが表示されることを確認する
