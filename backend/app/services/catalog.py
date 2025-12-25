@@ -405,7 +405,7 @@ class CatalogService:
                     source_url,
                     headers=self._github_headers(source_url),
                 )
-
+ 
                 status_code = getattr(response, "status_code", None)
                 if isinstance(status_code, int) and status_code == 429:
                     retry_after = self._parse_retry_after_seconds(
