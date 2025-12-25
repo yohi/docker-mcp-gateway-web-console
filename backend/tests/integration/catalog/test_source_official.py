@@ -119,8 +119,6 @@ async def test_get_catalog_official_schema_conversion():
 
     Requirements: 3.2, 3.3, 3.4
     """
-    from unittest.mock import AsyncMock
-
     # Official Registry format payloads with various edge cases
     official_registry_payloads = [
         # Complete item with all fields
