@@ -427,13 +427,26 @@ test.describe('Error Handling', () => {
     await expect(retryButton).toBeVisible();
     await expect(retryButton).toBeDisabled();
 
-    // Wait for countdown to decrease
-    await page.waitForTimeout(1500);
+    // Wait for countdown to reach 0 (Playwright will automatically poll)
+    await expect(countdownText).toHaveText('0', { timeout: 5000 });
 
-    // Verify countdown has decreased (should show 1 or 2)
-    await expect(countdownText).toHaveText(/[12]/);
+    // Wait for retry button to become enabled
+    await expect(retryButton).toBeEnabled({ timeout: 1000 });
 
-    // Verify button is still disabled
+    // Setup network request monitoring for retry
+    const retryRequestPromise = page.waitForRequest(
+      (request) => request.url().includes('/api/catalog') && request.method() === 'GET',
+      { timeout: 5000 }
+    );
+
+    // Click the retry button
+    await retryButton.click();
+
+    // Verify retry request was made
+    await retryRequestPromise;
+
+    // Verify UI resets - countdown should restart at 3 and button should be disabled
+    await expect(countdownText).toHaveText('3', { timeout: 2000 });
     await expect(retryButton).toBeDisabled();
   });
 
