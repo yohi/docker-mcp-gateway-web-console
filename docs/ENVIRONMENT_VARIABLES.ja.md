@@ -43,10 +43,14 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 | `LOG_LEVEL` | ログレベル | `INFO` | `DEBUG`, `WARNING`, `ERROR` |
 | `SECRET_CACHE_TTL_SECONDS` | シークレットキャッシュの生存時間 | `1800` | `3600` |
 | `MAX_LOG_LINES` | ストリーミングする最大ログ行数 | `1000` | `5000` |
-| `CATALOG_DEFAULT_URL` | デフォルトのカタログURL | - | `https://example.com/catalog.json` |
+| `CATALOG_OFFICIAL_URL` | Official MCP Registry URL | `https://registry.modelcontextprotocol.io/v0/servers` | `https://registry.example.com/v0/servers` |
+| `CATALOG_DOCKER_URL` | Docker MCP Catalog URL (`CATALOG_DEFAULT_URL` 推奨代替) | `CATALOG_DEFAULT_URL` の値 | `https://example.com/docker_catalog.json` |
+| `CATALOG_DEFAULT_URL` | デフォルトのカタログURL (**非推奨**) | - | `https://example.com/catalog.json` |
 | `REMOTE_MCP_ALLOWED_DOMAINS` | 許可するリモートMCPサーバーのドメイン（カンマ区切り）。空の場合はすべて拒否。 | `""` | `api.example.com,*.trusted.com` |
 | `REMOTE_MCP_MAX_CONNECTIONS` | リモートサーバーへの最大同時SSE接続数 | `20` | `5` |
 | `ALLOW_INSECURE_ENDPOINT` | HTTP/localhost エンドポイントを許可（開発環境のみ） | `false` | `true` |
+
+**注意**: カタログ URL 設定の移行については [移行ガイド](migrations/mcp-registry-source-selector.md) を参照してください。
 
 ### `.env` の例
 
@@ -64,7 +68,14 @@ SESSION_TIMEOUT_MINUTES=30
 
 # Catalog Configuration
 CATALOG_CACHE_TTL_SECONDS=3600
-CATALOG_DEFAULT_URL=https://raw.githubusercontent.com/example/mcp-catalog/main/catalog.json
+# Docker Catalog (旧 CATALOG_DEFAULT_URL)
+# 推奨: 新しい CATALOG_DOCKER_URL を使用してください
+CATALOG_DOCKER_URL=https://raw.githubusercontent.com/example/mcp-catalog/main/catalog.json
+# 後方互換性のため当面は CATALOG_DEFAULT_URL も有効ですが、非推奨です
+# CATALOG_DEFAULT_URL=...
+
+# Official Registry
+CATALOG_OFFICIAL_URL=https://registry.modelcontextprotocol.io/v0/servers
 
 # Remote MCP Configuration
 REMOTE_MCP_ALLOWED_DOMAINS=api.example.com,*.trusted.com
