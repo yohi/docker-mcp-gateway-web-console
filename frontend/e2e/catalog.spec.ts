@@ -218,3 +218,84 @@ test.describe('Catalog Installation Flow', () => {
     await waitForToast(page, /必須項目が未入力です/i, 5000);
   });
 });
+
+/**
+ * Catalog Source Selector Tests
+ *
+ * Task 14.1: Dockerソース選択時のカタログ表示をテストする
+ * Requirements: 1.1, 1.2, 1.4
+ */
+test.describe('Catalog Source Selection', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuthentication(page);
+    await mockContainerList(page);
+    await mockRemoteServers(page, []);
+  });
+
+  test('@docker-source should display catalog when Docker source is selected', async ({ page }) => {
+    // Mock Docker catalog response
+    await mockCatalogData(page);
+
+    // Navigate to catalog page
+    await page.goto('/catalog');
+    await page.waitForLoadState('networkidle');
+
+    // Verify catalog source selector is visible
+    const sourceSelector = page.getByTestId('catalog-source-selector');
+    await expect(sourceSelector).toBeVisible();
+
+    // Verify Docker is the default selected source
+    const selectElement = page.locator('#catalog-source-select');
+    await expect(selectElement).toHaveValue('docker');
+
+    // Verify catalog list displays
+    const serverCards = page.locator('[data-testid="catalog-card"]');
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
+    // Verify at least one server is shown
+    const cardCount = await serverCards.count();
+    expect(cardCount).toBeGreaterThan(0);
+
+    // Verify Docker source label is displayed
+    await expect(selectElement.locator('option[value="docker"]')).toHaveText('Docker MCP Catalog');
+  });
+
+  test('@docker-source should show loading state while fetching catalog', async ({ page }) => {
+    // Mock delayed catalog response to observe loading state
+    let resolveRoute: (value: unknown) => void;
+    const routePromise = new Promise((resolve) => {
+      resolveRoute = resolve;
+    });
+
+    await page.route('**/api/catalog**', async (route) => {
+      console.log(`MOCK HIT (delayed catalog): ${route.request().url()}`);
+      // Wait for manual resolution to simulate loading
+      await routePromise;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          servers: [],
+          total: 0,
+          page: 1,
+          page_size: 8,
+          categories: [],
+          cached: false,
+        }),
+      });
+    });
+
+    // Navigate to catalog page
+    await page.goto('/catalog');
+
+    // Verify loading state is displayed
+    const loadingIndicator = page.getByText(/読み込み中|loading/i);
+    await expect(loadingIndicator).toBeVisible({ timeout: 5000 });
+
+    // Resolve the route to complete loading
+    resolveRoute!(undefined);
+
+    // Verify loading state disappears
+    await expect(loadingIndicator).not.toBeVisible({ timeout: 5000 });
+  });
+});
