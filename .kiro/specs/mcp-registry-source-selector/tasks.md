@@ -187,7 +187,7 @@
   - official → Official URL へのマッピングを確認する
   - _Requirements: 2.3, 2.4_
 
-- [ ] 11.3 URL許可リスト検証をテストする
+- [x] 11.3 URL許可リスト検証をテストする
   - 許可リスト内のURLが通過することを確認する
   - 許可リスト外のURLが拒否されることを確認する
   - URL正規化の等価性を検証する（例：`http://example.com` と `http://example.com/`、`example.com` と `example.com:80` を同一と扱う）
