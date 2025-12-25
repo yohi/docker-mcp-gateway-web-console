@@ -48,7 +48,11 @@ EXPECTED_CATALOG_ITEMS = [
         category="general",
         docker_image="",
         required_envs=[],
-        required_secrets=[]
+        required_secrets=[],
+        homepage_url="https://awesome.example.com",
+        tags=["productivity"],
+        capabilities=["call_tool"],
+        remote_endpoint="wss://awesome.example.com/mcp"
     ),
     CatalogItem(
         id="modelcontextprotocol-minimal",
@@ -58,7 +62,8 @@ EXPECTED_CATALOG_ITEMS = [
         category="general",
         docker_image="",
         required_envs=[],
-        required_secrets=[]
+        required_secrets=[],
+        remote_endpoint="https://minimal.example.com/mcp"
     )
 ]
 
@@ -114,25 +119,89 @@ async def test_get_catalog_official_schema_conversion():
 
     Requirements: 3.2, 3.3, 3.4
     """
-    with patch("app.api.catalog.catalog_service.fetch_catalog") as mock_fetch, \
+    from unittest.mock import AsyncMock
+
+    # Official Registry format payloads with various edge cases
+    official_registry_payloads = [
+        # Complete item with all fields
+        {
+            "name": "modelcontextprotocol/complete-server",
+            "display_name": "Complete Server",
+            "description": "Server with all fields",
+            "homepage_url": "https://complete.example.com",
+            "tags": ["productivity", "testing"],
+            "client": {
+                "mcp": {
+                    "capabilities": ["call_tool", "sample_prompts"],
+                    "transport": {
+                        "type": "websocket",
+                        "url": "wss://complete.example.com/mcp"
+                    }
+                }
+            }
+        },
+        # Item with missing optional fields
+        {
+            "name": "modelcontextprotocol/minimal-server",
+            "display_name": "Minimal Server"
+        },
+        # Item with invalid tag types (should be filtered)
+        {
+            "name": "modelcontextprotocol/invalid-tags",
+            "display_name": "Invalid Tags Server",
+            "tags": ["valid", 123, None, "another-valid"]
+        },
+        # Item with invalid capabilities types (should be filtered)
+        {
+            "name": "modelcontextprotocol/invalid-caps",
+            "display_name": "Invalid Capabilities",
+            "client": {
+                "mcp": {
+                    "capabilities": ["valid_cap", 456, None, "another_cap"]
+                }
+            }
+        },
+        # Item with invalid URL scheme (should be filtered to None)
+        {
+            "name": "modelcontextprotocol/invalid-url",
+            "display_name": "Invalid URL Server",
+            "homepage_url": "ftp://invalid.example.com",
+            "client": {
+                "mcp": {
+                    "transport": {
+                        "url": "ftp://invalid.example.com/mcp"
+                    }
+                }
+            }
+        },
+        # Item with missing name but has display_name (should use display_name)
+        {
+            "display_name": "Display Name Only",
+            "description": "This item only has display_name"
+        }
+    ]
+
+    with patch("app.api.catalog.catalog_service._fetch_from_url") as mock_fetch_url, \
          patch("app.api.catalog.catalog_service.get_cached_catalog") as mock_get_cache:
 
         mock_get_cache.return_value = None
 
-        # Test with items that have various field issues
-        test_items = [
-            CatalogItem(
-                id="valid-item",
-                name="Valid Item",
-                description="Valid description",
-                vendor="test",
-                category="general",
-                docker_image="",
-                required_envs=[],
-                required_secrets=[]
-            )
-        ]
-        mock_fetch.return_value = (test_items, False)
+        # Mock the raw HTTP response to return Official Registry format
+        async def mock_fetch_implementation(url):
+            # Simulate the catalog service's internal conversion logic
+            from app.services.catalog import CatalogService
+            service = CatalogService()
+            # Return the raw payload to test conversion
+            converted = []
+            used_ids = set()
+            for item in official_registry_payloads:
+                if item is not None:
+                    result = service._convert_explore_server(item, used_ids=used_ids)
+                    if result is not None:
+                        converted.append(result)
+            return service._filter_items_missing_image(converted)
+
+        mock_fetch_url.side_effect = mock_fetch_implementation
 
         async with AsyncClient(app=app, base_url="http://test") as client:
             response = await client.get("/api/catalog?source=official")
@@ -140,15 +209,44 @@ async def test_get_catalog_official_schema_conversion():
         assert response.status_code == 200
         data = response.json()
 
-        # Verify stable identifier and display name
-        assert "id" in data["servers"][0]
-        assert "name" in data["servers"][0]
-        assert data["servers"][0]["id"] == "valid-item"
-        assert data["servers"][0]["name"] == "Valid Item"
+        servers = data["servers"]
+        assert len(servers) >= 4  # At least 4 valid items should be converted
 
-        # Verify service call with Official URL
-        args, _ = mock_fetch.call_args
-        assert args[0] == settings.catalog_official_url
+        # Verify first item (complete server) has all fields mapped correctly
+        complete_server = next(s for s in servers if "complete-server" in s["id"])
+        assert complete_server["name"] == "Complete Server"
+        assert complete_server["description"] == "Server with all fields"
+        assert complete_server["vendor"] == "modelcontextprotocol"
+        assert complete_server["homepage_url"] == "https://complete.example.com"
+        assert set(complete_server["tags"]) == {"productivity", "testing"}
+        assert set(complete_server["capabilities"]) == {"call_tool", "sample_prompts"}
+        assert complete_server["remote_endpoint"] == "wss://complete.example.com/mcp"
+
+        # Verify minimal item has defaults for missing fields
+        minimal_server = next(s for s in servers if "minimal-server" in s["id"])
+        assert minimal_server["name"] == "Minimal Server"
+        assert minimal_server["description"] == ""
+        assert minimal_server.get("homepage_url") is None
+        assert minimal_server["tags"] == []
+        assert minimal_server["capabilities"] == []
+        assert minimal_server.get("remote_endpoint") is None
+
+        # Verify invalid types are filtered
+        invalid_tags_server = next(s for s in servers if "invalid-tags" in s["id"])
+        assert invalid_tags_server["tags"] == ["valid", "another-valid"]
+
+        invalid_caps_server = next(s for s in servers if "invalid-caps" in s["id"])
+        assert invalid_caps_server["capabilities"] == ["valid_cap", "another_cap"]
+
+        # Verify invalid URLs are rejected
+        invalid_url_server = next(s for s in servers if "invalid-url" in s["id"])
+        assert invalid_url_server.get("homepage_url") is None
+        assert invalid_url_server.get("remote_endpoint") is None
+
+        # Verify display_name fallback works
+        display_only = next(s for s in servers if s["name"] == "Display Name Only")
+        assert display_only["id"] == "display-name-only"
+        assert display_only["description"] == "This item only has display_name"
 
 
 @pytest.mark.asyncio
