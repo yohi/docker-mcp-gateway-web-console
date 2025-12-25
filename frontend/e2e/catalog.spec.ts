@@ -427,8 +427,11 @@ test.describe('Error Handling', () => {
     await expect(retryButton).toBeVisible();
     await expect(retryButton).toBeDisabled();
 
-    // Wait for countdown to reach 0 (Playwright will automatically poll)
-    await expect(countdownText).toHaveText('0', { timeout: 5000 });
+    // Wait for countdown to reach 1 (Playwright will automatically poll)
+    await expect(countdownText).toHaveText('1', { timeout: 5000 });
+
+    // Wait for countdown text to disappear (when countdown reaches 0)
+    await expect(countdownText).not.toBeAttached({ timeout: 2000 });
 
     // Wait for retry button to become enabled
     await expect(retryButton).toBeEnabled({ timeout: 1000 });
