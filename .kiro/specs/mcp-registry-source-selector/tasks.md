@@ -213,7 +213,7 @@
   - キャッシュ動作を確認する
   - _Requirements: 2.3, 6.1_
 
-- [ ] 12.2 source=officialでのエンドツーエンド動作をテストする
+- [x] 12.2 source=officialでのエンドツーエンド動作をテストする
   - APIがOfficial Registryカタログを正しく返すことを確認する
   - スキーマ変換が正常に機能することを確認する
   - _Requirements: 2.4, 3.1_
