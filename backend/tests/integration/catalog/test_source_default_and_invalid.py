@@ -201,7 +201,6 @@ async def test_search_catalog_source_omitted_defaults_to_docker():
 
         # Verify successful response
         assert response.status_code == 200
-        data = response.json()
 
         # Verify fetch_catalog was called with Docker URL
         mock_fetch.assert_called_once()
