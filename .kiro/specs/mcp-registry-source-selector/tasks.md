@@ -182,7 +182,7 @@
   - 無効な値が拒否されることを確認する
   - _Requirements: 2.1, 2.5_
 
-- [ ] 11.2 ソースID解決ロジックをテストする
+- [x] 11.2 ソースID解決ロジックをテストする
   - docker → Docker URL へのマッピングを確認する
   - official → Official URL へのマッピングを確認する
   - _Requirements: 2.3, 2.4_
