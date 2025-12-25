@@ -298,4 +298,86 @@ test.describe('Catalog Source Selection', () => {
     // Verify loading state disappears
     await expect(loadingIndicator).not.toBeVisible({ timeout: 5000 });
   });
+
+  test('@official-source should display catalog when Official source is selected', async ({ page }) => {
+    // Mock both Docker (initial) and Official catalog responses
+    await mockCatalogData(page);
+
+    // Navigate to catalog page
+    await page.goto('/catalog');
+    await page.waitForLoadState('networkidle');
+
+    // Verify catalog source selector is visible
+    const sourceSelector = page.getByTestId('catalog-source-selector');
+    await expect(sourceSelector).toBeVisible();
+
+    // Initially Docker is selected (default)
+    const selectElement = page.locator('#catalog-source-select');
+    await expect(selectElement).toHaveValue('docker');
+
+    // Wait for initial catalog to load
+    const serverCards = page.locator('[data-testid="catalog-card"]');
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
+    // Change to Official source
+    await selectElement.selectOption('official');
+
+    // Verify Official is now selected
+    await expect(selectElement).toHaveValue('official');
+
+    // Wait for the catalog to update (either from cache or new request)
+    // We verify the cards are still visible after source change
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
+    // Verify at least one server is shown
+    const cardCount = await serverCards.count();
+    expect(cardCount).toBeGreaterThan(0);
+
+    // Verify Official source label is displayed
+    await expect(selectElement.locator('option[value="official"]')).toHaveText('Official MCP Registry');
+  });
+
+  test('@official-source should switch sources without page reload', async ({ page }) => {
+    // Mock catalog data for both sources
+    await mockCatalogData(page);
+
+    // Navigate to catalog page
+    await page.goto('/catalog');
+    await page.waitForLoadState('networkidle');
+
+    const selectElement = page.locator('#catalog-source-select');
+    const serverCards = page.locator('[data-testid="catalog-card"]');
+
+    // Initially on Docker source
+    await expect(selectElement).toHaveValue('docker');
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
+    // Track page navigation (should NOT happen)
+    let pageNavigated = false;
+    page.on('framenavigated', () => {
+      pageNavigated = true;
+    });
+
+    // Switch to Official source
+    await selectElement.selectOption('official');
+
+    // Verify no page reload occurred
+    expect(pageNavigated).toBe(false);
+
+    // Verify Official is now selected
+    await expect(selectElement).toHaveValue('official');
+
+    // Verify catalog list is still visible (content might be same in mock)
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
+    // Switch back to Docker
+    await selectElement.selectOption('docker');
+
+    // Verify still no page reload
+    expect(pageNavigated).toBe(false);
+
+    // Verify Docker is selected again
+    await expect(selectElement).toHaveValue('docker');
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+  });
 });
