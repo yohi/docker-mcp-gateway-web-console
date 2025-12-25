@@ -240,7 +240,7 @@
   - error_code: upstream_unavailable が含まれることを確認する
   - _Requirements: 4.2_
 
-- [ ] 13. フロントエンドの単体テストを実装する
+- [x] 13. フロントエンドの単体テストを実装する
 - [x] 13.1 ソース選択セレクタのレンダリングをテストする
   - DockerとOfficialの選択肢が表示されることを確認する
   - 選択変更時にコールバックが呼ばれることを確認する
@@ -252,17 +252,22 @@
   - エラー時も選択ソースが保持されることを確認する
   - _Requirements: 1.2, 1.3, 4.5_
 
-- [ ] 13.3 エラー表示ロジックをテストする
+- [x] 13.3 エラー表示ロジックをテストする
   - 各error_codeに対応するメッセージが表示されることを確認する
   - レート制限時にカウントダウンが表示されることを確認する
   - 再試行ボタンが適切に表示されることを確認する
   - _Requirements: 1.5, 4.3, 4.4_
+  - _Test file: frontend/__tests__/components/catalog/CatalogList.test.tsx (lines 367-504)_
+  - _Test coverage: 15 tests, including rate_limited, upstream_unavailable, invalid_source, internal_error, countdown timer, and retry button functionality_
 
 - [ ] 14. E2E/UIテストを実装する
-- [ ] 14.1 Dockerソース選択時のカタログ表示をテストする
+- [x] 14.1 Dockerソース選択時のカタログ表示をテストする
   - セレクタでDockerを選択した際にカタログが表示されることを確認する
   - ローディング状態が正常に動作することを確認する
   - _Requirements: 1.1, 1.2, 1.4_
+  - _Test file: frontend/e2e/catalog.spec.ts (lines 228-301)_
+  - _Implementation verified: CatalogSourceSelector, CatalogPage components working correctly_
+  - _Unit tests passing: CatalogSourceSelector.test.tsx, page.test.tsx_
 
 - [ ] 14.2 Officialソース選択時のカタログ表示をテストする
   - セレクタでOfficialを選択した際にカタログが表示されることを確認する
