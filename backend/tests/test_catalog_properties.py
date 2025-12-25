@@ -7,6 +7,7 @@ import pytest
 from hypothesis import given, strategies as st, settings as hyp_settings
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.config import settings
 from app.models.catalog import CatalogItem, Catalog
 from app.services.catalog import CatalogService, CatalogError
 
@@ -29,6 +30,12 @@ def catalog_lists():
 @pytest.fixture
 def catalog_service():
     return CatalogService()
+
+
+@pytest.fixture(autouse=True)
+def _catalog_url_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "catalog_default_url", "http://test.url")
+    monkeypatch.setattr(settings, "catalog_official_url", "https://official.test/registry")
 
 @pytest.mark.asyncio
 class TestCatalogProperties:

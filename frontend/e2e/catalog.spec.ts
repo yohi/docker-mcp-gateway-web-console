@@ -218,3 +218,281 @@ test.describe('Catalog Installation Flow', () => {
     await waitForToast(page, /必須項目が未入力です/i, 5000);
   });
 });
+
+/**
+ * Catalog Source Selector Tests
+ *
+ * Task 14.1: Dockerソース選択時のカタログ表示をテストする
+ * Requirements: 1.1, 1.2, 1.4
+ */
+test.describe('Catalog Source Selection', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuthentication(page);
+    await mockContainerList(page);
+    await mockRemoteServers(page, []);
+  });
+
+  test('@docker-source should display catalog when Docker source is selected', async ({ page }) => {
+    // Mock Docker catalog response
+    await mockCatalogData(page);
+
+    // Navigate to catalog page
+    await page.goto('/catalog');
+    await page.waitForLoadState('networkidle');
+
+    // Verify catalog source selector is visible
+    const sourceSelector = page.getByTestId('catalog-source-selector');
+    await expect(sourceSelector).toBeVisible();
+
+    // Verify Docker is the default selected source
+    const selectElement = page.locator('#catalog-source-select');
+    await expect(selectElement).toHaveValue('docker');
+
+    // Verify catalog list displays
+    const serverCards = page.locator('[data-testid="catalog-card"]');
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
+    // Verify at least one server is shown
+    const cardCount = await serverCards.count();
+    expect(cardCount).toBeGreaterThan(0);
+
+    // Verify Docker source label is displayed
+    await expect(selectElement.locator('option[value="docker"]')).toHaveText('Docker MCP Catalog');
+  });
+
+  test('@docker-source should show loading state while fetching catalog', async ({ page }) => {
+    // Mock delayed catalog response to observe loading state
+    let resolveRoute: ((value?: unknown) => void) | undefined;
+    const routePromise: Promise<void> = new Promise<void>((resolve) => {
+      resolveRoute = resolve;
+    });
+
+    await page.route('**/api/catalog**', async (route) => {
+      console.log(`MOCK HIT (delayed catalog): ${route.request().url()}`);
+      // Wait for manual resolution to simulate loading
+      await routePromise;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          servers: [],
+          total: 0,
+          page: 1,
+          page_size: 8,
+          categories: [],
+          cached: false,
+        }),
+      });
+    });
+
+    // Navigate to catalog page
+    await page.goto('/catalog');
+
+    // Verify loading state is displayed
+    const loadingIndicator = page.getByText(/読み込み中|loading/i);
+    await expect(loadingIndicator).toBeVisible({ timeout: 5000 });
+
+    // Resolve the route to complete loading
+    if (!resolveRoute) throw new Error('resolver not set');
+    resolveRoute();
+
+    // Verify loading state disappears
+    await expect(loadingIndicator).not.toBeVisible({ timeout: 5000 });
+  });
+
+  test('@official-source should display catalog when Official source is selected', async ({ page }) => {
+    // Mock both Docker (initial) and Official catalog responses
+    await mockCatalogData(page);
+
+    // Navigate to catalog page
+    await page.goto('/catalog');
+    await page.waitForLoadState('networkidle');
+
+    // Verify catalog source selector is visible
+    const sourceSelector = page.getByTestId('catalog-source-selector');
+    await expect(sourceSelector).toBeVisible();
+
+    // Initially Docker is selected (default)
+    const selectElement = page.locator('#catalog-source-select');
+    await expect(selectElement).toHaveValue('docker');
+
+    // Wait for initial catalog to load
+    const serverCards = page.locator('[data-testid="catalog-card"]');
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
+    // Change to Official source
+    await selectElement.selectOption('official');
+
+    // Verify Official is now selected
+    await expect(selectElement).toHaveValue('official');
+
+    // Wait for the catalog to update (either from cache or new request)
+    // We verify the cards are still visible after source change
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
+    // Verify at least one server is shown
+    const cardCount = await serverCards.count();
+    expect(cardCount).toBeGreaterThan(0);
+
+    // Verify Official source label is displayed
+    await expect(selectElement.locator('option[value="official"]')).toHaveText('Official MCP Registry');
+  });
+
+  test('@official-source should switch sources without page reload', async ({ page }) => {
+    // Mock catalog data for both sources
+    await mockCatalogData(page);
+
+    // Navigate to catalog page
+    await page.goto('/catalog');
+    await page.waitForLoadState('networkidle');
+
+    const selectElement = page.locator('#catalog-source-select');
+    const serverCards = page.locator('[data-testid="catalog-card"]');
+
+    // Initially on Docker source
+    await expect(selectElement).toHaveValue('docker');
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
+    // Track page navigation (should NOT happen)
+    let pageNavigated = false;
+    page.on('framenavigated', () => {
+      pageNavigated = true;
+    });
+
+    // Switch to Official source
+    await selectElement.selectOption('official');
+
+    // Verify no page reload occurred
+    expect(pageNavigated).toBe(false);
+
+    // Verify Official is now selected
+    await expect(selectElement).toHaveValue('official');
+
+    // Verify catalog list is still visible (content might be same in mock)
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
+    // Switch back to Docker
+    await selectElement.selectOption('docker');
+
+    // Verify still no page reload
+    expect(pageNavigated).toBe(false);
+
+    // Verify Docker is selected again
+    await expect(selectElement).toHaveValue('docker');
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test.describe('Error Handling', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuthentication(page);
+    await mockContainerList(page);
+    await mockRemoteServers(page, []);
+  });
+
+  test('@rate-limit should display countdown and retry button when rate limited', async ({ page }) => {
+    test.setTimeout(20000); // Extend timeout to 20 seconds for countdown test
+
+    // Mock rate limit error from the start
+    await page.route('**/api/catalog**', async (route) => {
+      console.log(`MOCK HIT (rate limit error): ${route.request().url()}`);
+      await route.fulfill({
+        status: 429,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          detail: 'Rate limit exceeded. Please try again later.',
+          error_code: 'rate_limited',
+          retry_after_seconds: 3,
+        }),
+      });
+    });
+
+    // Navigate to catalog page
+    await page.goto('/catalog');
+    await page.waitForLoadState('networkidle');
+
+    // Verify rate limit error message is displayed
+    const errorHeading = page.getByRole('heading', { name: /レート制限に達しました/i });
+    await expect(errorHeading).toBeVisible({ timeout: 10000 });
+
+    // Verify countdown is displayed
+    const countdownContainer = page.getByTestId('rate-limit-countdown');
+    await expect(countdownContainer).toBeVisible();
+
+    // Check initial countdown text (shows "3 秒")
+    const countdownText = countdownContainer.locator('strong');
+    await expect(countdownText).toHaveText('3');
+
+    // Verify retry button is shown (but disabled initially)
+    const retryButton = page.getByRole('button', { name: /再試行/i });
+    await expect(retryButton).toBeVisible();
+    await expect(retryButton).toBeDisabled();
+
+    // Wait for countdown to reach 1 (Playwright will automatically poll)
+    await expect(countdownText).toHaveText('1', { timeout: 5000 });
+
+    // Wait for countdown text to disappear (when countdown reaches 0)
+    await expect(countdownText).not.toBeAttached({ timeout: 2000 });
+
+    // Wait for retry button to become enabled
+    await expect(retryButton).toBeEnabled({ timeout: 1000 });
+
+    // Setup network request monitoring for retry
+    const retryRequestPromise = page.waitForRequest(
+      (request) => request.url().includes('/api/catalog') && request.method() === 'GET',
+      { timeout: 5000 }
+    );
+
+    // Click the retry button
+    await retryButton.click();
+
+    // Verify retry request was made
+    await retryRequestPromise;
+
+    // Verify UI resets - countdown should restart at 3 and button should be disabled
+    await expect(countdownText).toHaveText('3', { timeout: 2000 });
+    await expect(retryButton).toBeDisabled();
+  });
+
+  test('@upstream-failure should display retry button when upstream unavailable', async ({ page }) => {
+    // Mock upstream unavailable error response (503)
+    await page.route('**/api/catalog**', async (route) => {
+      console.log(`MOCK HIT (upstream unavailable): ${route.request().url()}`);
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          detail: 'Upstream service is temporarily unavailable.',
+          error_code: 'upstream_unavailable',
+        }),
+      });
+    });
+
+    // Navigate to catalog page
+    await page.goto('/catalog');
+    await page.waitForLoadState('networkidle');
+
+    // Verify upstream unavailable error heading is displayed
+    const errorHeading = page.getByRole('heading', { name: /上流サービスが利用できません/i });
+    await expect(errorHeading).toBeVisible({ timeout: 10000 });
+
+    // Verify retry button is displayed
+    const retryButton = page.getByRole('button', { name: /再試行|retry/i });
+    await expect(retryButton).toBeVisible({ timeout: 5000 });
+
+    // Mock successful response for retry
+    await page.unroute('**/api/catalog**');
+    await mockCatalogData(page);
+
+    // Click retry button
+    await retryButton.click();
+
+    // Verify catalog loads successfully after retry
+    const serverCards = page.locator('[data-testid="catalog-card"]');
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
+    // Verify at least one server is shown
+    const cardCount = await serverCards.count();
+    expect(cardCount).toBeGreaterThan(0);
+  });
+});

@@ -2,20 +2,22 @@
 
 import asyncio
 import base64
+import contextvars
+import ipaddress
 import json
 import logging
 import re
-import contextvars
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import httpx
 import yaml
 from pydantic import ValidationError
 
-from ..config import settings
-from ..models.catalog import Catalog, CatalogItem, OAuthConfig
+from ..config import Settings, settings
+from ..models.catalog import Catalog, CatalogErrorCode, CatalogItem, OAuthConfig
 from ..schemas.catalog import RegistryItem
 from .github_token import GitHubTokenError, GitHubTokenService
 
@@ -32,7 +34,126 @@ SERVER_SEARCH_MAX_DEPTH = max(
 class CatalogError(Exception):
     """Custom exception for catalog-related errors."""
 
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: CatalogErrorCode | str = CatalogErrorCode.INTERNAL_ERROR,
+        retry_after_seconds: int | None = None,
+    ) -> None:
+        resolved_code = (
+            error_code
+            if isinstance(error_code, CatalogErrorCode)
+            else CatalogErrorCode(error_code)
+        )
+        super().__init__(message)
+        self.error_code = resolved_code
+        self.message = message
+        self.retry_after_seconds = retry_after_seconds
+
+
+class AllowedURLsValidator:
+    """Validate catalog URLs against an allowlist with normalization."""
+
+    def __init__(self, settings_obj: Settings | None = None) -> None:
+        use_settings = settings_obj or settings
+        allowed = [
+            use_settings.catalog_docker_url,
+            use_settings.catalog_official_url,
+            use_settings.catalog_default_url,
+        ]
+        self._allowed_urls = frozenset(
+            self._normalize_url(url) for url in allowed if url
+        )
+
+        if not self._allowed_urls:
+            raise ValueError(
+                "カタログURLの許可リストが空です。"
+                "少なくとも次のいずれかの設定が必要です: "
+                "CATALOG_DOCKER_URL, CATALOG_OFFICIAL_URL, CATALOG_DEFAULT_URL"
+            )
+
+    def validate(self, url: str) -> str:
+        """Return normalized URL if allowed, otherwise raise CatalogError."""
+        normalized = self._normalize_url(url)
+        if normalized not in self._allowed_urls:
+            raise CatalogError(
+                "URL is not in the allowed list",
+                error_code=CatalogErrorCode.INVALID_SOURCE,
+            )
+        return normalized
+
+    @staticmethod
+    def _normalize_url(url: str) -> str:
+        raw = (url or "").strip()
+        if not raw:
+            raise CatalogError(
+                "Catalog URL is empty",
+                error_code=CatalogErrorCode.INVALID_SOURCE,
+            )
+
+        try:
+            parsed = urlparse(raw)
+        except Exception as exc:
+            raise CatalogError(
+                "Catalog URL is invalid",
+                error_code=CatalogErrorCode.INVALID_SOURCE,
+            ) from exc
+
+        scheme = (parsed.scheme or "").lower()
+        if scheme not in {"http", "https"}:
+            raise CatalogError(
+                "Catalog URL must use http or https",
+                error_code=CatalogErrorCode.INVALID_SOURCE,
+            )
+
+        hostname = parsed.hostname
+        if not hostname:
+            raise CatalogError(
+                "Catalog URL is missing a host",
+                error_code=CatalogErrorCode.INVALID_SOURCE,
+            )
+
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise CatalogError(
+                "Catalog URL has an invalid port",
+                error_code=CatalogErrorCode.INVALID_SOURCE,
+            ) from exc
+
+        host = AllowedURLsValidator._normalize_hostname(hostname)
+
+        port_part = ""
+        if port is not None and not AllowedURLsValidator._is_default_port(scheme, port):
+            port_part = f":{port}"
+
+        path = parsed.path or ""
+        if path in {"", "/"}:
+            path = ""
+        else:
+            path = path.rstrip("/")
+
+        query = f"?{parsed.query}" if parsed.query else ""
+        fragment = f"#{parsed.fragment}" if parsed.fragment else ""
+
+        return f"{scheme}://{host}{port_part}{path}{query}{fragment}"
+
+    @staticmethod
+    def _normalize_hostname(hostname: str) -> str:
+        try:
+            ip = ipaddress.ip_address(hostname)
+        except ValueError:
+            return hostname.lower()
+        if isinstance(ip, ipaddress.IPv6Address):
+            return f"[{ip.compressed}]"
+        return ip.compressed
+
+    @staticmethod
+    def _is_default_port(scheme: str, port: int) -> bool:
+        return (scheme == "http" and port == 80) or (
+            scheme == "https" and port == 443
+        )
 
 
 class CatalogService:
@@ -64,6 +185,7 @@ class CatalogService:
         self._warning_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
             "catalog_warning", default=None
         )
+        self._url_validator = AllowedURLsValidator()
 
     def _append_warning(self, message: str) -> None:
         """警告メッセージを追記する(複数要因がある場合に備える)。"""
@@ -140,10 +262,10 @@ class CatalogService:
         if not scheme or not host:
             return False
 
-        if scheme == "https":
+        if scheme in {"https", "wss"}:
             return True
 
-        if scheme == "http":
+        if scheme in {"http", "ws"}:
             if not allow_insecure:
                 return False
             return host in {"localhost", "127.0.0.1"}
@@ -194,6 +316,14 @@ class CatalogService:
             return catalog_items, False
 
         except Exception as e:
+            if isinstance(e, CatalogError) and e.error_code == CatalogErrorCode.INVALID_SOURCE:
+                raise
+            base_error_code = (
+                e.error_code if isinstance(e, CatalogError) else CatalogErrorCode.INTERNAL_ERROR
+            )
+            base_retry_after = (
+                e.retry_after_seconds if isinstance(e, CatalogError) else None
+            )
             if source_url in {LEGACY_RAW_URL, settings.catalog_default_url}:
                 # primary失敗時はもう片方へフェイルオーバー
                 fallback = (
@@ -221,13 +351,38 @@ class CatalogService:
 
             # No cache available, raise error
             raise CatalogError(
-                f"Failed to fetch catalog from {source_url} and no cached data available: {e}"
+                f"Failed to fetch catalog from {source_url} and no cached data available: {e}",
+                error_code=base_error_code,
+                retry_after_seconds=base_retry_after,
             ) from e
 
     @property
     def warning(self) -> Optional[str]:
         """直近の警告(GitHub トークン復号失敗など)を返す。"""
         return self._warning_var.get()
+
+    @staticmethod
+    def _parse_retry_after_seconds(value: str | None) -> int | None:
+        if not value:
+            return None
+        raw = value.strip()
+        if not raw:
+            return None
+        if raw.isdigit():
+            return int(raw)
+        try:
+            target = parsedate_to_datetime(raw)
+        except Exception:
+            return None
+        if target is None:
+            return None
+        if target.tzinfo is None:
+            target = target.replace(tzinfo=datetime.now().astimezone().tzinfo)
+        now = datetime.now(tz=target.tzinfo)
+        delta = (target - now).total_seconds()
+        if delta <= 0:
+            return 0
+        return int(delta)
 
     async def _fetch_from_url(self, source_url: str) -> List[CatalogItem]:
         """
@@ -243,11 +398,30 @@ class CatalogService:
             CatalogError: If fetch or parsing fails
         """
         try:
+            normalized_url = self._url_validator.validate(source_url)
+            source_url = normalized_url
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
                     source_url,
                     headers=self._github_headers(source_url),
                 )
+ 
+                status_code = getattr(response, "status_code", None)
+                if isinstance(status_code, int) and status_code == 429:
+                    retry_after = self._parse_retry_after_seconds(
+                        response.headers.get("Retry-After")
+                    )
+                    raise CatalogError(
+                        "Upstream rate limited",
+                        error_code=CatalogErrorCode.RATE_LIMITED,
+                        retry_after_seconds=retry_after,
+                    )
+                if isinstance(status_code, int) and 500 <= status_code <= 599:
+                    raise CatalogError(
+                        "Upstream registry unavailable",
+                        error_code=CatalogErrorCode.UPSTREAM_UNAVAILABLE,
+                    )
+
                 response.raise_for_status()
 
                 # Parse JSON response (AsyncMock compatibility: handle coroutine)
@@ -314,22 +488,49 @@ class CatalogService:
                             logger.warning(f"Skipping invalid registry item: {e}")
                     return self._filter_items_missing_image(items)
                 else:
+                    # Catalog 形式は先にパースして後方互換を保つ
+                    try:
+                        catalog = Catalog(**data)
+                        return self._filter_items_missing_image(catalog.servers)
+                    except Exception:
+                        pass
+
                     # Attempt to parse Hub explore.data structure
                     servers = self._extract_servers(data)
                     if servers is not None:
-                        converted = [self._convert_explore_server(item) for item in servers if item]
+                        used_ids: Set[str] = set()
+                        converted: List[CatalogItem] = []
+                        for server in servers:
+                            if not server:
+                                continue
+                            item = self._convert_explore_server(
+                                server, used_ids=used_ids
+                            )
+                            if item is None:
+                                continue
+                            converted.append(item)
                         return self._filter_items_missing_image(converted)
 
-                    # Legacy or Catalog format
+                    # Legacy format
                     catalog = Catalog(**data)
                     return self._filter_items_missing_image(catalog.servers)
 
+        except CatalogError:
+            raise
         except httpx.HTTPStatusError as e:
             raise CatalogError(
                 f"HTTP error {e.response.status_code} while fetching catalog: {e}"
             ) from e
+        except httpx.TimeoutException as e:
+            raise CatalogError(
+                "Upstream registry unavailable",
+                error_code=CatalogErrorCode.UPSTREAM_UNAVAILABLE,
+            ) from e
         except httpx.RequestError as e:
-            raise CatalogError(f"Network error while fetching catalog: {e}") from e
+            raise CatalogError(
+                "Upstream registry unavailable",
+                error_code=CatalogErrorCode.UPSTREAM_UNAVAILABLE,
+            ) from e
         except json.JSONDecodeError as e:
             raise CatalogError(f"Invalid JSON in catalog response: {e}") from e
         except Exception as e:
@@ -544,23 +745,72 @@ class CatalogService:
                     return res
         return None
 
-    def _convert_explore_server(self, item: dict) -> CatalogItem:
+    def _convert_explore_server(
+        self, item: dict, *, used_ids: Set[str] | None = None
+    ) -> CatalogItem | None:
         """
         外部レジストリのサーバー要素を CatalogItem に変換する。
         registry.modelcontextprotocol.io 形式と旧 hub explore 形式の両方を扱う。
         """
+        if used_ids is None:
+            used_ids = set()
+
+        def _slug(text: str) -> str:
+            s = re.sub(r"\s+", "-", text.strip().lower())
+            return re.sub(r"[^a-z0-9_-]", "", s)
+
+        def _unique_id(base: str) -> str:
+            candidate = base
+            suffix = 2
+            while candidate in used_ids:
+                candidate = f"{base}-{suffix}"
+                suffix += 1
+            used_ids.add(candidate)
+            return candidate
+
+        def _coerce_str(value: Any) -> str | None:
+            if isinstance(value, str):
+                stripped = value.strip()
+                return stripped if stripped else None
+            return None
+
+        def _normalize_url(value: Any, allowed_schemes: set[str]) -> str | None:
+            raw = _coerce_str(value)
+            if raw is None:
+                return None
+            parsed = urlparse(raw)
+            scheme = (parsed.scheme or "").lower()
+            if scheme not in allowed_schemes:
+                return None
+            if not parsed.netloc:
+                return None
+            return raw
+
         # MCP Registry (registry.modelcontextprotocol.io) 形式
         if isinstance(item, dict) and isinstance(item.get("server"), dict):
             server_data = item["server"]
-            name = server_data.get("name") or "unknown"
-            description = server_data.get("description") or ""
+            raw_name = _coerce_str(server_data.get("name"))
+            raw_display = _coerce_str(
+                server_data.get("display_name")
+                or server_data.get("displayName")
+                or server_data.get("title")
+            )
+            if raw_name is None and raw_display is None:
+                logger.warning(
+                    "Official Registry item missing name/display_name; skipping"
+                )
+                return None
+
+            name = _unique_id(raw_name or _slug(raw_display or "unknown"))
+            display_name = raw_display or raw_name or name
+            description = _coerce_str(server_data.get("description")) or ""
 
             repository = server_data.get("repository") or {}
             vendor = ""
             if isinstance(repository, dict):
                 vendor = repository.get("source") or repository.get("url") or ""
-            if not vendor and "/" in name:
-                vendor = name.split("/")[0]
+            if not vendor and raw_name and "/" in raw_name:
+                vendor = raw_name.split("/")[0]
 
             packages = server_data.get("packages") or []
             docker_image = ""
@@ -599,7 +849,7 @@ class CatalogService:
 
             return CatalogItem(
                 id=name,
-                name=name,
+                name=display_name,
                 description=description,
                 vendor=vendor,
                 category=server_data.get("category", "general"),
@@ -614,20 +864,91 @@ class CatalogService:
                 oauth_redirect_uri=oauth_redirect_uri,
             )
 
-        def _slug(text: str) -> str:
-            s = re.sub(r"\s+", "-", text.strip().lower())
-            return re.sub(r"[^a-z0-9_-]", "", s)
+        # Official MCP Registry (flat) 形式
+        if isinstance(item, dict) and (
+            "display_name" in item or "homepage_url" in item or "client" in item
+        ):
+            raw_name = _coerce_str(item.get("name"))
+            raw_display = _coerce_str(item.get("display_name"))
+            if raw_name is None and raw_display is None:
+                logger.warning(
+                    "Official Registry item missing name/display_name; skipping"
+                )
+                return None
 
-        title = item.get("title") or item.get("name") or "unknown"
+            item_id = _unique_id(raw_name or _slug(raw_display or "unknown"))
+            display_name = raw_display or raw_name or item_id
+
+            description = _coerce_str(item.get("description")) or ""
+            homepage_url = _normalize_url(
+                item.get("homepage_url"), {"http", "https"}
+            )
+
+            tags: List[str] = []
+            raw_tags = item.get("tags")
+            if isinstance(raw_tags, list):
+                tags = [t for t in raw_tags if isinstance(t, str)]
+
+            capabilities: List[str] = []
+            client = item.get("client")
+            if isinstance(client, dict):
+                mcp = client.get("mcp")
+                if isinstance(mcp, dict):
+                    raw_caps = mcp.get("capabilities")
+                    if isinstance(raw_caps, list):
+                        capabilities = [
+                            c for c in raw_caps if isinstance(c, str)
+                        ]
+
+            endpoint_url = None
+            if isinstance(client, dict):
+                mcp = client.get("mcp")
+                if isinstance(mcp, dict):
+                    transport = mcp.get("transport")
+                    if isinstance(transport, dict):
+                        endpoint_url = _normalize_url(
+                            transport.get("url"),
+                            {"http", "https", "ws", "wss"},
+                        )
+
+            vendor = ""
+            if raw_name and "/" in raw_name:
+                vendor = raw_name.split("/")[0]
+
+            return CatalogItem(
+                id=item_id,
+                name=display_name,
+                description=description,
+                vendor=vendor,
+                category="general",
+                docker_image="",
+                default_env={},
+                required_envs=[],
+                required_secrets=[],
+                remote_endpoint=endpoint_url,
+                homepage_url=homepage_url,
+                tags=tags,
+                capabilities=capabilities,
+            )
+
+        title = (
+            _coerce_str(item.get("title"))
+            or _coerce_str(item.get("name"))
+            or _coerce_str(item.get("id"))
+        )
+        if title is None:
+            logger.warning("Catalog item missing title/name/id; skipping")
+            return None
         slug = item.get("slug") or item.get("id") or _slug(title)
+        slug = _unique_id(slug)
         image = (
             item.get("image")
             or item.get("container")
             or item.get("docker_image")
             or ""
         )
-        vendor = item.get("owner") or item.get("publisher") or ""
-        description = item.get("description") or ""
+        vendor = _coerce_str(item.get("owner")) or _coerce_str(item.get("publisher")) or ""
+        description = _coerce_str(item.get("description")) or ""
         remote_endpoint = item.get("remote_endpoint")
         server_type = item.get("server_type")
 

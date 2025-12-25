@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from app.models.catalog import CatalogItem
 
@@ -73,3 +74,97 @@ class TestCatalogItem:
         assert item.oauth_config == oauth_config
         assert item.is_remote is True
         assert item.server_type == "remote"
+
+    def test_allowed_url_schemes(self):
+        """許可されたスキーム（https, wss）が正常に機能する."""
+        allowed_schemes = [
+            "https://example.com/sse",
+            "wss://example.com/ws",
+        ]
+
+        for url in allowed_schemes:
+            item = CatalogItem(
+                id=f"test-{url.split(':')[0]}",
+                name="Test Server",
+                description="Test allowed scheme",
+                vendor="",
+                category="general",
+                remote_endpoint=url,
+            )
+            assert str(item.remote_endpoint) == url
+            assert item.is_remote is True
+
+    def test_disallowed_url_schemes_http(self):
+        """http:// スキームはモデルレベルで拒否される（サービスレベルで localhost のみ許可）."""
+        with pytest.raises(ValidationError) as exc_info:
+            CatalogItem(
+                id="test-http",
+                name="Test Server",
+                description="Test disallowed http scheme",
+                vendor="",
+                category="general",
+                remote_endpoint="http://example.com/sse",
+            )
+
+        error = exc_info.value
+        assert "remote_endpoint" in str(error)
+
+    def test_disallowed_url_schemes_ws(self):
+        """ws:// スキームはモデルレベルで拒否される（サービスレベルで localhost のみ許可）."""
+        with pytest.raises(ValidationError) as exc_info:
+            CatalogItem(
+                id="test-ws",
+                name="Test Server",
+                description="Test disallowed ws scheme",
+                vendor="",
+                category="general",
+                remote_endpoint="ws://example.com/ws",
+            )
+
+        error = exc_info.value
+        assert "remote_endpoint" in str(error)
+
+    def test_disallowed_url_schemes_file(self):
+        """file:// スキームはモデルレベルで拒否される."""
+        with pytest.raises(ValidationError) as exc_info:
+            CatalogItem(
+                id="test-file",
+                name="Test Server",
+                description="Test disallowed file scheme",
+                vendor="",
+                category="general",
+                remote_endpoint="file:///etc/passwd",
+            )
+
+        error = exc_info.value
+        assert "remote_endpoint" in str(error)
+
+    def test_disallowed_url_schemes_ftp(self):
+        """ftp:// スキームはモデルレベルで拒否される."""
+        with pytest.raises(ValidationError) as exc_info:
+            CatalogItem(
+                id="test-ftp",
+                name="Test Server",
+                description="Test disallowed ftp scheme",
+                vendor="",
+                category="general",
+                remote_endpoint="ftp://example.com/file",
+            )
+
+        error = exc_info.value
+        assert "remote_endpoint" in str(error)
+
+    def test_disallowed_url_schemes_data(self):
+        """data:// スキームはモデルレベルで拒否される."""
+        with pytest.raises(ValidationError) as exc_info:
+            CatalogItem(
+                id="test-data",
+                name="Test Server",
+                description="Test disallowed data scheme",
+                vendor="",
+                category="general",
+                remote_endpoint="data:text/plain;base64,SGVsbG8=",
+            )
+
+        error = exc_info.value
+        assert "remote_endpoint" in str(error)

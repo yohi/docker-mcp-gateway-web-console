@@ -321,3 +321,66 @@ echo "Catalog validation passed!"
 - このドキュメントを確認
 - サンプルカタログを確認: `docs/sample-catalog.json`
 - GitHubでIssueを作成
+
+## カタログAPI
+
+カタログを取得するためのAPIエンドポイントの仕様です。
+
+### エンドポイント
+
+`GET /api/catalog`
+
+### パラメータ
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|---|---|---|---|---|
+| `source` | string (enum) | いいえ | `docker` | カタログソースID。`docker` (Docker MCP Gateway) または `official` (Official MCP Registry) を指定可能。 |
+
+### エラーレスポンス
+
+エラー発生時は以下の構造化されたJSONが返却されます。
+
+```json
+{
+  "detail": "エラーの詳細メッセージ",
+  "error_code": "エラーコード",
+  "retry_after_seconds": 60
+}
+```
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `detail` | string | 人間可読なエラーメッセージ |
+| `error_code` | string (enum) | 機械可読なエラーコード |
+| `retry_after_seconds` | integer | (省略可) 再試行が可能になるまでの秒数。レート制限時に設定されます。 |
+
+#### エラーコード一覧
+
+| コード | HTTPステータス | 説明 |
+|---|---|---|
+| `invalid_source` | 400 | 指定された `source` が無効です。 |
+| `rate_limited` | 429 | 上流レジストリのレート制限に達しました。`retry_after_seconds` 後に再試行してください。 |
+| `upstream_unavailable` | 503 | 上流レジストリに接続できないか、タイムアウトしました。 |
+| `internal_error` | 500 | 内部エラーが発生しました。 |
+
+### 使用例
+
+#### リクエスト例
+
+```bash
+# Dockerカタログを取得 (デフォルト)
+curl http://localhost:8000/api/catalog
+
+# Official Registryカタログを取得
+curl http://localhost:8000/api/catalog?source=official
+```
+
+#### エラーレスポンス例 (レート制限)
+
+```json
+{
+  "detail": "Rate limit exceeded. Please try again in 60 seconds.",
+  "error_code": "rate_limited",
+  "retry_after_seconds": 60
+}
+```

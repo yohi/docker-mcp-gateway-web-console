@@ -321,3 +321,66 @@ For questions or issues with the catalog schema:
 - Review this documentation
 - Check the sample catalog: `docs/sample-catalog.json`
 - Open an issue on GitHub
+
+## Catalog API
+
+Specification for the API endpoint used to fetch the catalog.
+
+### Endpoint
+
+`GET /api/catalog`
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `source` | string (enum) | No | `docker` | Catalog Source ID. Can be `docker` (Docker MCP Gateway) or `official` (Official MCP Registry). |
+
+### Error Response
+
+When an error occurs, a structured JSON response is returned:
+
+```json
+{
+  "detail": "Detailed error message",
+  "error_code": "error_code",
+  "retry_after_seconds": 60
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `detail` | string | Human-readable error message |
+| `error_code` | string (enum) | Machine-readable error code |
+| `retry_after_seconds` | integer | (Optional) Seconds to wait before retrying. Set when rate limited. |
+
+#### Error Codes
+
+| Code | HTTP Status | Description |
+|---|---|---|
+| `invalid_source` | 400 | The specified `source` is invalid. |
+| `rate_limited` | 429 | Upstream registry rate limit exceeded. Retry after `retry_after_seconds`. |
+| `upstream_unavailable` | 503 | Unable to connect to upstream registry or request timed out. |
+| `internal_error` | 500 | An internal error occurred. |
+
+### Examples
+
+#### Request Examples
+
+```bash
+# Fetch Docker catalog (default)
+curl http://localhost:8000/api/catalog
+
+# Fetch Official Registry catalog
+curl http://localhost:8000/api/catalog?source=official
+```
+
+#### Error Response Example (Rate Limited)
+
+```json
+{
+  "detail": "Rate limit exceeded. Please try again in 60 seconds.",
+  "error_code": "rate_limited",
+  "retry_after_seconds": 60
+}
+```

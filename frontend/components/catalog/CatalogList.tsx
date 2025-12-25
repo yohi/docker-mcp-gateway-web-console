@@ -2,8 +2,9 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import useSWR from 'swr';
-import { CatalogItem } from '@/lib/types/catalog';
-import { searchCatalog } from '@/lib/api/catalog';
+import { CatalogItem, CatalogErrorCode } from '@/lib/types/catalog';
+import { searchCatalog, CatalogError } from '@/lib/api/catalog';
+import { CatalogSourceId } from '@/lib/constants/catalogSources';
 import SearchBar from './SearchBar';
 import CatalogCard from './CatalogCard'; // Changed import
 import CatalogRow from './CatalogRow';
@@ -15,7 +16,7 @@ const DEFAULT_PAGE_SIZE = 8;
 const BACKEND_PAGE_SIZE = 8;
 
 interface CatalogListProps {
-  catalogSource: string;
+  catalogSource: CatalogSourceId;
   onInstall: (item: CatalogItem) => void;
   onSelect: (item: CatalogItem) => void;
   warning?: string;
@@ -34,6 +35,8 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
   const [cachedData, setCachedData] = useState<any>(null);
   const [combinedServers, setCombinedServers] = useState<CatalogItem[]>([]);
   const [combinedTotal, setCombinedTotal] = useState(0);
+  // Rate limit countdown state (Task 9: structured error handling)
+  const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null);
 
   useEffect(() => {
     setPage(1);
@@ -164,8 +167,33 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
   }, [remoteServers]);
 
   const activeData = data || cachedData;
-  const loadError = error as Error | undefined;
+  // CatalogError型にキャスト: searchCatalog関数がスローするCatalogErrorには
+  // error_codeとretry_after_secondsが含まれる
+  const loadError = error as (Error & { error_code?: CatalogErrorCode; retry_after_seconds?: number }) | undefined;
   const usingFallbackCache = !!loadError && !!cachedData && !data;
+
+  // Rate limit countdown effect (Task 9: structured error handling)
+  useEffect(() => {
+    if (loadError?.error_code === 'rate_limited' && loadError.retry_after_seconds && !activeData) {
+      setRateLimitCountdown(loadError.retry_after_seconds);
+    } else if (!loadError) {
+      setRateLimitCountdown(null);
+    }
+  }, [loadError, activeData]);
+
+  useEffect(() => {
+    if (rateLimitCountdown === null || rateLimitCountdown <= 0) return;
+    const timer = setInterval(() => {
+      setRateLimitCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [rateLimitCountdown]);
 
   // Loading state (initial only)
   if (!activeData && isLoading) {
@@ -179,8 +207,132 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
     );
   }
 
-  // Error state without any cached data to show
+  // Error state without any cached data to show (Task 9: structured error handling)
   if (loadError && !activeData) {
+    const errorCode = loadError.error_code;
+
+    // Rate limited error with countdown
+    if (errorCode === 'rate_limited') {
+      const countdown = rateLimitCountdown ?? loadError.retry_after_seconds ?? 0;
+      const canRetry = countdown === 0;
+      return (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg
+                className="h-5 w-5 text-orange-400"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-orange-800">
+                レート制限に達しました
+              </h3>
+              <p className="mt-1 text-sm text-orange-700">
+                {loadError.message || '上流サービスのレート制限に達しました。'}
+              </p>
+              <div className="mt-2 flex items-center gap-3" data-testid="rate-limit-countdown">
+                {!canRetry && (
+                  <span className="text-sm text-orange-600">
+                    再試行まで: <strong>{countdown}</strong> 秒
+                  </span>
+                )}
+                <button
+                  onClick={() => mutate()}
+                  disabled={!canRetry}
+                  className={`text-sm font-medium underline ${canRetry
+                      ? 'text-orange-800 hover:text-orange-900'
+                      : 'text-orange-400 cursor-not-allowed'
+                    }`}
+                >
+                  再試行
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Upstream unavailable error with retry button
+    if (errorCode === 'upstream_unavailable') {
+      return (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg
+                className="h-5 w-5 text-yellow-400"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-yellow-800">
+                上流サービスが利用できません
+              </h3>
+              <p className="mt-1 text-sm text-yellow-700">
+                {loadError.message || 'カタログサービスに一時的にアクセスできません。'}
+              </p>
+              <button
+                onClick={() => mutate()}
+                className="mt-2 text-sm font-medium text-yellow-800 hover:text-yellow-900 underline"
+              >
+                再試行
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Invalid source error
+    if (errorCode === 'invalid_source') {
+      return (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg
+                className="h-5 w-5 text-red-400"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">
+                無効なソースです
+              </h3>
+              <p className="mt-1 text-sm text-red-700">
+                {loadError.message || '指定されたカタログソースは無効です。'}
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Internal error or generic fallback (includes internal_error and unrecognized error codes)
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <div className="flex">
@@ -200,7 +352,7 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
           </div>
           <div className="ml-3">
             <h3 className="text-sm font-medium text-red-800">
-              Failed to load catalog
+              {errorCode === 'internal_error' ? '内部エラーが発生しました' : 'Failed to load catalog'}
             </h3>
             <p className="mt-1 text-sm text-red-700">
               {loadError.message || 'An error occurred while fetching the catalog.'}
@@ -209,7 +361,7 @@ export default function CatalogList({ catalogSource, warning, onInstall, onSelec
               onClick={() => mutate()}
               className="mt-2 text-sm font-medium text-red-800 hover:text-red-900 underline"
             >
-              Try again
+              再試行
             </button>
           </div>
         </div>
