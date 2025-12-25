@@ -181,6 +181,7 @@ async def get_catalog(
         )
 
 
+
 @router.get(
     "/search",
     response_model=CatalogResponse,
