@@ -261,7 +261,7 @@
   - _Test file: frontend/__tests__/components/catalog/CatalogList.test.tsx (lines 367-504)_
   - _Test coverage: 15 tests, including rate_limited, upstream_unavailable, invalid_source, internal_error, countdown timer, and retry button functionality_
 
-- [ ] 14. E2E/UIテストを実装する
+- [x] 14. E2E/UIテストを実装する
 - [x] 14.1 Dockerソース選択時のカタログ表示をテストする
   - セレクタでDockerを選択した際にカタログが表示されることを確認する
   - ローディング状態が正常に動作することを確認する
@@ -277,15 +277,19 @@
   - _Test file: frontend/e2e/catalog.spec.ts (lines 302-382)_
   - _Implementation verified: 2 E2E tests passing on chromium_
 
-- [ ] 14.3 レート制限エラーのUI動作をテストする
+- [x] 14.3 レート制限エラーのUI動作をテストする
   - レート制限エラー時にカウントダウンが表示されることを確認する
   - カウントダウン後に再試行が可能になることを確認する
   - _Requirements: 4.3_
+  - _Test file: frontend/e2e/catalog.spec.ts (lines 392-438)_
+  - _Implementation verified: Rate limit error with countdown timer (3 seconds), countdown decrease verification, and disabled retry button_
 
-- [ ] 14.4 上流障害エラーのUI動作をテストする
+- [x] 14.4 上流障害エラーのUI動作をテストする
   - 上流障害時に再試行ボタンが表示されることを確認する
   - 再試行ボタンでカタログ再取得が行われることを確認する
   - _Requirements: 4.4_
+  - _Test file: frontend/e2e/catalog.spec.ts (lines 440-483)_
+  - _Implementation verified: Upstream unavailable error with retry button and successful catalog reload after retry_
 
 ---
 

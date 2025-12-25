@@ -381,3 +381,117 @@ test.describe('Catalog Source Selection', () => {
     await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
   });
 });
+
+test.describe('Error Handling', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuthentication(page);
+    await mockContainerList(page);
+    await mockRemoteServers(page, []);
+  });
+
+  test('@rate-limit should display countdown and retry button when rate limited', async ({ page }) => {
+    test.setTimeout(20000); // Extend timeout to 20 seconds for countdown test
+
+    // Mock rate limit error from the start
+    await page.route('**/api/catalog**', async (route) => {
+      console.log(`MOCK HIT (rate limit error): ${route.request().url()}`);
+      await route.fulfill({
+        status: 429,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          detail: 'Rate limit exceeded. Please try again later.',
+          error_code: 'rate_limited',
+          retry_after_seconds: 3,
+        }),
+      });
+    });
+
+    // Navigate to catalog page
+    await page.goto('/catalog');
+    await page.waitForLoadState('networkidle');
+
+    // Verify rate limit error message is displayed
+    const errorHeading = page.getByRole('heading', { name: /レート制限に達しました/i });
+    await expect(errorHeading).toBeVisible({ timeout: 10000 });
+
+    // Verify countdown is displayed
+    const countdownContainer = page.getByTestId('rate-limit-countdown');
+    await expect(countdownContainer).toBeVisible();
+
+    // Check initial countdown text (shows "3 秒")
+    const countdownText = countdownContainer.locator('strong');
+    await expect(countdownText).toHaveText('3');
+
+    // Verify retry button is shown (but disabled initially)
+    const retryButton = page.getByRole('button', { name: /再試行/i });
+    await expect(retryButton).toBeVisible();
+    await expect(retryButton).toBeDisabled();
+
+    // Wait for countdown to reach 1 (Playwright will automatically poll)
+    await expect(countdownText).toHaveText('1', { timeout: 5000 });
+
+    // Wait for countdown text to disappear (when countdown reaches 0)
+    await expect(countdownText).not.toBeAttached({ timeout: 2000 });
+
+    // Wait for retry button to become enabled
+    await expect(retryButton).toBeEnabled({ timeout: 1000 });
+
+    // Setup network request monitoring for retry
+    const retryRequestPromise = page.waitForRequest(
+      (request) => request.url().includes('/api/catalog') && request.method() === 'GET',
+      { timeout: 5000 }
+    );
+
+    // Click the retry button
+    await retryButton.click();
+
+    // Verify retry request was made
+    await retryRequestPromise;
+
+    // Verify UI resets - countdown should restart at 3 and button should be disabled
+    await expect(countdownText).toHaveText('3', { timeout: 2000 });
+    await expect(retryButton).toBeDisabled();
+  });
+
+  test('@upstream-failure should display retry button when upstream unavailable', async ({ page }) => {
+    // Mock upstream unavailable error response (503)
+    await page.route('**/api/catalog**', async (route) => {
+      console.log(`MOCK HIT (upstream unavailable): ${route.request().url()}`);
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          detail: 'Upstream service is temporarily unavailable.',
+          error_code: 'upstream_unavailable',
+        }),
+      });
+    });
+
+    // Navigate to catalog page
+    await page.goto('/catalog');
+    await page.waitForLoadState('networkidle');
+
+    // Verify upstream unavailable error heading is displayed
+    const errorHeading = page.getByRole('heading', { name: /上流サービスが利用できません/i });
+    await expect(errorHeading).toBeVisible({ timeout: 10000 });
+
+    // Verify retry button is displayed
+    const retryButton = page.getByRole('button', { name: /再試行|retry/i });
+    await expect(retryButton).toBeVisible({ timeout: 5000 });
+
+    // Mock successful response for retry
+    await page.unroute('**/api/catalog**');
+    await mockCatalogData(page);
+
+    // Click retry button
+    await retryButton.click();
+
+    // Verify catalog loads successfully after retry
+    const serverCards = page.locator('[data-testid="catalog-card"]');
+    await expect(serverCards.first()).toBeVisible({ timeout: 10000 });
+
+    // Verify at least one server is shown
+    const cardCount = await serverCards.count();
+    expect(cardCount).toBeGreaterThan(0);
+  });
+});
