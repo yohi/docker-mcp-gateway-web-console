@@ -314,7 +314,7 @@ async def clear_catalog_cache(
             
     except Exception as e:
         logger.error(f"Error clearing cache: {e}")
-        raise HTTPException(
+        return JSONResponse(
             status_code=500,
-            detail=f"Failed to clear cache: {str(e)}"
+            content={"detail": f"Failed to clear cache: {str(e)}"}
         )

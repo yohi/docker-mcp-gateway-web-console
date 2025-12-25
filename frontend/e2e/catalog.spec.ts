@@ -262,8 +262,8 @@ test.describe('Catalog Source Selection', () => {
 
   test('@docker-source should show loading state while fetching catalog', async ({ page }) => {
     // Mock delayed catalog response to observe loading state
-    let resolveRoute: (value: unknown) => void;
-    const routePromise = new Promise((resolve) => {
+    let resolveRoute: ((value?: unknown) => void) | undefined;
+    const routePromise: Promise<void> = new Promise<void>((resolve) => {
       resolveRoute = resolve;
     });
 
@@ -293,7 +293,8 @@ test.describe('Catalog Source Selection', () => {
     await expect(loadingIndicator).toBeVisible({ timeout: 5000 });
 
     // Resolve the route to complete loading
-    resolveRoute!(undefined);
+    if (!resolveRoute) throw new Error('resolver not set');
+    resolveRoute();
 
     // Verify loading state disappears
     await expect(loadingIndicator).not.toBeVisible({ timeout: 5000 });

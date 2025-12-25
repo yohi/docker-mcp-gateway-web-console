@@ -8,6 +8,8 @@ Requirements: 4.1, 4.2
 """
 
 import pytest
+from datetime import datetime, timedelta
+from email.utils import formatdate
 from unittest.mock import patch, AsyncMock
 from httpx import Response
 from app.main import app
@@ -102,10 +104,14 @@ async def test_upstream_rate_limit_with_datetime_retry_after():
 
     Requirements: 4.1
     """
+    # Generate a future HTTP-date for Retry-After header (now + 60 seconds)
+    future_time = datetime.utcnow() + timedelta(seconds=60)
+    retry_after_date = formatdate(timeval=future_time.timestamp(), usegmt=True)
+
     # Mock upstream 429 response with HTTP-date Retry-After
     mock_response = AsyncMock(spec=Response)
     mock_response.status_code = 429
-    mock_response.headers = {"Retry-After": "Wed, 25 Dec 2025 12:00:00 GMT"}
+    mock_response.headers = {"Retry-After": retry_after_date}
     mock_response.raise_for_status.side_effect = None
 
     with patch("app.services.catalog.httpx.AsyncClient") as mock_client_class:
@@ -126,7 +132,8 @@ async def test_upstream_rate_limit_with_datetime_retry_after():
         assert data["error_code"] == "rate_limited"
         assert "retry_after_seconds" in data
         # Should contain a non-negative integer (parsed from HTTP-date)
-        assert isinstance(data["retry_after_seconds"], (int, type(None)))
+        assert isinstance(data["retry_after_seconds"], int)
+        assert data["retry_after_seconds"] >= 0
 
 
 @pytest.mark.asyncio
