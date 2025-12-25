@@ -43,10 +43,14 @@ Create a `.env` file in the `backend/` directory:
 | `LOG_LEVEL` | Logging level | `INFO` | `DEBUG`, `WARNING`, `ERROR` |
 | `SECRET_CACHE_TTL_SECONDS` | Secret cache time-to-live | `1800` | `3600` |
 | `MAX_LOG_LINES` | Maximum log lines to stream | `1000` | `5000` |
-| `CATALOG_DEFAULT_URL` | Default catalog URL | - | `https://example.com/catalog.json` |
+| `CATALOG_OFFICIAL_URL` | Official MCP Registry URL | `https://registry.modelcontextprotocol.io/v0/servers` | `https://registry.example.com/v0/servers` |
+| `CATALOG_DOCKER_URL` | Docker MCP Catalog URL (Recommended replacement for `CATALOG_DEFAULT_URL`) | Value of `CATALOG_DEFAULT_URL` | `https://example.com/docker_catalog.json` |
+| `CATALOG_DEFAULT_URL` | Default catalog URL (**Deprecated**) | - | `https://example.com/catalog.json` |
 | `REMOTE_MCP_ALLOWED_DOMAINS` | Allowed remote MCP server domains (comma-separated). Empty means deny-all. | `""` | `api.example.com,*.trusted.com` |
 | `REMOTE_MCP_MAX_CONNECTIONS` | Maximum concurrent SSE connections to remote servers | `20` | `5` |
 | `ALLOW_INSECURE_ENDPOINT` | Allow HTTP/localhost endpoints (Dev only) | `false` | `true` |
+
+**Note**: For catalog URL migration, please refer to the [Migration Guide](migrations/mcp-registry-source-selector.md).
 
 ### Example `.env`
 
@@ -64,7 +68,15 @@ SESSION_TIMEOUT_MINUTES=30
 
 # Catalog Configuration
 CATALOG_CACHE_TTL_SECONDS=3600
-CATALOG_DEFAULT_URL=https://raw.githubusercontent.com/example/mcp-catalog/main/catalog.json
+
+# Docker Catalog (Old CATALOG_DEFAULT_URL)
+# Recommended: Use the new CATALOG_DOCKER_URL
+CATALOG_DOCKER_URL=https://raw.githubusercontent.com/example/mcp-catalog/main/catalog.json
+# CATALOG_DEFAULT_URL is still valid for backward compatibility but deprecated
+# CATALOG_DEFAULT_URL=...
+
+# Official Registry
+CATALOG_OFFICIAL_URL=https://registry.modelcontextprotocol.io/v0/servers
 
 # Remote MCP Configuration
 REMOTE_MCP_ALLOWED_DOMAINS=api.example.com,*.trusted.com
