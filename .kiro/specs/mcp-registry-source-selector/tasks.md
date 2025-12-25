@@ -295,7 +295,7 @@
 
 ## フェーズ 5: ドキュメント更新と統合
 
-- [ ] 15. ドキュメントを更新する
+- [x] 15. ドキュメントを更新する
 - [x] 15.1 環境変数のドキュメントを更新する
   - CATALOG_OFFICIAL_URL の追加と CATALOG_DEFAULT_URL の非推奨化を詳細に説明する
   - 移行ガイドを以下の観点で補強する
@@ -317,13 +317,15 @@
   - 使用例を追加する
   - _Requirements: 2.1, 4.1, 4.2_
 
-- [ ] 16. 既存機能との統合を確認する
-- [ ] 16.1 既存のカタログ機能が正常に動作することを確認する
+- [x] 16. 既存機能との統合を確認する
+- [x] 16.1 既存のカタログ機能が正常に動作することを確認する
   - 上記移行ガイドの内容が製品挙動と一致していることを検証し、ドキュメントのマッピング表・手順・タイムラインと実装のフォールバック順序が揃っていることを確認する
   - 既存ユーザーの環境変数設定が互換期間中は尊重され、NEXT_PUBLIC_CATALOG_URL の挙動が変わらない（優先順位 1 のまま）ことを確認する
   - ローカル／Docker 等クラウド環境の設定例どおりに構成した際に、Official Registry 不可時でも Docker ソースへ自動フォールバックすることを検証する
   - 非推奨開始日・終了日が実装上の feature flag や設定で管理され、タイムライン通りに切替可能であることを確認する
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
+  - _Test file: backend/tests/integration/catalog/test_backward_compatibility.py_
+  - _Tests: 7 tests covering environment variable mapping, source defaults, fallback behavior, and client compatibility_
 
 ---
 
