@@ -15,16 +15,47 @@ jest.mock('../../../components/layout', () => ({
     MainLayout: ({ children }: { children: React.ReactNode }) => <div data-testid="main-layout">{children}</div>,
 }));
 
-// Mock CatalogList
+// Mock CatalogList with per-source error simulation
 const mockCatalogList = jest.fn();
+const mockSourceErrors: Map<CatalogSourceId, Error> = new Map();
+
+// Helper function to set error for specific source
+export const setSourceError = (source: CatalogSourceId, error: Error | null) => {
+    if (error === null) {
+        mockSourceErrors.delete(source);
+    } else {
+        mockSourceErrors.set(source, error);
+    }
+};
+
+// Helper function to clear all errors
+export const clearAllErrors = () => {
+    mockSourceErrors.clear();
+};
+
 jest.mock('../../../components/catalog/CatalogList', () => {
     return function MockCatalogList(props: { catalogSource: CatalogSourceId; onInstall: any; onSelect: any }) {
         mockCatalogList(props);
+
+        // Check if this source has an error
+        const error = mockSourceErrors.get(props.catalogSource);
+        const hasError = error !== undefined;
+
         return (
-            <div data-testid="catalog-list" data-source={props.catalogSource}>
-                <button onClick={() => props.onInstall({ id: 'test', name: 'Test Server' })}>
-                    Install Test
-                </button>
+            <div
+                data-testid="catalog-list"
+                data-source={props.catalogSource}
+                data-error={hasError ? 'true' : 'false'}
+            >
+                {hasError ? (
+                    <div data-testid="catalog-error">
+                        Error: {error?.message}
+                    </div>
+                ) : (
+                    <button onClick={() => props.onInstall({ id: 'test', name: 'Test Server' })}>
+                        Install Test
+                    </button>
+                )}
             </div>
         );
     };
@@ -94,6 +125,7 @@ jest.mock('../../../lib/api/remoteServers', () => ({
 describe('CatalogPage - Source State Management (Task 8)', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        clearAllErrors(); // Reset all source errors
     });
 
     describe('Requirement 1.3: Default Docker source on initial display', () => {
@@ -181,6 +213,104 @@ describe('CatalogPage - Source State Management (Task 8)', () => {
 
             // Should render with docker without any user interaction
             expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-source', 'docker');
+        });
+    });
+
+    describe('Requirement 4.5: Preserve selected source on error', () => {
+        it('preserves selected source when catalog fetch error occurs', async () => {
+            // Set up error condition for 'official' source before switching to it
+            setSourceError('official', new Error('Failed to fetch catalog'));
+
+            render(<CatalogPage />);
+
+            // Initial state: docker (no error)
+            expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-source', 'docker');
+            expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-error', 'false');
+
+            // User changes source to official, which has an error
+            const select = screen.getByTestId('source-select');
+            fireEvent.change(select, { target: { value: 'official' } });
+
+            // Wait for source change and error to appear
+            await waitFor(() => {
+                expect(screen.getByTestId('catalog-error')).toBeInTheDocument();
+            });
+
+            // CRITICAL ASSERTION: Despite the error, source selection remains 'official' (not reset to 'docker')
+            const selector = screen.getByTestId('catalog-source-selector');
+            expect(selector).toHaveAttribute('data-selected', 'official');
+            expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-source', 'official');
+            expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-error', 'true');
+            expect(screen.getByTestId('catalog-error')).toHaveTextContent('Failed to fetch catalog');
+        });
+
+        it('allows retry with same source after error', async () => {
+            // Set up error for 'official' source
+            setSourceError('official', new Error('Network error'));
+
+            render(<CatalogPage />);
+
+            // Change to official (which has error)
+            const select = screen.getByTestId('source-select');
+            fireEvent.change(select, { target: { value: 'official' } });
+
+            // Wait for error to appear
+            await waitFor(() => {
+                expect(screen.getByTestId('catalog-error')).toBeInTheDocument();
+            });
+
+            // Verify source is 'official' with error
+            expect(screen.getByTestId('catalog-source-selector')).toHaveAttribute('data-selected', 'official');
+            expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-source', 'official');
+            expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-error', 'true');
+
+            // Simulate successful retry by clearing the error for 'official'
+            setSourceError('official', null);
+
+            // Trigger re-render by switching away and back (simulating retry)
+            fireEvent.change(select, { target: { value: 'docker' } });
+            await waitFor(() => {
+                expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-source', 'docker');
+            });
+
+            fireEvent.change(select, { target: { value: 'official' } });
+
+            // After retry (error cleared), should show success for 'official'
+            await waitFor(() => {
+                expect(screen.queryByTestId('catalog-error')).not.toBeInTheDocument();
+                expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-error', 'false');
+            });
+
+            // CRITICAL ASSERTION: Source is still 'official' after successful retry
+            expect(screen.getByTestId('catalog-source-selector')).toHaveAttribute('data-selected', 'official');
+            expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-source', 'official');
+        });
+
+        it('does not reset source to default on error', async () => {
+            // Set up error for 'official' source
+            setSourceError('official', new Error('Upstream unavailable'));
+
+            render(<CatalogPage />);
+
+            // Start with docker (default, no error)
+            expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-source', 'docker');
+
+            // User changes to official (which has error)
+            const select = screen.getByTestId('source-select');
+            fireEvent.change(select, { target: { value: 'official' } });
+
+            // Wait for error to appear
+            await waitFor(() => {
+                expect(screen.getByTestId('catalog-error')).toBeInTheDocument();
+            });
+
+            // CRITICAL ASSERTION: Source does NOT reset to default ('docker') on error
+            // It stays as 'official' even though there's an error
+            const selector = screen.getByTestId('catalog-source-selector');
+            expect(selector).toHaveAttribute('data-selected', 'official');
+            expect(selector).not.toHaveAttribute('data-selected', 'docker');
+            expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-source', 'official');
+            expect(screen.getByTestId('catalog-list')).toHaveAttribute('data-error', 'true');
         });
     });
 
