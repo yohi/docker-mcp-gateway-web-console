@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit tests for frontend and backend
 - Docker Compose development environment
 - Production deployment configurations
+- Official MCP Registry cursor-based pagination support
+  - Fetch all servers (beyond initial 30-item limit) from Official Registry
+  - Configurable pagination limits (`CATALOG_OFFICIAL_MAX_PAGES`, default: 20)
+  - Configurable timeout (`CATALOG_OFFICIAL_FETCH_TIMEOUT`, default: 60 seconds)
+  - Configurable page delay (`CATALOG_OFFICIAL_PAGE_DELAY`, default: 100ms)
+  - Partial success handling with warning messages
 
 ### Security
 - Secrets never written to disk

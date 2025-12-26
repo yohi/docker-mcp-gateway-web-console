@@ -98,6 +98,11 @@ SESSION_TIMEOUT_MINUTES=30
 CATALOG_CACHE_TTL_SECONDS=3600
 CORS_ORIGINS=https://yourdomain.com
 LOG_LEVEL=WARNING
+
+# Official Registry Pagination (optional - defaults shown)
+CATALOG_OFFICIAL_MAX_PAGES=20
+CATALOG_OFFICIAL_FETCH_TIMEOUT=60
+CATALOG_OFFICIAL_PAGE_DELAY=100
 ```
 
 #### Step 3: Create Production Docker Compose
