@@ -1,6 +1,6 @@
 
 import pytest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, Mock
 from app.main import app
 from app.config import settings
 from app.models.catalog import CatalogItem
@@ -300,3 +300,495 @@ async def test_get_catalog_official_error_handling():
         data = response.json()
         assert data["error_code"] == "upstream_unavailable"
         assert "detail" in data
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_official_pagination():
+    """
+    Test Official Registry pagination with multiple pages.
+    Verifies actual pagination mechanism: cursor-based fetching, nextCursor handling,
+    and page delay behavior.
+
+    Requirements: 1.3, 4.1, 5.3
+    Task: 13
+    """
+    # Helper function to create Official Registry format items
+    # Note: "name" field in Official Registry format contains "/" which gets kept as-is in the ID
+    def create_official_format(index: int) -> dict:
+        return {
+            "name": f"modelcontextprotocol/test-server-{index}",
+            "display_name": f"Test Server {index}",
+            "description": f"Test server number {index}",
+            "client": {
+                "mcp": {
+                    "transport": {
+                        "type": "http",
+                        "url": f"https://test{index}.example.com/mcp"
+                    }
+                }
+            }
+        }
+
+    with patch("app.api.catalog.catalog_service.get_cached_catalog") as mock_get_cache, \
+         patch("httpx.AsyncClient") as mock_client_class:
+
+        # Scenario: No cache, fetch from Official Registry with pagination
+        mock_get_cache.return_value = None
+
+        # Mock multiple pages of HTTP responses
+        # Page 1: 30 items with nextCursor
+        page1_response = AsyncMock()
+        page1_response.status_code = 200
+        page1_response.raise_for_status = Mock()
+        page1_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(30)],
+            "metadata": {"nextCursor": "cursor_page2"}
+        }
+
+        # Page 2: 30 items with nextCursor
+        page2_response = AsyncMock()
+        page2_response.status_code = 200
+        page2_response.raise_for_status = Mock()
+        page2_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(30, 60)],
+            "metadata": {"nextCursor": "cursor_page3"}
+        }
+
+        # Page 3: 30 items without nextCursor (final page)
+        page3_response = AsyncMock()
+        page3_response.status_code = 200
+        page3_response.raise_for_status = Mock()
+        page3_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(60, 90)],
+            "metadata": {}  # No nextCursor means final page
+        }
+
+        # Create mock client instance
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[page1_response, page2_response, page3_response])
+
+        # Make the client class return our mock client when used as context manager
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            response = await client.get("/api/catalog?source=official")
+
+        # Verify response
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cached"] is False
+
+        # Verify pagination worked: all 90 items from 3 pages are returned
+        assert len(data["servers"]) == 90
+
+        # Verify items from all pages are present
+        server_ids = [s["id"] for s in data["servers"]]
+        assert "modelcontextprotocol/test-server-0" in server_ids  # Page 1
+        assert "modelcontextprotocol/test-server-30" in server_ids  # Page 2
+        assert "modelcontextprotocol/test-server-60" in server_ids  # Page 3
+        assert "modelcontextprotocol/test-server-89" in server_ids  # Last item
+
+        # Verify HTTP client was called 3 times (once per page)
+        assert mock_client.get.call_count == 3
+
+        # Verify first call was without cursor parameter
+        first_call_url = mock_client.get.call_args_list[0][0][0]
+        assert first_call_url == settings.catalog_official_url
+        assert "cursor" not in first_call_url
+
+        # Verify subsequent calls included cursor parameters
+        second_call_url = mock_client.get.call_args_list[1][0][0]
+        assert "cursor=cursor_page2" in second_call_url
+
+        third_call_url = mock_client.get.call_args_list[2][0][0]
+        assert "cursor=cursor_page3" in third_call_url
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_official_pagination_max_pages():
+    """
+    Test that pagination respects max_pages limit.
+    Verifies that fetching stops at max_pages even if nextCursor exists.
+
+    Requirements: 4.1, 5.3
+    Task: 13
+    """
+    # Helper function to create Official Registry format items
+    def create_official_format(index: int) -> dict:
+        return {
+            "name": f"modelcontextprotocol/test-server-{index}",
+            "display_name": f"Test Server {index}",
+            "description": f"Test server number {index}",
+        }
+
+    with patch("app.api.catalog.catalog_service.get_cached_catalog") as mock_get_cache, \
+         patch("httpx.AsyncClient") as mock_client_class, \
+         patch("app.config.settings.catalog_official_max_pages", 2):  # Limit to 2 pages
+
+        mock_get_cache.return_value = None
+
+        # Create 4 pages worth of responses, but only first 2 should be fetched
+        responses = []
+        for page in range(4):
+            response = AsyncMock()
+            response.status_code = 200
+            response.raise_for_status = Mock()
+            response.json = lambda p=page: {
+                "servers": [create_official_format(i) for i in range(p * 30, (p + 1) * 30)],
+                "metadata": {"nextCursor": f"cursor_page{p + 2}"} if p < 3 else {}
+            }
+            responses.append(response)
+
+        # Create mock client instance
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=responses)
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            response = await client.get("/api/catalog?source=official")
+
+        # Verify response
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should only fetch 2 pages (60 items) due to max_pages limit
+        assert len(data["servers"]) == 60
+
+        # Verify only 2 HTTP calls were made (respecting max_pages)
+        assert mock_client.get.call_count == 2
+
+        # Verify items from page 1 and 2 are present, but not page 3
+        server_ids = [s["id"] for s in data["servers"]]
+        assert "modelcontextprotocol/test-server-0" in server_ids  # Page 1
+        assert "modelcontextprotocol/test-server-30" in server_ids  # Page 2
+        assert "modelcontextprotocol/test-server-60" not in server_ids  # Page 3 (not fetched)
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_official_pagination_page_delay():
+    """
+    Test that pagination includes delay between pages.
+    Verifies that asyncio.sleep is called with correct delay between page requests.
+
+    Requirements: 5.3
+    Task: 13
+    """
+    # Helper function to create Official Registry format items
+    def create_official_format(index: int) -> dict:
+        return {
+            "name": f"modelcontextprotocol/test-server-{index}",
+            "display_name": f"Test Server {index}",
+        }
+
+    with patch("app.api.catalog.catalog_service.get_cached_catalog") as mock_get_cache, \
+         patch("httpx.AsyncClient") as mock_client_class, \
+         patch("asyncio.sleep") as mock_sleep, \
+         patch("app.config.settings.catalog_official_page_delay", 500):  # 500ms delay
+
+        mock_get_cache.return_value = None
+
+        # Create 3 pages of responses
+        page1_response = AsyncMock()
+        page1_response.status_code = 200
+        page1_response.raise_for_status = Mock()
+        page1_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(30)],
+            "metadata": {"nextCursor": "cursor_page2"}
+        }
+
+        page2_response = AsyncMock()
+        page2_response.status_code = 200
+        page2_response.raise_for_status = Mock()
+        page2_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(30, 60)],
+            "metadata": {"nextCursor": "cursor_page3"}
+        }
+
+        page3_response = AsyncMock()
+        page3_response.status_code = 200
+        page3_response.raise_for_status = Mock()
+        page3_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(60, 90)],
+            "metadata": {}
+        }
+
+        # Create mock client instance
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[page1_response, page2_response, page3_response])
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            response = await client.get("/api/catalog?source=official")
+
+        # Verify response
+        assert response.status_code == 200
+
+        # Verify asyncio.sleep was called with correct delay (500ms = 0.5s)
+        # Should be called 2 times (after page 1 and page 2, but not after final page 3)
+        assert mock_sleep.call_count == 2
+        mock_sleep.assert_any_call(0.5)  # 500ms / 1000 = 0.5s
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_official_pagination_partial_failure():
+    """
+    Test that pagination handles partial failures gracefully.
+    Verifies that if a later page fails, already fetched items are still returned.
+
+    Requirements: 4.1, 5.3
+    Task: 13
+    """
+    import httpx
+
+    # Helper function to create Official Registry format items
+    def create_official_format(index: int) -> dict:
+        return {
+            "name": f"modelcontextprotocol/test-server-{index}",
+            "display_name": f"Test Server {index}",
+            "description": f"Test server number {index}",
+        }
+
+    with patch("app.api.catalog.catalog_service.get_cached_catalog") as mock_get_cache, \
+         patch("httpx.AsyncClient") as mock_client_class:
+
+        mock_get_cache.return_value = None
+
+        # Page 1: Success with 30 items
+        page1_response = AsyncMock()
+        page1_response.status_code = 200
+        page1_response.raise_for_status = Mock()
+        page1_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(30)],
+            "metadata": {"nextCursor": "cursor_page2"}
+        }
+
+        # Page 2: Network error
+        page2_error = httpx.HTTPStatusError(
+            "Server error",
+            request=AsyncMock(),
+            response=AsyncMock(status_code=500)
+        )
+
+        # Create mock client instance
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[page1_response, page2_error])
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            response = await client.get("/api/catalog?source=official")
+
+        # Verify response - should return page 1 items even though page 2 failed
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should have items from page 1 (partial success)
+        assert len(data["servers"]) == 30
+
+        # Verify items from page 1 are present
+        server_ids = [s["id"] for s in data["servers"]]
+        assert "modelcontextprotocol/test-server-0" in server_ids
+        assert "modelcontextprotocol/test-server-29" in server_ids
+
+        # Verify 2 HTTP calls were attempted (page 1 succeeded, page 2 failed)
+        assert mock_client.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_official_pagination_cache_miss():
+    """
+    Test pagination cache miss scenario:
+    Cache miss → pagination fetch occurs → cache is updated → response.cached=False
+
+    Requirements: 4.1, 4.2, 4.3
+    Task: 13
+    """
+    # Helper function to create Official Registry format items
+    def create_official_format(index: int) -> dict:
+        return {
+            "name": f"modelcontextprotocol/test-server-{index}",
+            "display_name": f"Test Server {index}",
+            "description": f"Test server number {index}",
+        }
+
+    with patch("app.api.catalog.catalog_service.get_cached_catalog") as mock_get_cache, \
+         patch("app.api.catalog.catalog_service.update_cache") as mock_update_cache, \
+         patch("httpx.AsyncClient") as mock_client_class:
+
+        mock_get_cache.return_value = None  # Cache miss
+
+        # Mock pagination responses (3 pages)
+        page1_response = AsyncMock()
+        page1_response.status_code = 200
+        page1_response.raise_for_status = Mock()
+        page1_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(30)],
+            "metadata": {"nextCursor": "cursor_page2"}
+        }
+
+        page2_response = AsyncMock()
+        page2_response.status_code = 200
+        page2_response.raise_for_status = Mock()
+        page2_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(30, 60)],
+            "metadata": {"nextCursor": "cursor_page3"}
+        }
+
+        page3_response = AsyncMock()
+        page3_response.status_code = 200
+        page3_response.raise_for_status = Mock()
+        page3_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(60, 90)],
+            "metadata": {}
+        }
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[page1_response, page2_response, page3_response])
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        # Request with cache miss
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            response = await client.get("/api/catalog?source=official")
+
+        # Verify response
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cached"] is False  # Not from cache
+        assert len(data["servers"]) == 90
+
+        # Verify cache was checked and pagination occurred
+        # Note: get_cached_catalog is called twice per request:
+        # 1) By the endpoint directly (line 134 in catalog.py)
+        # 2) By fetch_catalog internally (line 304 in catalog.py)
+        assert mock_get_cache.call_count == 2
+        assert mock_client.get.call_count == 3  # 3 pages fetched
+        assert mock_update_cache.call_count == 1  # Cache was updated
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_official_pagination_cache_hit():
+    """
+    Test pagination cache hit scenario:
+    Cache hit → pagination fetch is skipped → response.cached=True
+
+    Requirements: 4.1, 4.2, 4.3
+    Task: 13
+    """
+    # Create 90 mock servers (3 pages x 30 items)
+    paginated_items = []
+    for i in range(90):
+        paginated_items.append(
+            CatalogItem(
+                id=f"modelcontextprotocol/test-server-{i}",
+                name=f"Test Server {i}",
+                description=f"Test server number {i}",
+                vendor="modelcontextprotocol",
+                category="general",
+                docker_image="",
+                required_envs=[],
+                required_secrets=[]
+            )
+        )
+
+    with patch("app.api.catalog.catalog_service.get_cached_catalog") as mock_get_cache, \
+         patch("app.api.catalog.catalog_service.update_cache") as mock_update_cache, \
+         patch("httpx.AsyncClient") as mock_client_class:
+
+        # Cache returns the 90 items
+        mock_get_cache.return_value = paginated_items
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        # Request with cache hit
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            response = await client.get("/api/catalog?source=official")
+
+        # Verify response
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cached"] is True  # From cache
+        assert len(data["servers"]) == 90
+
+        # Verify cache was checked but pagination did NOT occur
+        # Note: When cache is available, the endpoint:
+        # 1) Checks cache directly and returns cached data immediately (line 134-156)
+        # 2) Spawns background task to refresh cache (line 146)
+        # The background task calls fetch_catalog which also checks cache again
+        # However, since we're not awaiting the background task and it happens async,
+        # we only see the first cache check from the endpoint
+        assert mock_get_cache.call_count == 1
+        assert mock_client.get.call_count == 0  # No pagination fetch in main flow
+        assert mock_update_cache.call_count == 0  # Cache not updated in main flow
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_official_pagination_cache_expiry():
+    """
+    Test pagination cache expiry scenario:
+    Cache expired (returns None) → pagination fetch occurs again → cache is updated → response.cached=False
+
+    Requirements: 4.1, 4.2, 4.3
+    Task: 13
+    """
+    # Helper function to create Official Registry format items
+    def create_official_format(index: int) -> dict:
+        return {
+            "name": f"modelcontextprotocol/test-server-{index}",
+            "display_name": f"Test Server {index}",
+            "description": f"Test server number {index}",
+        }
+
+    with patch("app.api.catalog.catalog_service.get_cached_catalog") as mock_get_cache, \
+         patch("app.api.catalog.catalog_service.update_cache") as mock_update_cache, \
+         patch("httpx.AsyncClient") as mock_client_class:
+
+        # Cache expired, returns None
+        mock_get_cache.return_value = None
+
+        # Mock pagination responses (3 pages)
+        page1_response = AsyncMock()
+        page1_response.status_code = 200
+        page1_response.raise_for_status = Mock()
+        page1_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(30)],
+            "metadata": {"nextCursor": "cursor_page2"}
+        }
+
+        page2_response = AsyncMock()
+        page2_response.status_code = 200
+        page2_response.raise_for_status = Mock()
+        page2_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(30, 60)],
+            "metadata": {"nextCursor": "cursor_page3"}
+        }
+
+        page3_response = AsyncMock()
+        page3_response.status_code = 200
+        page3_response.raise_for_status = Mock()
+        page3_response.json = lambda: {
+            "servers": [create_official_format(i) for i in range(60, 90)],
+            "metadata": {}
+        }
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[
+            page1_response, page2_response, page3_response
+        ])
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        # Request with cache expired
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            response = await client.get("/api/catalog?source=official")
+
+        # Verify response
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cached"] is False  # Not from cache (expired)
+        assert len(data["servers"]) == 90
+
+        # Verify cache was checked, pagination occurred, and cache was updated
+        # Same as cache miss: get_cached_catalog called twice per request
+        assert mock_get_cache.call_count == 2
+        assert mock_client.get.call_count == 3  # 3 pages fetched
+        assert mock_update_cache.call_count == 1  # Cache updated
