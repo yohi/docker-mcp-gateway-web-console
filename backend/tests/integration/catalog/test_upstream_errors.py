@@ -84,7 +84,7 @@ async def test_upstream_rate_limit_without_retry_after():
         mock_client_class.return_value = mock_client
 
         async with AsyncClient(app=app, base_url="http://test") as client:
-            response = await client.get("/api/catalog?source=official")
+            response = await client.get("/api/catalog?source=docker")
 
         # Verify 429 response
         assert response.status_code == 429
@@ -158,7 +158,7 @@ async def test_search_endpoint_rate_limit_returns_429():
         mock_client_class.return_value = mock_client
 
         async with AsyncClient(app=app, base_url="http://test") as client:
-            response = await client.get("/api/catalog/search?source=official&q=test")
+            response = await client.get("/api/catalog/search?source=docker&q=test")
 
         # Verify 429 response
         assert response.status_code == 429
@@ -222,7 +222,7 @@ async def test_upstream_5xx_error_returns_503():
         mock_client_class.return_value = mock_client
 
         async with AsyncClient(app=app, base_url="http://test") as client:
-            response = await client.get("/api/catalog?source=official")
+            response = await client.get("/api/catalog?source=docker")
 
         # Verify 503 response
         assert response.status_code == 503
@@ -280,7 +280,7 @@ async def test_search_endpoint_upstream_timeout_returns_503():
         mock_client_class.return_value = mock_client
 
         async with AsyncClient(app=app, base_url="http://test") as client:
-            response = await client.get("/api/catalog/search?source=official&q=test")
+            response = await client.get("/api/catalog/search?source=docker&q=test")
 
         # Verify 503 response
         assert response.status_code == 503
