@@ -403,7 +403,11 @@ class CatalogService:
             source_url = normalized_url
 
             # Official Registry URL の場合はページネーション取得を使用
-            if source_url == settings.catalog_official_url:
+            # 両方の URL を正規化してから比較
+            normalized_official_url = self._url_validator._normalize_url(
+                settings.catalog_official_url
+            )
+            if source_url == normalized_official_url:
                 return await self._fetch_official_registry_with_pagination(source_url)
 
             async with httpx.AsyncClient(timeout=30.0) as client:

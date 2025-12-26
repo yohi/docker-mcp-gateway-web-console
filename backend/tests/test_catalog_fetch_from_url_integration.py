@@ -143,3 +143,53 @@ async def test_fetch_from_url_normalizes_url_before_comparison(catalog_service, 
         # Assert: Result is returned correctly
         assert len(result) == 1
         assert result[0].id == "normalized-server"
+
+
+@pytest.mark.asyncio
+async def test_fetch_from_url_compares_normalized_official_url(catalog_service, monkeypatch):
+    """
+    _fetch_from_url が settings.catalog_official_url も正規化してから比較することを確認する。
+
+    このテストは、settings.catalog_official_url に末尾スラッシュがある場合でも
+    正しくマッチすることを確認する。
+    """
+    # Setup: Set official URL with trailing slash in settings
+    monkeypatch.setattr(
+        settings,
+        "catalog_official_url",
+        "https://registry.modelcontextprotocol.io/v0/servers/"  # Trailing slash
+    )
+
+    # Recreate service with new settings
+    catalog_service_with_trailing = CatalogService()
+
+    # Setup: Mock the pagination method
+    mock_pagination = AsyncMock(return_value=[
+        CatalogItem(
+            id="trailing-slash-server",
+            name="Trailing Slash Server",
+            description="Server from URL with trailing slash",
+            vendor="Test",
+            category="general",
+            docker_image="test/server:latest",
+            default_env={},
+            required_envs=[],
+            required_secrets=[]
+        )
+    ])
+
+    with patch.object(
+        catalog_service_with_trailing,
+        '_fetch_official_registry_with_pagination',
+        mock_pagination
+    ):
+        # Execute: Call _fetch_from_url with Official URL WITHOUT trailing slash
+        url_without_trailing_slash = "https://registry.modelcontextprotocol.io/v0/servers"
+        result = await catalog_service_with_trailing._fetch_from_url(url_without_trailing_slash)
+
+        # Assert: Pagination method was called (both URLs should be normalized and match)
+        mock_pagination.assert_called_once()
+
+        # Assert: Result is returned correctly
+        assert len(result) == 1
+        assert result[0].id == "trailing-slash-server"
