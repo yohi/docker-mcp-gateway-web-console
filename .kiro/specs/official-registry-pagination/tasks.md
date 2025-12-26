@@ -67,13 +67,13 @@
 
 ## フェーズ 3: 既存コードとの統合
 
-- [ ] 8. `_fetch_from_url` メソッドを拡張する
+- [x] 8. `_fetch_from_url` メソッドを拡張する
   - Official Registry URL 判定ロジックを追加する（`source_url == settings.catalog_official_url`）
   - Official Registry の場合は `_fetch_official_registry_with_pagination` を呼び出す
   - それ以外は既存の単一リクエスト処理を維持する
   - _Requirements: 1.1_
 
-- [ ] 9. ログ出力を追加する (P)
+- [x] 9. ログ出力を追加する (P)
   - 各ページ取得時に `logger.info` でページ番号と取得件数を出力する
   - 全ページ取得完了時に合計ページ数と合計件数を出力する
   - 警告発生時に詳細をログに記録する
