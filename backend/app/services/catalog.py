@@ -7,6 +7,7 @@ import ipaddress
 import json
 import logging
 import re
+import time
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
@@ -535,6 +536,159 @@ class CatalogService:
             raise CatalogError(f"Invalid JSON in catalog response: {e}") from e
         except Exception as e:
             raise CatalogError(f"Failed to parse catalog data: {e}") from e
+
+    async def _fetch_official_registry_with_pagination(
+        self, source_url: str
+    ) -> List[CatalogItem]:
+        """
+        Official Registry からカーソルベースでページネーション取得する。
+
+        Args:
+            source_url: Official Registry の URL
+
+        Returns:
+            全ページから取得した CatalogItem のリスト
+
+        Raises:
+            CatalogError: 初回ページ取得失敗時（部分成功時は警告付きで返却）
+        """
+        all_servers: List[dict] = []
+        cursor: str | None = None
+        page_count: int = 0
+        start_time: float = time.time()
+
+        max_pages: int = settings.catalog_official_max_pages
+        timeout_seconds: int = settings.catalog_official_fetch_timeout
+        page_delay_ms: int = settings.catalog_official_page_delay
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                while page_count < max_pages:
+                    # タイムアウトチェック
+                    elapsed = time.time() - start_time
+                    if elapsed > timeout_seconds:
+                        self._append_warning(
+                            f"Timeout reached after {page_count} pages. "
+                            f"Returning {len(all_servers)} items."
+                        )
+                        break
+
+                    # リクエスト URL 構築
+                    url = f"{source_url}?cursor={cursor}" if cursor else source_url
+
+                    # ページ取得
+                    try:
+                        response = await client.get(
+                            url,
+                            headers=self._github_headers(source_url)
+                        )
+                        response.raise_for_status()
+                        # Parse JSON response (AsyncMock compatibility: handle coroutine)
+                        parsed = response.json()
+                        data = await parsed if asyncio.iscoroutine(parsed) else parsed
+                    except httpx.HTTPStatusError as e:
+                        if e.response.status_code == 429:
+                            # レート制限エラー
+                            retry_after = self._parse_retry_after_seconds(
+                                e.response.headers.get("Retry-After")
+                            )
+                            raise CatalogError(
+                                message="Rate limit exceeded",
+                                error_code=CatalogErrorCode.RATE_LIMITED,
+                                retry_after_seconds=retry_after
+                            )
+                        # その他のエラー
+                        if all_servers:
+                            # 部分成功
+                            self._append_warning(
+                                f"Error fetching page {page_count + 1}: {e}. "
+                                f"Returning {len(all_servers)} items."
+                            )
+                            break
+                        else:
+                            # 初回ページ失敗
+                            raise CatalogError(
+                                message=f"Failed to fetch catalog: {e}",
+                                error_code=CatalogErrorCode.UPSTREAM_UNAVAILABLE
+                            )
+                    except Exception as e:
+                        # ネットワークエラー等
+                        if all_servers:
+                            self._append_warning(
+                                f"Error fetching page {page_count + 1}: {e}. "
+                                f"Returning {len(all_servers)} items."
+                            )
+                            break
+                        else:
+                            raise CatalogError(
+                                message=f"Failed to fetch catalog: {e}",
+                                error_code=CatalogErrorCode.UPSTREAM_UNAVAILABLE
+                            )
+
+                    # サーバーリストを結合
+                    servers = data.get("servers", [])
+                    all_servers.extend(servers)
+                    page_count += 1
+
+                    logger.info(
+                        f"Fetched page {page_count} from Official Registry: "
+                        f"{len(servers)} items (total: {len(all_servers)})"
+                    )
+
+                    # 次のカーソルを取得
+                    metadata = data.get("metadata", {})
+                    cursor = metadata.get("nextCursor")
+
+                    if not cursor:
+                        # 最終ページ
+                        logger.info(
+                            f"Completed pagination: {page_count} pages, "
+                            f"{len(all_servers)} total items"
+                        )
+                        break
+
+                    # ページ間遅延
+                    if cursor:
+                        await asyncio.sleep(page_delay_ms / 1000.0)
+
+                # 最大ページ数到達チェック
+                if cursor and page_count >= max_pages:
+                    self._append_warning(
+                        f"Max pages ({max_pages}) reached. "
+                        f"Returning {len(all_servers)} items. "
+                        f"More items may be available."
+                    )
+
+            # スキーマ変換（重複除外を含む）
+            used_ids: Set[str] = set()
+            items: List[CatalogItem] = []
+            for server in all_servers:
+                item = self._convert_explore_server(server, used_ids=used_ids)
+                if item is not None:
+                    items.append(item)
+
+            return items
+
+        except CatalogError:
+            # CatalogError はそのまま再スロー
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error in pagination: {e}", exc_info=True)
+            if all_servers:
+                # 部分成功
+                self._append_warning(f"Unexpected error: {e}. Returning partial data.")
+                used_ids: Set[str] = set()
+                items: List[CatalogItem] = []
+                for server in all_servers:
+                    item = self._convert_explore_server(server, used_ids=used_ids)
+                    if item is not None:
+                        items.append(item)
+                return items
+            else:
+                raise CatalogError(
+                    message=f"Failed to fetch catalog: {e}",
+                    error_code=CatalogErrorCode.INTERNAL_ERROR
+                )
 
     def _is_github_contents_payload(self, data: List[Any]) -> bool:
         """
