@@ -60,6 +60,19 @@ class Settings(BaseSettings):
     catalog_default_url: str = "https://api.github.com/repos/docker/mcp-registry/contents/servers"
     # Official MCP Registry の既定URL
     catalog_official_url: str = "https://registry.modelcontextprotocol.io/v0/servers"
+    # Official MCP Registry ページネーション設定
+    catalog_official_max_pages: int = Field(
+        default=20,
+        description="Official Registry からの最大取得ページ数（1ページ=30件）"
+    )
+    catalog_official_fetch_timeout: int = Field(
+        default=60,
+        description="全ページ取得の合計タイムアウト秒数"
+    )
+    catalog_official_page_delay: int = Field(
+        default=100,
+        description="ページ間遅延ミリ秒"
+    )
     # GitHub API のレート制限回避用トークン(任意)
     github_token: str = ""
     # 開発用途でのみ HTTP/localhost を許可するフラグ

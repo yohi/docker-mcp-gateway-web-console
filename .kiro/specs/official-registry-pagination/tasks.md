@@ -8,7 +8,7 @@
 
 ## フェーズ 1: バックエンド設定の追加 (P)
 
-- [ ] 1. ページネーション関連の設定を追加する (P)
+- [x] 1. ページネーション関連の設定を追加する (P)
   - Settings クラスに `catalog_official_max_pages`（デフォルト: 20）を追加する
   - Settings クラスに `catalog_official_fetch_timeout`（デフォルト: 60）を追加する
   - Settings クラスに `catalog_official_page_delay`（デフォルト: 100）を追加する
