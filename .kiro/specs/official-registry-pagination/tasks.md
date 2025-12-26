@@ -20,7 +20,7 @@
 
 ## フェーズ 2: カーソルページネーション取得の実装
 
-- [ ] 2. `_fetch_official_registry_with_pagination` メソッドを実装する
+- [x] 2. `_fetch_official_registry_with_pagination` メソッドを実装する
   - 初回リクエストをカーソルなしで発行する
   - レスポンスから `metadata.nextCursor` と `servers` を抽出する
   - カーソルが存在する場合、`?cursor={nextCursor}` パラメータ付きで次ページを取得する
@@ -28,16 +28,16 @@
   - 各ページの `servers` 配列を結合する
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 3. ページ間遅延を実装する
+- [x] 3. ページ間遅延を実装する
   - 各ページ取得後に `asyncio.sleep(page_delay_ms / 1000.0)` で遅延を挿入する
   - 最終ページ（カーソルなし）の場合は遅延をスキップする
   - 設定値（`catalog_official_page_delay`）を使用する
   - _Requirements: 1.4_
 
-- [ ] 4. 重複除外ロジックを実装する
-  - ID ベースの重複除外を実装する（`seen_ids` セットを使用）
-  - 全ページ結合後に重複を除外する
-  - 重複除外後のリストを返却する
+- [x] 4. 重複除外ロジックを実装する
+  - ID ベースの重複除外を実装する（`used_ids` セットを使用）
+  - `_convert_explore_server` 内で ID の一意性を保証する
+  - 全ページに対して単一の `used_ids` を共有する
   - _Requirements: 1.3_
 
 - [ ] 5. 最大ページ数制限を実装する
