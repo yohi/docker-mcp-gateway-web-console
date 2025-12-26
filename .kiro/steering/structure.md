@@ -1,6 +1,6 @@
 # Project Structure
 
-最終更新: 2025-12-22
+最終更新: 2025-12-26
 
 ## 組織方針
 
@@ -21,7 +21,7 @@
 ### Backend Application
 **Location**: `/backend/` — FastAPI + Docker SDK
 - `app/api/`: ルートハンドラー（認証、カタログ、GitHub トークン、コンテナ、インスペクタ、OAuth コールバック、ゲートウェイ、リモートMCP、セッション、設定）
-- `app/services/`: コアロジック（Docker 操作、秘密管理、カタログ取得、GitHub トークン管理、OAuth フロー、セッション実行と mTLS バンドル生成、署名検証ポリシー適用、外部/E2B ゲートウェイ許可リストとヘルスチェック、リモートMCP接続、監査メトリクス、state ストア、設定管理）
+- `app/services/`: コアロジック（認証、Docker 操作、秘密管理、カタログ取得、GitHub トークン管理、OAuth フロー、セッション実行と mTLS バンドル生成、署名検証ポリシー適用、インスペクタ、外部/E2B ゲートウェイ許可リストとヘルスチェック、リモートMCP接続、監査メトリクス、state ストア、設定管理）
 - `app/models/`: Pydantic モデル（設定、カタログ、GitHub トークン、署名ポリシー、状態記録）
 - `app/schemas/`: カタログ関連スキーマ
 - `data/`: SQLite `state.db`（セッション・ゲートウェイ・資格情報・トークン）と証明書生成先ディレクトリ。**デフォルトで正規の保存場所**（STATE_DB_PATH 環境変数で上書き可能）
