@@ -673,7 +673,7 @@ async def test_get_catalog_official_pagination_cache_hit():
     Requirements: 4.1, 4.2, 4.3
     Task: 13
     """
-    # Create 90 mock servers (3 pages × 30 items)
+    # Create 90 mock servers (3 pages x 30 items)
     paginated_items = []
     for i in range(90):
         paginated_items.append(
