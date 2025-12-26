@@ -120,7 +120,7 @@
 
 ## フェーズ 5: ドキュメント更新 (P)
 
-- [ ] 15. 環境変数のドキュメントを更新する (P)
+- [x] 15. 環境変数のドキュメントを更新する (P)
   - `CATALOG_OFFICIAL_MAX_PAGES` の説明を追加する（デフォルト: 20、最大600件）
   - `CATALOG_OFFICIAL_FETCH_TIMEOUT` の説明を追加する（デフォルト: 60秒）
   - `CATALOG_OFFICIAL_PAGE_DELAY` の説明を追加する（デフォルト: 100ms）
