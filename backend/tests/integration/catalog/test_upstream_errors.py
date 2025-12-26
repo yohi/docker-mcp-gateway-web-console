@@ -280,7 +280,7 @@ async def test_search_endpoint_upstream_timeout_returns_503():
         mock_client_class.return_value = mock_client
 
         async with AsyncClient(app=app, base_url="http://test") as client:
-            response = await client.get("/api/catalog/search?source=official&q=test")
+            response = await client.get("/api/catalog/search?source=docker&q=test")
 
         # Verify 503 response
         assert response.status_code == 503
