@@ -44,6 +44,9 @@ Create a `.env` file in the `backend/` directory:
 | `SECRET_CACHE_TTL_SECONDS` | Secret cache time-to-live | `1800` | `3600` |
 | `MAX_LOG_LINES` | Maximum log lines to stream | `1000` | `5000` |
 | `CATALOG_OFFICIAL_URL` | Official MCP Registry URL | `https://registry.modelcontextprotocol.io/v0/servers` | `https://registry.example.com/v0/servers` |
+| `CATALOG_OFFICIAL_MAX_PAGES` | Maximum number of pages to fetch from Official Registry (1 page = 30 items) | `20` | `50` |
+| `CATALOG_OFFICIAL_FETCH_TIMEOUT` | Total timeout seconds for fetching all pages | `60` | `120` |
+| `CATALOG_OFFICIAL_PAGE_DELAY` | Delay in milliseconds between page fetches | `100` | `200` |
 | `CATALOG_DOCKER_URL` | Docker MCP Catalog URL (Recommended replacement for `CATALOG_DEFAULT_URL`) | Value of `CATALOG_DEFAULT_URL` | `https://example.com/docker_catalog.json` |
 | `CATALOG_DEFAULT_URL` | Default catalog URL (**Deprecated**) | - | `https://example.com/catalog.json` |
 | `REMOTE_MCP_ALLOWED_DOMAINS` | Allowed remote MCP server domains (comma-separated). Empty means deny-all. | `""` | `api.example.com,*.trusted.com` |
@@ -77,6 +80,9 @@ CATALOG_DOCKER_URL=https://raw.githubusercontent.com/example/mcp-catalog/main/ca
 
 # Official Registry
 CATALOG_OFFICIAL_URL=https://registry.modelcontextprotocol.io/v0/servers
+CATALOG_OFFICIAL_MAX_PAGES=20
+CATALOG_OFFICIAL_FETCH_TIMEOUT=60
+CATALOG_OFFICIAL_PAGE_DELAY=100
 
 # Remote MCP Configuration
 REMOTE_MCP_ALLOWED_DOMAINS=api.example.com,*.trusted.com
