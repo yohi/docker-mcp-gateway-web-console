@@ -1,10 +1,15 @@
 
+import asyncio
+import logging
 import pytest
+from datetime import timedelta
 from unittest.mock import patch, AsyncMock
 from app.main import app
 from app.config import settings
 from app.models.catalog import CatalogItem
 from httpx import AsyncClient
+
+logger = logging.getLogger(__name__)
 
 # Sample Official MCP Registry response format
 OFFICIAL_REGISTRY_RESPONSE = [
@@ -398,3 +403,221 @@ async def test_get_catalog_official_pagination_with_cache():
 
         # Verify get_cached_catalog was called
         mock_get_cache.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_catalog_cache_behavior_with_pagination():
+    """
+    Test cache behavior with pagination:
+    1. First request triggers pagination fetch
+    2. Second request uses cache (no pagination)
+    3. After TTL expiry, third request re-fetches with pagination
+
+    Requirements: 4.1, 4.2, 4.3
+    Task: 14
+    """
+    from app.services.catalog import CatalogService
+
+    # Create a real CatalogService instance with a short TTL for testing
+    service = CatalogService()
+    service._cache_ttl = timedelta(seconds=2)  # Short TTL for testing
+
+    # Mock the _fetch_official_registry_with_pagination method
+    mock_servers = []
+    for i in range(90):
+        mock_servers.append(
+            CatalogItem(
+                id=f"pagination-test-{i}",
+                name=f"Pagination Test Server {i}",
+                description=f"Test server {i} for pagination caching",
+                vendor="testvendor",
+                category="general",
+                docker_image=f"testvendor/server-{i}:latest",
+                required_envs=[],
+                required_secrets=[]
+            )
+        )
+
+    fetch_count = 0
+
+    async def mock_fetch_paginated(source_url: str):
+        nonlocal fetch_count
+        fetch_count += 1
+        logger.info(f"Mock fetch called (count: {fetch_count})")
+        return mock_servers
+
+    with patch.object(service, "_fetch_from_url", side_effect=mock_fetch_paginated):
+        # First request: should trigger pagination fetch
+        items1, cached1 = await service.fetch_catalog(settings.catalog_official_url)
+        assert len(items1) == 90
+        assert cached1 is False
+        assert fetch_count == 1, "First request should trigger fetch"
+
+        # Second request: should use cache (no fetch)
+        items2, cached2 = await service.fetch_catalog(settings.catalog_official_url)
+        assert len(items2) == 90
+        assert cached2 is True
+        assert fetch_count == 1, "Second request should use cache"
+
+        # Verify items are the same
+        assert items1[0].id == items2[0].id
+        assert items1[-1].id == items2[-1].id
+
+        # Wait for cache to expire
+        await asyncio.sleep(2.5)
+
+        # Third request: cache expired, should re-fetch
+        items3, cached3 = await service.fetch_catalog(settings.catalog_official_url)
+        assert len(items3) == 90
+        assert cached3 is False
+        assert fetch_count == 2, "Third request should re-fetch after TTL expiry"
+
+        # Verify items are still correct
+        assert items3[0].id == "pagination-test-0"
+        assert items3[-1].id == "pagination-test-89"
+
+
+@pytest.mark.asyncio
+async def test_catalog_cache_isolated_by_source_url():
+    """
+    Test that cache is properly isolated by source_url.
+    Different source URLs should have separate cache entries.
+
+    Requirements: 4.1, 4.2
+    Task: 14
+    """
+    from app.services.catalog import CatalogService
+
+    service = CatalogService()
+    service._cache_ttl = timedelta(seconds=10)
+
+    # Mock servers for official source
+    official_servers = [
+        CatalogItem(
+            id="official-server",
+            name="Official Server",
+            description="From official registry",
+            vendor="official",
+            category="general",
+            docker_image="official/server:latest",
+            required_envs=[],
+            required_secrets=[]
+        )
+    ]
+
+    # Mock servers for docker source
+    docker_servers = [
+        CatalogItem(
+            id="docker-server",
+            name="Docker Server",
+            description="From docker registry",
+            vendor="docker",
+            category="general",
+            docker_image="docker/server:latest",
+            required_envs=[],
+            required_secrets=[]
+        )
+    ]
+
+    async def mock_fetch_url(source_url: str):
+        if source_url == settings.catalog_official_url:
+            return official_servers
+        else:
+            return docker_servers
+
+    with patch.object(service, "_fetch_from_url", side_effect=mock_fetch_url):
+        # Fetch from official source
+        items_official, cached1 = await service.fetch_catalog(settings.catalog_official_url)
+        assert len(items_official) == 1
+        assert items_official[0].id == "official-server"
+        assert cached1 is False
+
+        # Fetch from docker source
+        items_docker, cached2 = await service.fetch_catalog(settings.catalog_docker_url)
+        assert len(items_docker) == 1
+        assert items_docker[0].id == "docker-server"
+        assert cached2 is False
+
+        # Verify both are cached independently
+        cached_official = await service.get_cached_catalog(settings.catalog_official_url)
+        cached_docker = await service.get_cached_catalog(settings.catalog_docker_url)
+
+        assert cached_official is not None
+        assert cached_docker is not None
+        assert cached_official[0].id == "official-server"
+        assert cached_docker[0].id == "docker-server"
+
+
+@pytest.mark.asyncio
+async def test_catalog_force_refresh_bypasses_cache():
+    """
+    Test that force_refresh parameter bypasses cache and triggers re-fetch.
+
+    Requirements: 4.2
+    Task: 14
+    """
+    from app.services.catalog import CatalogService
+
+    service = CatalogService()
+    service._cache_ttl = timedelta(seconds=60)  # Long TTL
+
+    mock_servers_v1 = [
+        CatalogItem(
+            id="server-v1",
+            name="Server V1",
+            description="Version 1",
+            vendor="test",
+            category="general",
+            docker_image="test/server:v1",
+            required_envs=[],
+            required_secrets=[]
+        )
+    ]
+
+    mock_servers_v2 = [
+        CatalogItem(
+            id="server-v2",
+            name="Server V2",
+            description="Version 2",
+            vendor="test",
+            category="general",
+            docker_image="test/server:v2",
+            required_envs=[],
+            required_secrets=[]
+        )
+    ]
+
+    fetch_count = 0
+
+    async def mock_fetch_paginated(source_url: str):
+        nonlocal fetch_count
+        fetch_count += 1
+        if fetch_count == 1:
+            return mock_servers_v1
+        else:
+            return mock_servers_v2
+
+    with patch.object(service, "_fetch_from_url", side_effect=mock_fetch_paginated):
+        # First request: fetch V1
+        items1, cached1 = await service.fetch_catalog(settings.catalog_official_url)
+        assert items1[0].id == "server-v1"
+        assert cached1 is False
+        assert fetch_count == 1
+
+        # Second request without force_refresh: should use cache (V1)
+        items2, cached2 = await service.fetch_catalog(settings.catalog_official_url, force_refresh=False)
+        assert items2[0].id == "server-v1"
+        assert cached2 is True
+        assert fetch_count == 1, "Should use cache"
+
+        # Third request with force_refresh: should bypass cache and fetch V2
+        items3, cached3 = await service.fetch_catalog(settings.catalog_official_url, force_refresh=True)
+        assert items3[0].id == "server-v2"
+        assert cached3 is False
+        assert fetch_count == 2, "Should bypass cache with force_refresh"
+
+        # Fourth request: should use updated cache (V2)
+        items4, cached4 = await service.fetch_catalog(settings.catalog_official_url)
+        assert items4[0].id == "server-v2"
+        assert cached4 is True
+        assert fetch_count == 2, "Should use updated cache"
