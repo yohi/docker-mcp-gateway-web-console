@@ -377,6 +377,13 @@ async def _fetch_from_url(self, source_url: str) -> List[CatalogItem]:
 
 ##### Service Interface
 
+**注意**: 以下のコードはデザイン/サンプルとして提供されており、そのまま本番環境で使用できるものではありません。実装時には以下を確認してください：
+- 例外の種類と処理順序が実際の HTTP クライアント（httpx）の動作に合致しているか
+- 部分成功時の動作が要件を満たしているか
+- 依存するヘルパーメソッドと設定値が実装環境に存在するか
+
+#### Design Example (実装パターン)
+
 ```python
 async def _fetch_official_registry_with_pagination(
     self, 
@@ -532,9 +539,43 @@ async def _fetch_official_registry_with_pagination(
             )
 ```
 
+#### Dependencies (依存関係)
+
+このサンプルコードは以下のヘルパーメソッドと設定値に依存しています。実装前に存在を確認してください：
+
+**ヘルパーメソッド**:
+- `_convert_explore_server(server: dict) -> CatalogItem`: サーバー辞書を `CatalogItem` に変換
+- `_get_headers() -> dict`: HTTP リクエストヘッダーを生成
+- `_parse_retry_after_seconds(header_value: str | None) -> int | None`: `Retry-After` ヘッダーをパース
+- `_append_warning(message: str) -> None`: 警告メッセージをインスタンス変数に追記
+
+**設定値** (Settings):
+- `settings.catalog_official_max_pages`: 最大取得ページ数（デフォルト: 20）
+- `settings.catalog_official_fetch_timeout`: 全体タイムアウト秒数（デフォルト: 60）
+- `settings.catalog_official_page_delay`: ページ間遅延ミリ秒（デフォルト: 100）
+
+**その他**:
+- `logger`: ロギングインスタンス（進捗とエラーの記録用）
+- `CatalogError`, `CatalogErrorCode`: エラー型とエラーコード定義
+
+#### Implementation Checklist (実装チェックリスト)
+
+実装者は以下を確認してから本番環境にコードを適用してください：
+
+- [ ] **ヘルパーメソッドの存在確認**: `_convert_explore_server`, `_get_headers`, `_parse_retry_after_seconds`, `_append_warning` が実装されているか
+- [ ] **設定値の定義確認**: `catalog_official_max_pages`, `catalog_official_fetch_timeout`, `catalog_official_page_delay` が `Settings` に定義されているか
+- [ ] **例外型の検証**: `httpx.HTTPStatusError` と `httpx.AsyncClient` の例外型が実際の httpx バージョンと一致するか
+- [ ] **エラー処理の適応**: 429 以外の HTTP ステータスコード（503, 504 等）に対するエラーハンドリングが適切か
+- [ ] **部分成功動作の確認**: 途中エラー時に取得済みデータを返却する動作が要件を満たしているか
+- [ ] **タイムアウト動作の確認**: `time.time()` による経過時間計測が期待通りに動作するか
+- [ ] **重複除外ロジックの検証**: ID ベースの重複除外が必要か、またロジックが正しいか
+- [ ] **ログ出力の確認**: `logger.info` と `logger.error` の出力レベルとメッセージが適切か
+
+##### Contract Specification
+
 - Preconditions: `source_url` は Official Registry の URL
 - Postconditions: `List[CatalogItem]` を返却、または `CatalogError` をスロー
-- Invariants: 
+- Invariants:
   - ページ数は `max_pages` を超えない
   - 全体実行時間は `timeout_seconds` を超えない
   - 各ページ取得間に `page_delay_ms` の遅延を挿入

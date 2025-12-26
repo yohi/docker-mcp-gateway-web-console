@@ -343,6 +343,6 @@ for item in items:
 
 ## References
 
-- Official MCP Registry API: https://registry.modelcontextprotocol.io/v0/servers
+- [Official MCP Registry API](https://registry.modelcontextprotocol.io/v0/servers)
 - Existing Implementation: `backend/app/services/catalog.py`
 - Requirements: `.kiro/specs/official-registry-pagination/requirements.md`
