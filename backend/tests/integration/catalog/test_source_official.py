@@ -300,3 +300,101 @@ async def test_get_catalog_official_error_handling():
         data = response.json()
         assert data["error_code"] == "upstream_unavailable"
         assert "detail" in data
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_official_pagination():
+    """
+    Test Official Registry pagination with multiple pages.
+    Verifies that more than 30 items are returned when pagination is used.
+
+    Requirements: 1.3, 4.1, 5.3
+    Task: 13
+    """
+    # Create 90 mock servers (3 pages × 30 items)
+    mock_servers = []
+    for i in range(90):
+        mock_servers.append(
+            CatalogItem(
+                id=f"test-server-{i}",
+                name=f"Test Server {i}",
+                description=f"Test server number {i}",
+                vendor="testvendor",
+                category="general",
+                docker_image="",
+                required_envs=[],
+                required_secrets=[]
+            )
+        )
+
+    with patch("app.api.catalog.catalog_service.fetch_catalog") as mock_fetch, \
+         patch("app.api.catalog.catalog_service.get_cached_catalog") as mock_get_cache:
+
+        # Scenario: No cache, fetch from Official Registry with pagination
+        mock_get_cache.return_value = None
+        mock_fetch.return_value = (mock_servers, False)
+
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            response = await client.get("/api/catalog?source=official")
+
+        # Verify response
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cached"] is False
+
+        # Verify more than 30 items are returned (pagination working)
+        assert len(data["servers"]) > 30
+        assert len(data["servers"]) == 90
+
+        # Verify service was called with Official Registry URL
+        mock_fetch.assert_called_once()
+        args, _ = mock_fetch.call_args
+        assert args[0] == settings.catalog_official_url
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_official_pagination_with_cache():
+    """
+    Test that paginated Official Registry data is cached correctly.
+    Verifies cache behavior works with pagination.
+
+    Requirements: 4.1, 4.2, 4.3
+    Task: 13
+    """
+    # Create 90 mock servers (3 pages × 30 items)
+    mock_servers = []
+    for i in range(90):
+        mock_servers.append(
+            CatalogItem(
+                id=f"cached-server-{i}",
+                name=f"Cached Server {i}",
+                description=f"Cached server number {i}",
+                vendor="testvendor",
+                category="general",
+                docker_image="",
+                required_envs=[],
+                required_secrets=[]
+            )
+        )
+
+    with patch("app.api.catalog.catalog_service.get_cached_catalog") as mock_get_cache:
+        # Scenario: Cache available with 90 items (from pagination)
+        mock_get_cache.return_value = mock_servers
+
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            response = await client.get("/api/catalog?source=official")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify cached data is returned
+        assert data["cached"] is True
+        assert len(data["servers"]) == 90
+
+        # Verify all 90 cached items are accessible
+        server_ids = [s["id"] for s in data["servers"]]
+        assert "cached-server-0" in server_ids
+        assert "cached-server-89" in server_ids
+
+        # Verify get_cached_catalog was called
+        mock_get_cache.assert_called_once()
