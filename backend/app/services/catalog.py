@@ -668,10 +668,33 @@ class CatalogService:
                         f"More items may be available."
                     )
 
+            # 重複除外 (生の server dict の name に基づく)
+            # ページネーションで同じアイテムが重複して返されるケースや、誤って複数回含まれるケースを防ぐ
+            unique_servers: List[dict] = []
+            seen_raw_names: Set[str] = set()
+
+            for server in all_servers:
+                raw_name = None
+                if isinstance(server, dict):
+                    # Nested format (registry.modelcontextprotocol.io)
+                    if isinstance(server.get("server"), dict):
+                        raw_name = server["server"].get("name")
+                    # Flat format
+                    else:
+                        raw_name = server.get("name")
+                
+                # 名前が特定できる場合は重複チェック
+                if raw_name and isinstance(raw_name, str):
+                    if raw_name in seen_raw_names:
+                        continue
+                    seen_raw_names.add(raw_name)
+                
+                unique_servers.append(server)
+
             # スキーマ変換（重複除外を含む）
             used_ids: Set[str] = set()
             items: List[CatalogItem] = []
-            for server in all_servers:
+            for server in unique_servers:
                 item = self._convert_explore_server(server, used_ids=used_ids)
                 if item is not None:
                     items.append(item)
