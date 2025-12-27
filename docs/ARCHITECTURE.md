@@ -164,6 +164,37 @@ User Action → Component → API Call → Backend
 └─────────────────────────────────────────────────┘
 ```
 
+## Feature Architecture: Official MCP Registry Integration
+
+### Overview
+The integration with the Official MCP Registry (`registry.modelcontextprotocol.io`) implements a cursor-based pagination system to retrieve all available servers, overcoming the default limit of 30 items per request.
+
+### Operational Specification
+
+#### Cursor-based Pagination
+1. **Initial Request**: The system fetches the first page (`/v0/servers`) without a cursor.
+2. **Cursor Extraction**: It extracts `metadata.nextCursor` from the response.
+3. **Pagination Loop**: If a cursor exists, it fetches the next page (`?cursor={nextCursor}`) and repeats until no cursor is returned.
+4. **Data Aggregation**: All fetched pages are aggregated into a single list of servers, with duplicates removed based on server IDs.
+
+#### Pagination Limits & Controls
+To prevent infinite loops and excessive resource usage, the system enforces strict limits configurable via environment variables:
+
+- **Max Pages**: Limited by `CATALOG_OFFICIAL_MAX_PAGES` (default: 20).
+- **Timeouts**: Total fetch operation is limited by `CATALOG_OFFICIAL_FETCH_TIMEOUT` (default: 60s).
+- **Rate Limiting**: A delay is inserted between requests (`CATALOG_OFFICIAL_PAGE_DELAY`, default: 100ms) to respect upstream rate limits.
+
+#### Partial Success Handling
+The system implements a "partial success" strategy to ensure resilience:
+- If a fetch fails (network error, timeout, or max pages reached) after retrieving some pages, the system **returns the data collected so far** instead of failing completely.
+- A warning is attached to the response to inform the user that the list might be incomplete.
+- Rate limit errors (HTTP 429) are respected with appropriate retry delays, falling back to partial results if retries are exhausted.
+
+#### Caching Strategy
+- The aggregated full list is cached in memory to minimize upstream requests.
+- Cache TTL is controlled by `CATALOG_CACHE_TTL_SECONDS`.
+- Pagination logic is skipped if valid cache exists.
+
 ## Data Models
 
 ### Core Entities
