@@ -219,9 +219,9 @@ class TestFetchOfficialRegistryWithPagination:
                     assert len(result) == 30
 
     @pytest.mark.asyncio
-    async def test_duplicate_removal(self, catalog_service, mock_settings):
-        """Test that duplicate servers are removed based on ID."""
-        # Task 4: ID ベースの重複除外を実装する
+    async def test_duplicate_id_collision_handling(self, catalog_service, mock_settings):
+        """Test that duplicate server IDs are handled by appending suffixes."""
+        # Task 4: ID 衝突時に接尾辞を付けて一意性を保つ
         # Create pages with some duplicate servers
         page1_servers = [
             create_mock_server("test", 1),
