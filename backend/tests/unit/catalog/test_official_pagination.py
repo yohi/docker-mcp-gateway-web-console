@@ -354,6 +354,10 @@ class TestMaxPagesLimit:
                     mock_settings.catalog_official_url
                 )
 
+                # Verify result contains expected items from first page
+                assert isinstance(result, list)
+                assert len(result) == 30  # Only first page (max_pages=1)
+
                 # Verify warning contains expected information
                 warning = catalog_service.warning
                 assert warning is not None
@@ -493,6 +497,10 @@ class TestTimeout:
                     result = await catalog_service._fetch_official_registry_with_pagination(
                         mock_settings.catalog_official_url
                     )
+
+                    # Verify result contains items from first page before timeout
+                    assert isinstance(result, list)
+                    assert len(result) == 30  # Only first page before timeout
 
                     # Verify warning contains expected information
                     warning = catalog_service.warning
