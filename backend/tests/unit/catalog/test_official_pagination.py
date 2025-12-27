@@ -219,9 +219,9 @@ class TestFetchOfficialRegistryWithPagination:
                     assert len(result) == 30
 
     @pytest.mark.asyncio
-    async def test_duplicate_removal(self, catalog_service, mock_settings):
-        """Test that duplicate servers are removed based on ID."""
-        # Task 4: ID ベースの重複除外を実装する
+    async def test_duplicate_id_collision_handling(self, catalog_service, mock_settings):
+        """Test that duplicate server IDs are handled by appending suffixes."""
+        # Task 4: ID 衝突時に接尾辞を付けて一意性を保つ
         # Create pages with some duplicate servers
         page1_servers = [
             create_mock_server("test", 1),
@@ -353,6 +353,10 @@ class TestMaxPagesLimit:
                 result = await catalog_service._fetch_official_registry_with_pagination(
                     mock_settings.catalog_official_url
                 )
+
+                # Verify result contains expected items from first page
+                assert isinstance(result, list)
+                assert len(result) == 30  # Only first page (max_pages=1)
 
                 # Verify warning contains expected information
                 warning = catalog_service.warning
@@ -493,6 +497,10 @@ class TestTimeout:
                     result = await catalog_service._fetch_official_registry_with_pagination(
                         mock_settings.catalog_official_url
                     )
+
+                    # Verify result contains items from first page before timeout
+                    assert isinstance(result, list)
+                    assert len(result) == 30  # Only first page before timeout
 
                     # Verify warning contains expected information
                     warning = catalog_service.warning

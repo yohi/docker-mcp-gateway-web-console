@@ -27,6 +27,12 @@
 - フロントエンドとバックエンドの単体テスト
 - Docker Compose開発環境
 - 本番環境デプロイ設定
+- Official MCP Registryのカーソルベースページネーション対応
+  - Official Registryから全サーバー（最初の30件を超える）を取得可能
+  - ページネーション上限の設定（`CATALOG_OFFICIAL_MAX_PAGES`、デフォルト: 20）
+  - タイムアウトの設定（`CATALOG_OFFICIAL_FETCH_TIMEOUT`、デフォルト: 60秒）
+  - ページ間遅延の設定（`CATALOG_OFFICIAL_PAGE_DELAY`、デフォルト: 100ms）
+  - 部分成功時の警告メッセージ表示
 
 ### セキュリティ (Security)
 - シークレットは決してディスクに書き込まれない

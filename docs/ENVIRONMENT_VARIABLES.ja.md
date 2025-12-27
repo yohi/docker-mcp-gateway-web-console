@@ -44,6 +44,9 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 | `SECRET_CACHE_TTL_SECONDS` | シークレットキャッシュの生存時間 | `1800` | `3600` |
 | `MAX_LOG_LINES` | ストリーミングする最大ログ行数 | `1000` | `5000` |
 | `CATALOG_OFFICIAL_URL` | Official MCP Registry URL | `https://registry.modelcontextprotocol.io/v0/servers` | `https://registry.example.com/v0/servers` |
+| `CATALOG_OFFICIAL_MAX_PAGES` | Official Registry からの最大取得ページ数（1ページ=30件） | `20` | `50` |
+| `CATALOG_OFFICIAL_FETCH_TIMEOUT` | 全ページ取得の合計タイムアウト秒数 | `60` | `120` |
+| `CATALOG_OFFICIAL_PAGE_DELAY` | ページ間遅延ミリ秒 | `100` | `200` |
 | `CATALOG_DOCKER_URL` | Docker MCP Catalog URL (`CATALOG_DEFAULT_URL` 推奨代替) | `CATALOG_DEFAULT_URL` の値 | `https://example.com/docker_catalog.json` |
 | `CATALOG_DEFAULT_URL` | デフォルトのカタログURL (**非推奨**) | - | `https://example.com/catalog.json` |
 | `REMOTE_MCP_ALLOWED_DOMAINS` | 許可するリモートMCPサーバーのドメイン（カンマ区切り）。空の場合はすべて拒否。 | `""` | `api.example.com,*.trusted.com` |
@@ -76,6 +79,9 @@ CATALOG_DOCKER_URL=https://raw.githubusercontent.com/example/mcp-catalog/main/ca
 
 # Official Registry
 CATALOG_OFFICIAL_URL=https://registry.modelcontextprotocol.io/v0/servers
+CATALOG_OFFICIAL_MAX_PAGES=20
+CATALOG_OFFICIAL_FETCH_TIMEOUT=60
+CATALOG_OFFICIAL_PAGE_DELAY=100
 
 # Remote MCP Configuration
 REMOTE_MCP_ALLOWED_DOMAINS=api.example.com,*.trusted.com
