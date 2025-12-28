@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import contextvars
+import hashlib
 import ipaddress
 import json
 import logging
@@ -672,6 +673,7 @@ class CatalogService:
             # ページネーションで同じアイテムが重複して返されるケースや、誤って複数回含まれるケースを防ぐ
             unique_servers: List[dict] = []
             seen_raw_names: Set[str] = set()
+            seen_hashes: Set[str] = set()  # 名前のないサーバーの重複除外用
 
             for server in all_servers:
                 raw_name = None
@@ -682,13 +684,25 @@ class CatalogService:
                     # Flat format
                     else:
                         raw_name = server.get("name")
-                
-                # 名前が特定できる場合は重複チェック
+
+                # 名前が特定できる場合は名前ベースで重複チェック
                 if raw_name and isinstance(raw_name, str):
                     if raw_name in seen_raw_names:
                         continue
                     seen_raw_names.add(raw_name)
-                
+                else:
+                    # 名前がない場合はコンテンツハッシュで重複チェック
+                    # サーバーdict全体をJSON化してハッシュを計算
+                    try:
+                        server_json = json.dumps(server, sort_keys=True)
+                        content_hash = hashlib.sha256(server_json.encode()).hexdigest()
+                        if content_hash in seen_hashes:
+                            continue
+                        seen_hashes.add(content_hash)
+                    except (TypeError, ValueError):
+                        # JSON化できない場合はスキップ
+                        continue
+
                 unique_servers.append(server)
 
             # スキーマ変換（重複除外を含む）
