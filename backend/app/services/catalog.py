@@ -705,7 +705,7 @@ class CatalogService:
 
                 unique_servers.append(server)
 
-            # スキーマ変換（重複除外を含む）
+            # スキーマ変換(重複除外を含む)
             used_ids: Set[str] = set()
             items: List[CatalogItem] = []
             for server in unique_servers:

@@ -220,8 +220,8 @@ class TestFetchOfficialRegistryWithPagination:
 
     @pytest.mark.asyncio
     async def test_duplicate_id_collision_handling(self, catalog_service, mock_settings):
-        """Test that duplicate server IDs are handled by appending suffixes."""
-        # Task 4: ID 衝突時に接尾辞を付けて一意性を保つ
+        """Test that duplicate server names are filtered out."""
+        # 重複したサーバー名を除外する
         # Create pages with some duplicate servers
         page1_servers = [
             create_mock_server("test", 1),
@@ -261,12 +261,12 @@ class TestFetchOfficialRegistryWithPagination:
                     mock_settings.catalog_official_url
                 )
 
-                # Verify duplicate names get unique IDs (test-2 becomes test-2 and test-2-2)
-                assert len(result) == 6
+                # Verify duplicate names are filtered out (test-2 from page 2 is excluded)
+                assert len(result) == 5
 
-                # Verify all unique IDs are present (test-2 from page 1, test-2-2 from page 2)
+                # Verify all unique IDs are present (duplicate test-2 from page 2 is filtered out)
                 result_ids = sorted([item.id for item in result])
-                expected_ids = sorted(["test-1", "test-2", "test-2-2", "test-3", "test-4", "test-5"])
+                expected_ids = sorted(["test-1", "test-2", "test-3", "test-4", "test-5"])
                 assert result_ids == expected_ids
 
 
