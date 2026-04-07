@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import os
 import re
 import time
 from datetime import datetime, timezone
@@ -96,26 +95,7 @@ class DockerSdkProvider(ContainerProvider):
             if time.monotonic() - self._last_error_at < 30:
                 raise self._last_error
 
-        # Handle local socket fallback if base_url is a unix socket
         attempted_hosts = [self.base_url]
-        if self.base_url.startswith("unix://"):
-            default_unix = "unix:///var/run/docker.sock"
-            if default_unix not in attempted_hosts:
-                attempted_hosts.append(default_unix)
-            
-            runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
-            if runtime_dir:
-                fallback = f"unix://{runtime_dir}/docker.sock"
-                if fallback not in attempted_hosts:
-                    attempted_hosts.append(fallback)
-            
-            try:
-                uid = os.getuid()
-                fallback_user = f"unix:///run/user/{uid}/docker.sock"
-                if fallback_user not in attempted_hosts:
-                    attempted_hosts.append(fallback_user)
-            except AttributeError:
-                pass
 
         errors = []
         for host in attempted_hosts:

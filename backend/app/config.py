@@ -13,16 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def _default_docker_host() -> str:
-    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
-    if runtime_dir:
-        return f"unix://{runtime_dir}/docker.sock"
-    try:
-        uid = os.getuid()
-    except AttributeError:
-        uid = None
-    if isinstance(uid, int):
-        return f"unix:///run/user/{uid}/docker.sock"
-    return "unix:///var/run/docker.sock"
+    return "tcp://dind:2376"
 
 
 class Settings(BaseSettings):
@@ -41,6 +32,7 @@ class Settings(BaseSettings):
     # Docker Configuration
     docker_host: str = Field(default_factory=_default_docker_host)
     docker_tls_verify: bool = Field(default=False, validation_alias="DOCKER_TLS_VERIFY")
+    docker_cert_path: Optional[str] = Field(default=None, validation_alias="DOCKER_CERT_PATH")
     docker_ca_cert: Optional[str] = Field(default=None, validation_alias="DOCKER_CA_CERT")
     docker_client_cert: Optional[str] = Field(default=None, validation_alias="DOCKER_CLIENT_CERT")
     docker_client_key: Optional[str] = Field(default=None, validation_alias="DOCKER_CLIENT_KEY")
@@ -149,6 +141,15 @@ class Settings(BaseSettings):
 
     def model_post_init(self, __context: object) -> None:
         """OAuth トークン暗号化キーを env > ファイル > 生成の順で取得し、妥当性を検証する。"""
+        if self.docker_tls_verify and self.docker_cert_path:
+            cert_dir = Path(self.docker_cert_path)
+            if self.docker_ca_cert is None:
+                self.docker_ca_cert = str(cert_dir / "ca.pem")
+            if self.docker_client_cert is None:
+                self.docker_client_cert = str(cert_dir / "cert.pem")
+            if self.docker_client_key is None:
+                self.docker_client_key = str(cert_dir / "key.pem")
+
         env_key = self.oauth_token_encryption_key
         # 1. 環境変数が設定されている場合は優先して検証
         if env_key and env_key.strip() and env_key != OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER:

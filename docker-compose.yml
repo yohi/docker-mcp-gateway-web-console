@@ -1,6 +1,25 @@
 version: '3.8'
 
 services:
+  dind:
+    image: docker:dind
+    privileged: true
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
+    volumes:
+      - dind-certs:/certs/client
+      - dind-data:/var/lib/docker
+    ports:
+      - "8080-8090:8080-8090"
+    networks:
+      - mcp-gateway
+    healthcheck:
+      test: ["CMD", "docker", "--tlsverify", "--tlscacert=/certs/client/ca.pem", "--tlscert=/certs/client/cert.pem", "--tlskey=/certs/client/key.pem", "-H=tcp://localhost:2376", "info"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 20s
+
   frontend:
     build:
       context: ./frontend
@@ -33,20 +52,18 @@ services:
     working_dir: /workspace/backend
     ports:
       - "8000:8000"
-    # Run as root to avoid permission issues with rootless Docker socket access inside the container
-    user: "0:0"
     volumes:
       - ./:/workspace
       - ./data:/app/data
       - ./backend:/app
-      - ${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}:${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}
-      - /run/user/${UID:-1000}/docker.sock:/run/user/${UID:-1000}/docker.sock
+      - dind-certs:/certs/client:ro
       - "bw-cli-config:/root/.config/Bitwarden CLI"
       - "bw-cli-cache:/root/.cache/Bitwarden CLI"
     environment:
       - BITWARDEN_CLI_PATH=/usr/local/bin/bw
-      - DOCKER_HOST=${DOCKER_HOST:-unix:///run/user/${UID:-1000}/docker.sock}
-      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/${UID:-1000}}
+      - DOCKER_HOST=tcp://dind:2376
+      - DOCKER_TLS_VERIFY=1
+      - DOCKER_CERT_PATH=/certs/client
       - SESSION_TIMEOUT_MINUTES=30
       - CATALOG_CACHE_TTL_SECONDS=3600
       - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
@@ -60,7 +77,9 @@ services:
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
       - HOME=/root
-      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
+    depends_on:
+      dind:
+        condition: service_healthy
     networks:
       - mcp-gateway
     healthcheck:
@@ -75,6 +94,8 @@ networks:
     driver: bridge
 
 volumes:
+  dind-certs:
+  dind-data:
   bw-cli-config:
   bw-cli-cache:
   data-volume:
