@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Any, AsyncIterator, List, Optional
 
-from fastapi import HTTPException, status
+from fastapi import status
 
 from ..models.containers import (
     ContainerConfig,
@@ -99,10 +99,10 @@ class ContainerService:
 
     async def _validate_session_and_get(self, session_id: str) -> Any:
         """Validate session and return the session model."""
-        is_valid = await self.auth_service.validate_session(session_id)
-        if not is_valid:
+        session = await self.auth_service.get_session(session_id)
+        if session is None:
             raise AuthenticationError("Invalid or expired session")
-        return await self.auth_service.get_session(session_id)
+        return session
 
     def _normalize_container_name(self, name: str) -> str:
         """
@@ -119,18 +119,24 @@ class ContainerService:
                 normalized = "mcp-server"
         return normalized[:63]
 
+    def _handle_provider_exception(self, e: Exception, operation: str) -> None:
+        """Handle provider exceptions and wrap them in ContainerError."""
+        if isinstance(e, ContainerUnavailableError):
+            raise e
+
+        st = getattr(e, "status_code", None)
+        if st == 503:
+            provider_id = self.provider.identifier
+            raise ContainerUnavailableError([provider_id], [f"status={st}, error={e}"]) from e
+
+        raise ContainerError(f"Failed to {operation}: {e}") from e
+
     async def list_containers(self, all_containers: bool = True) -> List[ContainerInfo]:
         """List containers via provider."""
         try:
             return await self.provider.list_containers(all_containers=all_containers)
-        except ContainerUnavailableError:
-            raise
         except Exception as e:
-            st = getattr(e, "status_code", None)
-            if st == 503:
-                base_url = getattr(self.provider, "base_url", "unknown host")
-                raise ContainerUnavailableError([base_url], [f"status={st}, error={e}"]) from e
-            raise ContainerError(f"Failed to list containers: {e}") from e
+            self._handle_provider_exception(e, "list containers")
 
     async def list_containers_with_auth(
         self, session_id: str, all_containers: bool = True
@@ -162,16 +168,11 @@ class ContainerService:
                 sanitized_name,
                 resolved_env,
             )
-        except ContainerUnavailableError:
-            raise
         except Exception as e:
             st = getattr(e, "status_code", None)
             if st == 409:
                 raise ContainerAlreadyExistsError(sanitized_name, status=str(st)) from e
-            if st == 503:
-                base_url = getattr(self.provider, "base_url", "unknown host")
-                raise ContainerUnavailableError([base_url], [f"status={st}, error={e}"]) from e
-            raise ContainerError(f"Failed to create container: {e}") from e
+            self._handle_provider_exception(e, "create container")
             
         # Save state
         try:
@@ -205,8 +206,6 @@ class ContainerService:
     ) -> str:
         """Validate session before creating a container."""
         session = await self._validate_session_and_get(session_id)
-        if session is None:
-            raise AuthenticationError("Invalid or expired session")
         if not session.bw_session_key:
             raise ContainerError("Bitwarden session key not found in session")
 
@@ -227,25 +226,15 @@ class ContainerService:
         """Execute command in container via provider."""
         try:
             return await self.provider.exec_command(container_id, command)
-        except ContainerUnavailableError:
-            raise
         except Exception as e:
-            if getattr(e, "status_code", None) == 503:
-                base_url = getattr(self.provider, "base_url", "unknown host")
-                raise ContainerUnavailableError([base_url], [f"status=503, error={e}"]) from e
-            raise ContainerError(f"Failed to exec command: {e}") from e
+            self._handle_provider_exception(e, "exec command")
 
     async def start_container(self, container_id: str) -> bool:
         """Start container via provider."""
         try:
             return await self.provider.start_container(container_id)
-        except ContainerUnavailableError:
-            raise
         except Exception as e:
-            if getattr(e, "status_code", None) == 503:
-                base_url = getattr(self.provider, "base_url", "unknown host")
-                raise ContainerUnavailableError([base_url], [f"status=503, error={e}"]) from e
-            raise ContainerError(f"Failed to start container: {e}") from e
+            self._handle_provider_exception(e, "start container")
 
     async def start_container_with_auth(self, container_id: str, session_id: str) -> bool:
         """Validate session before starting a container."""
@@ -256,13 +245,8 @@ class ContainerService:
         """Stop container via provider."""
         try:
             return await self.provider.stop_container(container_id, timeout=timeout)
-        except ContainerUnavailableError:
-            raise
         except Exception as e:
-            if getattr(e, "status_code", None) == 503:
-                base_url = getattr(self.provider, "base_url", "unknown host")
-                raise ContainerUnavailableError([base_url], [f"status=503, error={e}"]) from e
-            raise ContainerError(f"Failed to stop container: {e}") from e
+            self._handle_provider_exception(e, "stop container")
 
     async def stop_container_with_auth(
         self, container_id: str, session_id: str, timeout: int = 10
@@ -275,13 +259,8 @@ class ContainerService:
         """Restart container via provider."""
         try:
             return await self.provider.restart_container(container_id, timeout=timeout)
-        except ContainerUnavailableError:
-            raise
         except Exception as e:
-            if getattr(e, "status_code", None) == 503:
-                base_url = getattr(self.provider, "base_url", "unknown host")
-                raise ContainerUnavailableError([base_url], [f"status=503, error={e}"]) from e
-            raise ContainerError(f"Failed to restart container: {e}") from e
+            self._handle_provider_exception(e, "restart container")
 
     async def restart_container_with_auth(
         self, container_id: str, session_id: str, timeout: int = 10
@@ -294,13 +273,8 @@ class ContainerService:
         """Delete container via provider."""
         try:
             return await self.provider.delete_container(container_id, force=force)
-        except ContainerUnavailableError:
-            raise
         except Exception as e:
-            if getattr(e, "status_code", None) == 503:
-                base_url = getattr(self.provider, "base_url", "unknown host")
-                raise ContainerUnavailableError([base_url], [f"status=503, error={e}"]) from e
-            raise ContainerError(f"Failed to delete container: {e}") from e
+            self._handle_provider_exception(e, "delete container")
 
     async def delete_container_with_auth(
         self, container_id: str, session_id: str, force: bool = False
@@ -319,13 +293,8 @@ class ContainerService:
         try:
             async for entry in self.provider.stream_logs(container_id, follow, tail):
                 yield entry
-        except ContainerUnavailableError:
-            raise
         except Exception as e:
-            if getattr(e, "status_code", None) == 503:
-                base_url = getattr(self.provider, "base_url", "unknown host")
-                raise ContainerUnavailableError([base_url], [f"status=503, error={e}"]) from e
-            raise ContainerError(f"Failed to stream logs: {e}") from e
+            self._handle_provider_exception(e, "stream logs")
 
     def close(self):
         """Close provider."""

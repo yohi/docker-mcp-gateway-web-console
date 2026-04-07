@@ -5,6 +5,12 @@ from ..models.containers import ContainerConfig, ContainerInfo, LogEntry
 class ContainerProvider(ABC):
     """Abstract interface for container operations."""
     
+    @property
+    @abstractmethod
+    def identifier(self) -> str:
+        """Return a safe identifier for the provider (e.g., host or URL)."""
+        pass
+
     @abstractmethod
     async def list_containers(self, all_containers: bool = True) -> List[ContainerInfo]:
         """List containers."""

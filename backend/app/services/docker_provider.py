@@ -1,7 +1,6 @@
 """Docker SDK implementation of ContainerProvider."""
 
 import asyncio
-import logging
 import os
 import re
 import time
@@ -10,12 +9,9 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from urllib.parse import urlparse
 
 import docker
-import requests
-from docker.errors import APIError, DockerException, ImageNotFound, NotFound
+from docker.errors import APIError, DockerException, ImageNotFound
 from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout as RequestsTimeout
-from docker.models.containers import Container
 
-from ..config import settings
 from ..models.containers import (
     ContainerConfig,
     ContainerInfo,
@@ -89,6 +85,11 @@ class DockerSdkProvider(ContainerProvider):
         self._last_error: Optional[DockerUnavailableError] = None
         self._last_error_at: Optional[float] = None
 
+    @property
+    def identifier(self) -> str:
+        """Return the base URL as the provider identifier."""
+        return self.base_url
+
     async def _get_client(self) -> docker.DockerClient:
         """Get or create the Docker client in a thread-safe way."""
         if self._client:
@@ -150,7 +151,7 @@ class DockerSdkProvider(ContainerProvider):
 
     async def _call_docker_api(self, func, *args, **kwargs):
         """Wrap Docker API calls to normalize connection errors and clear cached client."""
-        client = await self._get_client()
+        await self._get_client()
         loop = asyncio.get_event_loop()
         try:
             return await loop.run_in_executor(None, lambda: func(*args, **kwargs))

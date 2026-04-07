@@ -22,10 +22,18 @@ def test_devcontainer_dind_tls_config():
     for svc_name in ["workspace", "backend"]:
         svc = services.get(svc_name, {})
         env = {}
-        for item in svc.get("environment", []):
-            if "=" in item:
-                key, value = item.split("=", 1)
-                env[key] = value
+        raw_env = svc.get("environment", [])
+        if isinstance(raw_env, dict):
+            for key, value in raw_env.items():
+                env[key] = str(value) if value is not None else ""
+        elif isinstance(raw_env, list):
+            for item in raw_env:
+                if isinstance(item, str) and "=" in item:
+                    key, value = item.split("=", 1)
+                    env[key] = value
+                elif isinstance(item, str):
+                    env[item] = ""
+        
         assert env.get("DOCKER_HOST") == "tcp://dind:2376"
         assert env.get("DOCKER_TLS_VERIFY") == "1"
         assert env.get("DOCKER_CERT_PATH") == "/certs/client"

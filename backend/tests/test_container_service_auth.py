@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, PropertyMock
 from backend.app.services.containers import ContainerService, AuthenticationError, ContainerError
 from backend.app.services.base import ContainerProvider
 from backend.app.models.containers import ContainerConfig
@@ -9,6 +9,7 @@ def mock_provider():
     provider = MagicMock(spec=ContainerProvider)
     provider.create_container = AsyncMock(return_value="test-container-id")
     provider.close = MagicMock()
+    type(provider).identifier = PropertyMock(return_value="test-host")
     return provider
 
 @pytest.fixture
@@ -36,12 +37,12 @@ async def test_create_container_with_auth_success(mock_provider, mock_secret_man
     container_id = await svc.create_container_with_auth(config, "test-sid")
     
     assert container_id == "test-container-id"
-    mock_auth_service.validate_session.assert_awaited_once_with("test-sid")
+    mock_auth_service.get_session.assert_awaited_once_with("test-sid")
     mock_provider.create_container.assert_awaited_once()
 
 @pytest.mark.asyncio
 async def test_create_container_auth_failure(mock_provider, mock_secret_manager, mock_auth_service):
-    mock_auth_service.validate_session = AsyncMock(return_value=False)
+    mock_auth_service.get_session = AsyncMock(return_value=None)
     svc = ContainerService(
         provider=mock_provider,
         secret_manager=mock_secret_manager,
