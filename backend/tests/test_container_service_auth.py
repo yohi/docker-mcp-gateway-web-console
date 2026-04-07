@@ -70,3 +70,38 @@ async def test_create_container_compensation_on_start_failure(mock_provider, moc
     # 実際の削除処理は DockerSdkProvider 側で行われるため、
     # ここでは例外が正しく伝播することを確認。
     # DockerSdkProvider のユニットテストで詳細な補償処理を検証する。
+
+@pytest.mark.asyncio
+async def test_create_container_compensation_on_503(mock_provider, mock_secret_manager, mock_auth_service):
+    # status_code=503 の例外を投げる
+    e = Exception("Provider unavailable")
+    e.status_code = 503
+    mock_provider.create_container.side_effect = e
+    
+    svc = ContainerService(
+        provider=mock_provider,
+        secret_manager=mock_secret_manager,
+        auth_service=mock_auth_service,
+    )
+    config = ContainerConfig(name="test", image="alpine")
+    
+    with pytest.raises(ContainerError, match="503"):
+        await svc.create_container_with_auth(config, "test-sid")
+
+@pytest.mark.asyncio
+async def test_create_container_compensation_on_409(mock_provider, mock_secret_manager, mock_auth_service):
+    # status_code=409 の例外を投げる
+    e = Exception("Already exists")
+    e.status_code = 409
+    mock_provider.create_container.side_effect = e
+    
+    svc = ContainerService(
+        provider=mock_provider,
+        secret_manager=mock_secret_manager,
+        auth_service=mock_auth_service,
+    )
+    config = ContainerConfig(name="test", image="alpine")
+    
+    # 409 は ContainerAlreadyExistsError (ContainerError のサブクラス) に変換される
+    with pytest.raises(ContainerError, match="409"):
+        await svc.create_container_with_auth(config, "test-sid")

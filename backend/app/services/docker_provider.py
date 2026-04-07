@@ -22,6 +22,7 @@ from ..models.containers import (
     LogEntry,
 )
 from .base import ContainerProvider
+from .containers import ContainerUnavailableError
 
 def _parse_version_triplet(value: str) -> Optional[tuple[int, int, int]]:
     match = re.match(r"^\s*(\d+)\.(\d+)(?:\.(\d+))?", value)
@@ -68,7 +69,7 @@ class DockerProviderError(Exception):
     """Base exception for Docker provider."""
     pass
 
-class DockerUnavailableError(DockerProviderError):
+class DockerUnavailableError(ContainerUnavailableError):
     """Raised when Docker daemon is unreachable."""
     def __init__(self, attempted_hosts: list[str], errors: list[str]) -> None:
         self.attempted_hosts = attempted_hosts
@@ -96,7 +97,7 @@ class DockerSdkProvider(ContainerProvider):
             return self._client
 
         if self._last_error and self._last_error_at:
-            if time.monotonic() - self._last_error_at < 30:
+            if time.monotonic() - self._last_error_at < 5:
                 raise self._last_error
 
         def _init_client():
@@ -281,7 +282,7 @@ class DockerSdkProvider(ContainerProvider):
         def get_next():
             try:
                 return next(log_stream, None)
-            except (StopIteration, DockerException, APIError):
+            except StopIteration:
                 return None
 
         while True:
