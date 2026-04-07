@@ -185,6 +185,8 @@ class ContainerService:
     ) -> str:
         """Validate session before creating a container."""
         session = await self._validate_session_and_get(session_id)
+        if session is None:
+            raise AuthenticationError("Invalid or expired session")
         if not session.bw_session_key:
             raise ContainerError("Bitwarden session key not found in session")
 
