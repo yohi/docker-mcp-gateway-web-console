@@ -44,7 +44,10 @@ DooD アプローチから脱却し、**Docker-in-Docker (DinD)** を用いた�
 **`docker-compose.devcontainer.yml` の変更方針:**
 - `workspace` サービスの `volumes` から `${DOCKER_SOCKET}:/var/run/docker.sock` を削除。
 - 新規サービス `dind` (image: `docker:dind`) を追加し、`privileged: true` およびTLS証明書生成用のボリューム設定を行う。
-- `workspace` および `backend` サービスに、`dind` と通信するための環境変数 (`DOCKER_HOST`, `DOCKER_TLS_VERIFY`, `DOCKER_CERT_PATH`) と証明書マウントを追加。
+- **データとキャッシュの永続化**: `dind` コンテナの再作成時にダウンロード済みのDockerイメージやビルドキャッシュが失われ、開発体験（ビルド速度）が著しく低下するのを防ぐため、名前付きボリューム（例: `dind-data:/var/lib/docker`）をマウントし、Dockerの内部データやイメージキャッシュを永続化する設定を追加します。
+- `workspace` および `backend` サービスに、`dind` と通信するための環境変数 (`DOCKER_HOST`, `DOCKER_TLS_VERIFY`, `DOCKER_CERT_PATH`) を設定します。設定齟齬を防ぐため、`dind` サービスが自動生成するTLSクライアント証明書の共有ディレクトリパスを `/certs/client` と明記し、各サービスはこのディレクトリを同一パス（または指定のパス）でボリュームマウントして証明書を参照するよう構成します。
+- **Race Condition（起動順序）の解決**: `dind` サービスがTLS証明書を生成してリスン状態になる前に他のサービスがアクセスしてクラッシュするのを防ぐため、`dind` サービスに `healthcheck`（例: TCPポート2376への接続確認等）を追加します。同時に `workspace` および `backend` サービスには `depends_on` で `condition: service_healthy` を指定し、安全な起動順序を保証します。
+- **DinDのネットワーク課題の解決**: DinD内で作成されたコンテナは `dind` コンテナのネットワーク名前空間に隔離されるため、`workspace` やホストOSから直接アクセスできません。YAGNI原則に基づき、開発環境として最もシンプルで確実な一次解決策として、`dind` サービスにおいてあらかじめ必要なポート範囲（例: `8080-8090:8080-8090`）をホスト側にパブリッシュ（ポートフォワード）する構成を採用します。
 
 **`.devcontainer/devcontainer.json` の変更方針:**
 - VSCodeのDocker拡張機能が正しく接続できるよう、`remoteEnv` に `DOCKER_HOST`, `DOCKER_TLS_VERIFY`, `DOCKER_CERT_PATH` を設定。
@@ -63,6 +66,14 @@ FastAPIルーターに散在しているロジックを `ContainerService` に�
 - `_create_container_internal` のようなルーター内のヘルパー関数を削除。
 - 各エンドポイントは、リクエストパラメータを受け取り、`ContainerService` の対応するメソッドを呼び出し、レスポンスモデルを返すだけの処理に徹する。
 
+### 3.3. 異常系・エッジケースの考慮
+
+インフラ移行に伴い、以下の異常系に対するフェイルセーフな振る舞いと開発者向けのエラーログ出力方針を定義します。
+
+- **`DOCKER_HOST` への接続タイムアウト**: バックエンド（`ContainerService` 等）から `dind` サービスへの接続要求がタイムアウトした場合、システム全体をクラッシュさせず、適切な HTTP 503 (Service Unavailable) などのエラーレスポンスをフロントエンドに返却します。同時に、開発者が原因を即座に特定できるよう、接続先URLを含む詳細なエラーログを出力します。
+- **TLS証明書の生成失敗（`dind`初期化エラー）**: `dind` サービスの起動時にTLS証明書の生成に失敗した場合、前述の `healthcheck` により `dind` は unhealthy となり、依存する `workspace` や `backend` の起動がブロックされます。この際、`docker-compose logs dind` 等で証明書生成プロセスのエラー原因（権限エラー、ボリュームマウント不備など）が確認できるよう、コンテナの初期化ログを標準出力に適切に流すよう構成します。
+- **ステート乖離（リコンサイル）の考慮**: DooDからDinDへの分離により、バックエンド（DBのステート）とDinDデーモンのコンテナ状態が、コンテナ再起動時などに乖離するリスク（例: DB上は稼働中だが、DinD上には存在しない等）が高まります。この問題への対処として、バックエンドの起動時やコンテナ情報取得API（List/Get）の呼び出し時に、実際のDinDホスト上のコンテナ状態とDBのステートを同期（リコンサイル）する軽量な仕組みを導入します。過剰な実装（常時ポーリング等の複雑な同期機構）は避け、YAGNI原則の範囲内で、APIアクセス時のオンデマンド同期や、乖離検知時のリカバリ（DBステータスを `exited` や `error` に更新し、警告ログを出力する）にとどめます。
+
 ---
 
 ## 4. 制約と後方互換性
@@ -74,10 +85,14 @@ FastAPIルーターに散在しているロジックを `ContainerService` に�
 
 ## 5. 実行ステップ (Implementation Plan)
 
-1. **Devcontainerインフラの更新**: `docker-compose.devcontainer.yml` と `devcontainer.json` を更新し、DinD環境を構築。
-2. **バックエンドサービス層の拡張**: `app/services/containers.py` を修正し、認証ロジックを統合したメソッドを追加。
-3. **バックエンドAPIルーターのクリーンアップ**: `app/api/containers.py` をリファクタリングし、Service層への委譲のみを行う Thin Controller に変更。
-4. **検証 (Validate)**: Devcontainerをリビルドし、バックエンドのユニットテスト、フロントエンドのE2Eテストがすべて通過することを確認する。
+ビジネスロジックの変更とインフラの変更を同時に行うと、テスト失敗時の原因切り分けが困難になります。そのため、本プロジェクトの Superpowers Workflow（TDDベース）に則り、インフラ移行（DinD化）を先に行い、既存テストがリモートAPI経由でGreenになることを確認してから、Service層のTDDリファクタリングに着手する順序（案B）を採用します。
+
+1. **既存テストの確認 (Baseline)**: 現在の DooD 環境で既存のバックエンドテストやE2Eテストを実行し、すべてパスすること（Green）を確認する。
+2. **インフラの DinD 移行**: `docker-compose.devcontainer.yml` と `devcontainer.json` を更新し、DinD 環境を構築する。この段階ではバックエンドのビジネスロジックは一切変更しない。
+3. **インフラ移行の検証 [Green]**: DinD 環境上で既存のテストを再実行し、リモートAPI経由でもテストがすべてパスすることを確認する。この際、テストランナー（Pytest等）が新しい `DOCKER_HOST` と `DOCKER_CERT_PATH` を正しく認識できるよう、テスト起動時の `.env.test` の読み込みや、テストフィクスチャによる環境変数のモック適用を確実に行います。これによりインフラ起因の問題がないことを保証する。
+4. **Service層のテスト作成 [Red]**: `app/services/containers.py` に Auth 連携などの新しい責務に関するテストを追加し、テストが失敗することを確認する。
+5. **Service層の実装 [Green]**: `ContainerService` 内に認証・ビジネスロジックを実装し、テストを成功させる。
+6. **APIルーターのリファクタリング [Refactor]**: ルーター層（`app/api/containers.py`）からビジネスロジックを削除し、Thin Controller 化する。最後に全体のユニットテストおよびフロントエンドのE2Eテストがすべて通過することを確認し、検証を完了する。
 
 ---
 *設計作成日: 2026年4月7日*
