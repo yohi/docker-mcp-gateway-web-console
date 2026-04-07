@@ -83,7 +83,7 @@ def _write_fake_docker(path: Path, log_path: Path, exec_log_path: Path) -> None:
     _write_executable(path, content)
 
 
-def _prepare_repo(tmp_path: Path, socket_path: Path) -> None:
+def _prepare_repo(tmp_path: Path) -> None:
     (tmp_path / "backend").mkdir()
     (tmp_path / "frontend").mkdir()
     devcontainer_dir = tmp_path / ".devcontainer"
@@ -94,20 +94,39 @@ def _prepare_repo(tmp_path: Path, socket_path: Path) -> None:
         encoding="utf-8",
     )
     (devcontainer_dir / "docker-compose.devcontainer.yml").write_text(
-        "version: '3.8'\nservices:\n  workspace:\n    image: dummy\n    depends_on:\n      - backend\n      - frontend\n  backend:\n    image: dummy\n  frontend:\n    image: dummy\n",
-        encoding="utf-8",
-    )
-
-    init_script = devcontainer_dir / "init-docker-socket.sh"
-    _write_executable(
-        init_script,
         textwrap.dedent(
-            f"""\
-            #!/usr/bin/env sh
-            set -eu
-            printf 'DOCKER_SOCKET=%s\\n' "{socket_path}"
+            """\
+            version: '3.8'
+            services:
+              workspace:
+                image: dummy
+                volumes:
+                  - dind-certs:/certs/client:ro
+                environment:
+                  - DOCKER_HOST=tcp://dind:2376
+                  - DOCKER_TLS_VERIFY=1
+                  - DOCKER_CERT_PATH=/certs/client
+                depends_on:
+                  - backend
+                  - frontend
+                  - dind
+              dind:
+                image: docker:dind
+              backend:
+                image: dummy
+                volumes:
+                  - dind-certs:/certs/client:ro
+                environment:
+                  - DOCKER_HOST=tcp://dind:2376
+                  - DOCKER_TLS_VERIFY=1
+                  - DOCKER_CERT_PATH=/certs/client
+              frontend:
+                image: dummy
+            volumes:
+              dind-certs:
             """
         ),
+        encoding="utf-8",
     )
 
 
@@ -118,12 +137,8 @@ def test_verify_integration_script_exists_and_executable() -> None:
     assert mode & stat.S_IXUSR, "scripts/verify-integration.sh must be executable"
 
 
-def test_verify_integration_script_runs_checks_with_socket_detection(tmp_path: Path) -> None:
-    socket_path = tmp_path / "run" / "user" / "1000" / "docker.sock"
-    socket_path.parent.mkdir(parents=True)
-    socket_path.write_text("", encoding="utf-8")
-
-    _prepare_repo(tmp_path, socket_path)
+def test_verify_integration_script_runs_checks_with_dind_verification(tmp_path: Path) -> None:
+    _prepare_repo(tmp_path)
 
     log_path = tmp_path / "docker-calls.log"
     exec_log_path = tmp_path / "docker-exec.log"
@@ -133,7 +148,6 @@ def test_verify_integration_script_runs_checks_with_socket_detection(tmp_path: P
 
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
-    env["DOCKER_SOCKET_ALLOW_REGULAR_FILE"] = "1"
     env["CI"] = "true"
 
     script_under_test = _repo_root() / "scripts" / "verify-integration.sh"
@@ -159,16 +173,14 @@ def test_verify_integration_script_runs_checks_with_socket_detection(tmp_path: P
     exec_calls = exec_log_path.read_text(encoding="utf-8").splitlines()
     assert any("backend:curl" in line and "docker-compose" in line for line in exec_calls), "backend health check not invoked"
     assert any("frontend:curl" in line and "docker-compose" in line for line in exec_calls), "frontend->backend check not invoked"
-    assert any("backend:python" in line and "docker-compose.devcontainer.yml" in line for line in exec_calls), "devcontainer backend check not invoked"
+    assert any("backend:docker" in line and "docker-compose.devcontainer.yml" in line for line in exec_calls), "devcontainer backend docker check not invoked"
+    assert any("workspace:docker" in line and "docker-compose.devcontainer.yml" in line for line in exec_calls), "devcontainer workspace docker check not invoked"
     assert any("frontend:npm" in line and "docker-compose.devcontainer.yml" in line for line in exec_calls), "devcontainer frontend check not invoked"
-    assert any(socket_path.as_posix() in line and line.startswith("host:unix://") for line in exec_calls), "docker --host check missing"
+    assert not any("host:unix://" in line for line in exec_calls), "host socket based docker check should not run"
 
 
 def test_verify_integration_script_fails_on_unhealthy_backend(tmp_path: Path) -> None:
-    socket_path = tmp_path / "run" / "user" / "1000" / "docker.sock"
-    socket_path.parent.mkdir(parents=True)
-    socket_path.write_text("", encoding="utf-8")
-    _prepare_repo(tmp_path, socket_path)
+    _prepare_repo(tmp_path)
 
     log_path = tmp_path / "docker-calls.log"
     exec_log_path = tmp_path / "docker-exec.log"
@@ -178,7 +190,6 @@ def test_verify_integration_script_fails_on_unhealthy_backend(tmp_path: Path) ->
 
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
-    env["DOCKER_SOCKET_ALLOW_REGULAR_FILE"] = "1"
     env["FAIL_HEALTH"] = "1"
     env["CI"] = "true"
 
