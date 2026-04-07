@@ -184,9 +184,17 @@ class ContainerService:
                 )
             )
         except Exception as store_exc:
-            logging.getLogger(__name__).warning(
-                "コンテナ設定の保存に失敗しました: %s", store_exc
+            logging.getLogger(__name__).error(
+                "コンテナ設定の保存に失敗しました。クリーンアップを実行します: %s", store_exc
             )
+            # クリーンアップ: 作成したコンテナを削除
+            try:
+                await self.delete_container(container_id, force=True)
+            except Exception as cleanup_exc:
+                logging.getLogger(__name__).error(
+                    "クリーンアップ中のコンテナ削除に失敗しました: %s", cleanup_exc
+                )
+            raise ContainerError(f"Failed to save container state: {store_exc}") from store_exc
 
         return container_id
 

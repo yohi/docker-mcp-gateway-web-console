@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 import docker
 import requests
 from docker.errors import APIError, DockerException, ImageNotFound, NotFound
-from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout as RequestsTimeout
 from docker.models.containers import Container
 
 from ..config import settings
@@ -72,10 +72,8 @@ class DockerProviderError(Exception):
 class DockerUnavailableError(ContainerUnavailableError):
     """Raised when Docker daemon is unreachable."""
     def __init__(self, attempted_hosts: list[str], errors: list[str]) -> None:
-        self.attempted_hosts = attempted_hosts
-        self.errors = errors
-        message = f"Docker connection failed. Hosts: {attempted_hosts}. Errors: {errors}"
-        super().__init__(message)
+        super().__init__(attempted_hosts, errors)
+        self.status_code = 503
 
 class DockerSdkProvider(ContainerProvider):
     """Docker SDK based implementation of ContainerProvider."""
@@ -156,9 +154,9 @@ class DockerSdkProvider(ContainerProvider):
         loop = asyncio.get_event_loop()
         try:
             return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
-        except (DockerException, APIError, RequestsConnectionError, ConnectionError, TimeoutError) as e:
+        except (DockerException, APIError, RequestsConnectionError, RequestsTimeout, ConnectionError, TimeoutError) as e:
             # If it's a connection-related error, invalidate the client
-            if "connection" in str(e).lower() or "timeout" in str(e).lower() or isinstance(e, (RequestsConnectionError, ConnectionError, TimeoutError)):
+            if "connection" in str(e).lower() or "timeout" in str(e).lower() or isinstance(e, (RequestsConnectionError, RequestsTimeout, ConnectionError, TimeoutError)):
                 self._client = None
                 # Wrap as DockerUnavailableError to normalize
                 raise DockerUnavailableError([self.base_url], [str(e)]) from e
