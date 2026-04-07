@@ -13,15 +13,18 @@ from ..models.containers import (
     ContainerListResponse,
 )
 from ..services.auth import AuthService
+from ..services.base import ContainerProvider
 from ..services.containers import (
     ContainerAlreadyExistsError,
     ContainerError,
     ContainerUnavailableError,
     ContainerService,
 )
+from ..services.docker_provider import DockerSdkProvider
 from ..services.secrets import SecretManager
 from ..services.state_store import StateStore
 from .auth import get_auth_service, get_session_id
+import docker.tls
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,7 @@ router = APIRouter(prefix="/containers", tags=["containers"])
 _container_service: ContainerService = None
 _secret_manager: SecretManager = None
 _state_store: StateStore = None
+_container_provider: ContainerProvider = None
 
 
 def _docker_unavailable(e: ContainerUnavailableError) -> HTTPException:
@@ -56,15 +60,48 @@ def get_secret_manager() -> SecretManager:
     return _secret_manager
 
 
+def get_container_provider() -> ContainerProvider:
+    """Dependency to get the container provider instance."""
+    global _container_provider
+    if _container_provider is None:
+        tls_config = None
+        if settings.docker_tls_verify:
+            tls_config = docker.tls.TLSConfig(
+                client_cert=(settings.docker_client_cert, settings.docker_client_key) if settings.docker_client_cert and settings.docker_client_key else None,
+                ca_cert=settings.docker_ca_cert,
+                verify=True
+            )
+        
+        # Currently only docker-sdk is supported, but can be extended
+        if settings.container_provider_type == "docker-sdk":
+            _container_provider = DockerSdkProvider(
+                base_url=settings.docker_host,
+                tls_config=tls_config
+            )
+        else:
+            # Fallback to docker-sdk
+            _container_provider = DockerSdkProvider(
+                base_url=settings.docker_host,
+                tls_config=tls_config
+            )
+            
+    return _container_provider
+
+
 def get_container_service(
-    secret_manager: Annotated[SecretManager, Depends(get_secret_manager)]
+    secret_manager: Annotated[SecretManager, Depends(get_secret_manager)],
+    container_provider: Annotated[ContainerProvider, Depends(get_container_provider)]
 ) -> ContainerService:
     """Dependency to get the container service instance."""
     global _container_service, _state_store
     if _container_service is None:
         _state_store = StateStore()
         _state_store.init_schema()
-        _container_service = ContainerService(secret_manager, state_store=_state_store)
+        _container_service = ContainerService(
+            container_provider, 
+            secret_manager, 
+            state_store=_state_store
+        )
     return _container_service
 
 

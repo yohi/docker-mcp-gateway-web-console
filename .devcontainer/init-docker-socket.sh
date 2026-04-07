@@ -22,6 +22,14 @@ socket_exists() {
   fi
 }
 
+# If DOCKER_HOST is already set to a TCP address, skip socket detection
+case "${DOCKER_HOST:-}" in
+  tcp://*)
+    printf 'DOCKER_HOST is set to TCP: %s. Skipping socket detection.\n' "${DOCKER_HOST}"
+    exit 0
+    ;;
+esac
+
 for candidate in "${xdg_docker_sock}" "${run_user_docker_sock}" "${rootful_docker_sock}"; do
   if [ -n "${candidate}" ] && socket_exists "${candidate}"; then
     DOCKER_SOCKET="${candidate}"
