@@ -24,6 +24,11 @@ class ContainerError(Exception):
     pass
 
 
+class AuthenticationError(ContainerError):
+    """Exception raised when authentication fails."""
+    pass
+
+
 class ContainerUnavailableError(ContainerError):
     """Exception raised when Docker daemon is unavailable."""
 
@@ -96,10 +101,7 @@ class ContainerService:
         """Validate session and return the session model."""
         is_valid = await self.auth_service.validate_session(session_id)
         if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired session",
-            )
+            raise AuthenticationError("Invalid or expired session")
         return await self.auth_service.get_session(session_id)
 
     def _normalize_container_name(self, name: str) -> str:
@@ -138,42 +140,43 @@ class ContainerService:
         bw_session_key: str,
     ) -> str:
         """Create and start a container with secret resolution."""
+        # Resolve secrets
+        resolved_env = await self.secret_manager.resolve_all(
+            config.env,
+            session_id,
+            bw_session_key,
+        )
+
+        sanitized_name = self._normalize_container_name(config.name)
+
         try:
-            # Resolve secrets
-            resolved_env = await self.secret_manager.resolve_all(
-                config.env,
-                session_id,
-                bw_session_key,
-            )
-
-            sanitized_name = self._normalize_container_name(config.name)
-
             # Create and start via provider
             container_id = await self.provider.create_container(
                 config,
                 sanitized_name,
                 resolved_env,
             )
-            
-            # Save state
-            try:
-                self._state_store.save_container_config(
-                    ContainerConfigRecord(
-                        container_id=container_id,
-                        name=sanitized_name,
-                        image=config.image,
-                        config=config.model_dump(),
-                    )
-                )
-            except Exception as store_exc:
-                logging.getLogger(__name__).warning(
-                    "コンテナ設定の保存に失敗しました: %s", store_exc
-                )
-
-            return container_id
-            
+        except ContainerUnavailableError:
+            raise
         except Exception as e:
             raise ContainerError(f"Failed to create container: {e}") from e
+            
+        # Save state
+        try:
+            self._state_store.save_container_config(
+                ContainerConfigRecord(
+                    container_id=container_id,
+                    name=sanitized_name,
+                    image=config.image,
+                    config=config.model_dump(),
+                )
+            )
+        except Exception as store_exc:
+            logging.getLogger(__name__).warning(
+                "コンテナ設定の保存に失敗しました: %s", store_exc
+            )
+
+        return container_id
 
     async def create_container_with_auth(
         self,
@@ -182,26 +185,10 @@ class ContainerService:
     ) -> str:
         """Validate session before creating a container."""
         session = await self._validate_session_and_get(session_id)
-        if session is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired session",
-            )
+        if not session.bw_session_key:
+            raise ContainerError("Bitwarden session key not found in session")
 
-        try:
-            return await self.create_container(config, session_id, session.bw_session_key)
-        except ContainerAlreadyExistsError as e:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=str(e),
-            ) from e
-        except ContainerUnavailableError:
-            raise
-        except ContainerError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e),
-            ) from e
+        return await self.create_container(config, session_id, session.bw_session_key)
 
     def get_container_config(self, container_id: str) -> dict:
         """Return saved container configuration."""

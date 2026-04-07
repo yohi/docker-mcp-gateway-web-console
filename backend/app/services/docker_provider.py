@@ -10,7 +10,9 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from urllib.parse import urlparse
 
 import docker
+import requests
 from docker.errors import APIError, DockerException, ImageNotFound, NotFound
+from requests.exceptions import ConnectionError as RequestsConnectionError
 from docker.models.containers import Container
 
 from ..config import settings
@@ -88,7 +90,8 @@ class DockerSdkProvider(ContainerProvider):
         self._last_error: Optional[DockerUnavailableError] = None
         self._last_error_at: Optional[float] = None
 
-    def _get_client(self) -> docker.DockerClient:
+    async def _get_client(self) -> docker.DockerClient:
+        """Get or create the Docker client in a thread-safe way."""
         if self._client:
             return self._client
 
@@ -96,48 +99,69 @@ class DockerSdkProvider(ContainerProvider):
             if time.monotonic() - self._last_error_at < 30:
                 raise self._last_error
 
-        # Handle local socket fallback if base_url is a unix socket
-        attempted_hosts = [self.base_url]
-        if self.base_url.startswith("unix://"):
-            default_unix = "unix:///var/run/docker.sock"
-            if default_unix not in attempted_hosts:
-                attempted_hosts.append(default_unix)
+        def _init_client():
+            # Handle local socket fallback if base_url is a unix socket
+            attempted_hosts = [self.base_url]
+            if self.base_url.startswith("unix://"):
+                default_unix = "unix:///var/run/docker.sock"
+                if default_unix not in attempted_hosts:
+                    attempted_hosts.append(default_unix)
+                
+                runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+                if runtime_dir:
+                    fallback = f"unix://{runtime_dir}/docker.sock"
+                    if fallback not in attempted_hosts:
+                        attempted_hosts.append(fallback)
+                
+                try:
+                    uid = os.getuid()
+                    fallback_user = f"unix:///run/user/{uid}/docker.sock"
+                    if fallback_user not in attempted_hosts:
+                        attempted_hosts.append(fallback_user)
+                except AttributeError:
+                    pass
+
+            errors = []
+            for host in attempted_hosts:
+                parsed = urlparse(host)
+                if parsed.scheme == "unix":
+                    socket_path = parsed.path
+                    if not os.path.exists(socket_path) or not os.access(socket_path, os.R_OK | os.W_OK):
+                        errors.append(f"{host}: Socket inaccessible")
+                        continue
+
+                try:
+                    client = docker.DockerClient(base_url=host, tls=self.tls_config)
+                    client.ping()
+                    return client, attempted_hosts
+                except DockerException as e:
+                    errors.append(f"{host}: {e}")
             
-            runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
-            if runtime_dir:
-                fallback = f"unix://{runtime_dir}/docker.sock"
-                if fallback not in attempted_hosts:
-                    attempted_hosts.append(fallback)
-            
-            try:
-                uid = os.getuid()
-                fallback_user = f"unix:///run/user/{uid}/docker.sock"
-                if fallback_user not in attempted_hosts:
-                    attempted_hosts.append(fallback_user)
-            except AttributeError:
-                pass
+            raise DockerUnavailableError(attempted_hosts, errors)
 
-        errors = []
-        for host in attempted_hosts:
-            parsed = urlparse(host)
-            if parsed.scheme == "unix":
-                socket_path = parsed.path
-                if not os.path.exists(socket_path) or not os.access(socket_path, os.R_OK | os.W_OK):
-                    errors.append(f"{host}: Socket inaccessible")
-                    continue
+        loop = asyncio.get_event_loop()
+        try:
+            client, _ = await loop.run_in_executor(None, _init_client)
+            self._client = client
+            return self._client
+        except DockerUnavailableError as e:
+            self._last_error = e
+            self._last_error_at = time.monotonic()
+            raise
 
-            try:
-                client = docker.DockerClient(base_url=host, tls=self.tls_config)
-                client.ping()
-                self._client = client
-                return self._client
-            except DockerException as e:
-                errors.append(f"{host}: {e}")
-
-        error = DockerUnavailableError(attempted_hosts, errors)
-        self._last_error = error
-        self._last_error_at = time.monotonic()
-        raise error
+    async def _call_docker_api(self, func, *args, **kwargs):
+        """Wrap Docker API calls to normalize connection errors and clear cached client."""
+        client = await self._get_client()
+        loop = asyncio.get_event_loop()
+        try:
+            return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+        except (DockerException, APIError, RequestsConnectionError, ConnectionError, TimeoutError) as e:
+            # If it's a connection-related error, invalidate the client
+            if "connection" in str(e).lower() or "timeout" in str(e).lower() or isinstance(e, (RequestsConnectionError, ConnectionError, TimeoutError)):
+                self._client = None
+                # Wrap as DockerUnavailableError to normalize
+                raise DockerUnavailableError([self.base_url], [str(e)]) from e
+            raise
 
     def _container_summary_to_info(self, summary: dict[str, Any]) -> ContainerInfo:
         container_id = summary.get("Id") or summary.get("ID")
@@ -171,20 +195,18 @@ class DockerSdkProvider(ContainerProvider):
         )
 
     async def list_containers(self, all_containers: bool = True) -> List[ContainerInfo]:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        summaries = await loop.run_in_executor(None, lambda: client.api.containers(all=all_containers))
+        client = await self._get_client()
+        summaries = await self._call_docker_api(client.api.containers, all=all_containers)
         return [self._container_summary_to_info(s) for s in summaries]
 
     async def create_container(self, config: ContainerConfig, sanitized_name: str, resolved_env: Dict[str, str]) -> str:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
+        client = await self._get_client()
 
         # Image pull logic
         try:
-            await loop.run_in_executor(None, lambda: client.images.get(config.image))
+            await self._call_docker_api(client.images.get, config.image)
         except ImageNotFound:
-            await loop.run_in_executor(None, lambda: client.images.pull(config.image))
+            await self._call_docker_api(client.images.pull, config.image)
 
         port_bindings = {f"{cp}/tcp": hp for cp, hp in (config.ports or {}).items()}
         volumes = {hp: {"bind": cp, "mode": "rw"} for hp, cp in (config.volumes or {}).items()}
@@ -208,55 +230,62 @@ class DockerSdkProvider(ContainerProvider):
             "restart_policy": config.restart_policy,
         }
         
-        container = await loop.run_in_executor(None, lambda: client.containers.create(**{k: v for k, v in docker_kwargs.items() if v is not None}))
-        await loop.run_in_executor(None, container.start)
+        container = await self._call_docker_api(
+            client.containers.create, 
+            **{k: v for k, v in docker_kwargs.items() if v is not None}
+        )
+        
+        try:
+            await self._call_docker_api(container.start)
+        except Exception:
+            # Cleanup orphaned container on start failure
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, lambda: container.remove(force=True))
+            raise
+            
         return container.id
 
     async def start_container(self, container_id: str) -> bool:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        container = await loop.run_in_executor(None, lambda: client.containers.get(container_id))
-        await loop.run_in_executor(None, container.start)
+        client = await self._get_client()
+        container = await self._call_docker_api(client.containers.get, container_id)
+        await self._call_docker_api(container.start)
         return True
 
     async def stop_container(self, container_id: str, timeout: int = 10) -> bool:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        container = await loop.run_in_executor(None, lambda: client.containers.get(container_id))
-        await loop.run_in_executor(None, lambda: container.stop(timeout=timeout))
+        client = await self._get_client()
+        container = await self._call_docker_api(client.containers.get, container_id)
+        await self._call_docker_api(container.stop, timeout=timeout)
         return True
 
     async def restart_container(self, container_id: str, timeout: int = 10) -> bool:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        container = await loop.run_in_executor(None, lambda: client.containers.get(container_id))
-        await loop.run_in_executor(None, lambda: container.restart(timeout=timeout))
+        client = await self._get_client()
+        container = await self._call_docker_api(client.containers.get, container_id)
+        await self._call_docker_api(container.restart, timeout=timeout)
         return True
 
     async def delete_container(self, container_id: str, force: bool = False) -> bool:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        container = await loop.run_in_executor(None, lambda: client.containers.get(container_id))
-        await loop.run_in_executor(None, lambda: container.remove(force=force))
+        client = await self._get_client()
+        container = await self._call_docker_api(client.containers.get, container_id)
+        await self._call_docker_api(container.remove, force=force)
         return True
 
     async def stream_logs(self, container_id: str, follow: bool = True, tail: int = 100) -> AsyncIterator[LogEntry]:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        container = await loop.run_in_executor(None, lambda: client.containers.get(container_id))
+        client = await self._get_client()
+        container = await self._call_docker_api(client.containers.get, container_id)
         
-        log_stream = await loop.run_in_executor(None, lambda: container.logs(
+        log_stream = await self._call_docker_api(
+            container.logs,
             stream=follow, follow=follow, tail=tail, timestamps=True, stdout=True, stderr=True, demux=True
-        ))
+        )
 
         def get_next():
             try:
                 return next(log_stream, None)
-            except StopIteration:
+            except (StopIteration, DockerException, APIError):
                 return None
 
         while True:
-            chunk = await loop.run_in_executor(None, get_next)
+            chunk = await asyncio.get_event_loop().run_in_executor(None, get_next)
             if chunk is None:
                 break
             
@@ -281,11 +310,11 @@ class DockerSdkProvider(ContainerProvider):
             yield LogEntry(timestamp=ts, message=msg, stream=stream)
 
     async def exec_command(self, container_id: str, command: List[str]) -> tuple[int, bytes]:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        container = await loop.run_in_executor(None, lambda: client.containers.get(container_id))
-        exit_code, output = await loop.run_in_executor(None, lambda: container.exec_run(cmd=command, stdout=True, stderr=True))
+        client = await self._get_client()
+        container = await self._call_docker_api(client.containers.get, container_id)
+        exit_code, output = await self._call_docker_api(container.exec_run, cmd=command, stdout=True, stderr=True)
         return exit_code or 0, output or b""
+
 
     def close(self):
         if self._client:
