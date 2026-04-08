@@ -5,8 +5,7 @@ version: '3.8'
 
 services:
   dind:
-    image: docker:dind
-    privileged: true
+    image: docker:dind-rootless
     environment:
       - DOCKER_TLS_CERTDIR=/certs
     volumes:

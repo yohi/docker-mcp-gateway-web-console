@@ -1,5 +1,4 @@
 import logging
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -13,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _default_docker_host() -> str:
-    return "tcp://dind:2376"
+    return "unix:///var/run/docker.sock"
 
 
 class Settings(BaseSettings):

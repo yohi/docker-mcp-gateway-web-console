@@ -1,14 +1,11 @@
 import pytest
-import asyncio
-import time
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, AsyncMock
-from backend.app.services.docker_provider import (
+from datetime import datetime
+from unittest.mock import MagicMock, patch
+from app.services.docker_provider import (
     DockerSdkProvider, 
     DockerUnavailableError, 
     _parse_version_triplet
 )
-from backend.app.models.containers import LogEntry
 from docker.errors import DockerException
 
 def test_parse_version_triplet():

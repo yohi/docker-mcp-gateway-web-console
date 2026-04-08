@@ -6,7 +6,6 @@ import re
 import time
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional
-from urllib.parse import urlparse
 
 import docker
 from docker.errors import APIError, DockerException, ImageNotFound

@@ -2,9 +2,8 @@ version: '3.8'
 
 services:
   dind:
-    image: docker:dind
+    image: docker:dind-rootless
     container_name: mcp-gateway-dind
-    privileged: true
     restart: unless-stopped
     environment:
       - DOCKER_TLS_CERTDIR=/certs
