@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
+from fastapi import HTTPException
 from app.services.containers import ContainerService, AuthenticationError, ContainerError
 from app.services.base import ContainerProvider
 from app.models.containers import ContainerConfig
@@ -50,8 +51,10 @@ async def test_create_container_auth_failure(mock_provider, mock_secret_manager,
     )
     config = ContainerConfig(name="test", image="alpine")
     
-    with pytest.raises(AuthenticationError):
+    # AuthenticationError is also mapped to HTTPException in with_auth methods
+    with pytest.raises(HTTPException) as excinfo:
         await svc.create_container_with_auth(config, "bad-sid")
+    assert excinfo.value.status_code == 401
 
 @pytest.mark.asyncio
 async def test_create_container_compensation_on_start_failure(mock_provider, mock_secret_manager, mock_auth_service):
@@ -65,12 +68,11 @@ async def test_create_container_compensation_on_start_failure(mock_provider, moc
     )
     config = ContainerConfig(name="test", image="alpine")
     
-    with pytest.raises(ContainerError, match="Failed to create container"):
+    # Now that we updated _map_container_error_to_http to re-raise generic errors,
+    # create_container_with_auth will raise ContainerError directly.
+    with pytest.raises(ContainerError) as excinfo:
         await svc.create_container_with_auth(config, "test-sid")
-    
-    # 実際の削除処理は DockerSdkProvider 側で行われるため、
-    # ここでは例外が正しく伝播することを確認。
-    # DockerSdkProvider のユニットテストで詳細な補償処理を検証する。
+    assert "Start failed" in str(excinfo.value)
 
 @pytest.mark.asyncio
 async def test_create_container_compensation_on_503(mock_provider, mock_secret_manager, mock_auth_service):
@@ -86,8 +88,10 @@ async def test_create_container_compensation_on_503(mock_provider, mock_secret_m
     )
     config = ContainerConfig(name="test", image="alpine")
     
-    with pytest.raises(ContainerError, match="503"):
+    # 503 is mapped to ContainerUnavailableError (subclass of ContainerError)
+    with pytest.raises(ContainerError) as excinfo:
         await svc.create_container_with_auth(config, "test-sid")
+    assert "デーモンに接続できません" in str(excinfo.value)
 
 @pytest.mark.asyncio
 async def test_create_container_compensation_on_409(mock_provider, mock_secret_manager, mock_auth_service):
@@ -103,6 +107,8 @@ async def test_create_container_compensation_on_409(mock_provider, mock_secret_m
     )
     config = ContainerConfig(name="test", image="alpine")
     
-    # 409 は ContainerAlreadyExistsError (ContainerError のサブクラス) に変換される
-    with pytest.raises(ContainerError, match="409"):
+    # 409 は ContainerAlreadyExistsError (ContainerError のサブクラス) に変換され、HTTPException(409) になる
+    with pytest.raises(HTTPException) as excinfo:
         await svc.create_container_with_auth(config, "test-sid")
+    assert excinfo.value.status_code == 409
+    assert "既に使用されています" in str(excinfo.value.detail)

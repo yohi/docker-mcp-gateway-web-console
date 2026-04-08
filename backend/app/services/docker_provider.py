@@ -1,6 +1,7 @@
 """Docker SDK implementation of ContainerProvider."""
 
 import asyncio
+import logging
 import os
 import re
 import time
@@ -19,6 +20,8 @@ from ..models.containers import (
 )
 from .base import ContainerProvider
 from .containers import ContainerUnavailableError
+
+logger = logging.getLogger(__name__)
 
 def _parse_version_triplet(value: str) -> Optional[tuple[int, int, int]]:
     match = re.match(r"^\s*(\d+)\.(\d+)(?:\.(\d+))?", value)
@@ -230,20 +233,46 @@ class DockerSdkProvider(ContainerProvider):
             "restart_policy": config.restart_policy,
         }
         
-        container = await self._call_docker_api(
-            client.containers.create, 
-            **{k: v for k, v in docker_kwargs.items() if v is not None}
-        )
+        loop = asyncio.get_event_loop()
+        container = None
         
+        def _create_and_start():
+            nonlocal container
+            container = client.containers.create(
+                **{k: v for k, v in docker_kwargs.items() if v is not None}
+            )
+            container.start()
+            return container.id
+
         try:
-            await self._call_docker_api(container.start)
-        except Exception:
-            # Cleanup orphaned container on start failure
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: container.remove(force=True))
-            raise
+            return await loop.run_in_executor(None, _create_and_start)
+        except (DockerException, APIError, RequestsConnectionError, RequestsTimeout, ConnectionError, TimeoutError) as e:
+            # Normalize connection-related errors similar to _call_docker_api
+            if "connection" in str(e).lower() or "timeout" in str(e).lower() or isinstance(e, (RequestsConnectionError, RequestsTimeout, ConnectionError, TimeoutError)):
+                self._client = None
+                # Ensure any container leftover is removed before raising normalized error
+                if container:
+                    try:
+                        await loop.run_in_executor(None, lambda: container.remove(force=True))
+                    except Exception as cleanup_exc:
+                        logger.warning(f"Failed to remove orphaned container {container.id} after connection error: {cleanup_exc}")
+                raise DockerUnavailableError([self.base_url], [str(e)]) from e
             
-        return container.id
+            # Non-connection Docker errors (like 409) still need cleanup
+            if container:
+                try:
+                    await loop.run_in_executor(None, lambda: container.remove(force=True))
+                except Exception as cleanup_exc:
+                    logger.warning(f"Failed to remove orphaned container {container.id} after Docker error: {cleanup_exc}")
+            raise
+        except Exception:
+            # Other general errors
+            if container:
+                try:
+                    await loop.run_in_executor(None, lambda: container.remove(force=True))
+                except Exception as cleanup_exc:
+                    logger.warning(f"Failed to remove orphaned container {container.id} after error: {cleanup_exc}")
+            raise
 
     async def start_container(self, container_id: str) -> bool:
         client = await self._get_client()

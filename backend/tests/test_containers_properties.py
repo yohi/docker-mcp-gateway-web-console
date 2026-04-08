@@ -12,6 +12,7 @@ from app.services.auth import AuthService
 from app.services.base import ContainerProvider
 from app.services.containers import ContainerService
 from app.services.secrets import SecretManager
+from app.services.state_store import StateStore
 
 
 @st.composite
@@ -87,7 +88,10 @@ class TestContainerServiceProperties:
         provider = AsyncMock(spec=ContainerProvider)
         secret_manager = AsyncMock(spec=SecretManager)
         auth_service = AsyncMock(spec=AuthService)
-        service = ContainerService(provider, secret_manager, auth_service)
+        state_store = MagicMock(spec=StateStore)
+        service = ContainerService(
+            provider, secret_manager, auth_service, state_store=state_store
+        )
         return service, provider, secret_manager, auth_service
 
     @settings(max_examples=50)

@@ -12,8 +12,7 @@ from unittest.mock import patch
 from app.main import app
 from app.config import settings
 from app.models.catalog import CatalogItem
-from httpx import AsyncClient
-
+from httpx import AsyncClient, ASGITransport
 
 # Sample CatalogItem for testing
 SAMPLE_CATALOG_ITEMS = [
@@ -44,7 +43,7 @@ async def test_get_catalog_source_omitted_defaults_to_docker():
         mock_get_cache.return_value = None
         mock_fetch.return_value = (SAMPLE_CATALOG_ITEMS, False)
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Request without source parameter
             response = await client.get("/api/catalog")
 
@@ -72,7 +71,7 @@ async def test_get_catalog_source_empty_string_returns_400():
     """
     with patch("app.api.catalog.catalog_service.fetch_catalog") as mock_fetch:
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Request with empty source parameter
             response = await client.get("/api/catalog?source=")
 
@@ -108,7 +107,7 @@ async def test_get_catalog_invalid_source_returns_400():
         with patch("app.api.catalog.catalog_service.fetch_catalog") as mock_fetch, \
              patch("app.api.catalog.catalog_service.get_cached_catalog") as mock_get_cache:
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get(f"/api/catalog?source={invalid_source}")
 
             # Verify 400 Bad Request response
@@ -137,7 +136,7 @@ async def test_get_catalog_invalid_source_no_upstream_request():
     with patch("app.api.catalog.catalog_service.fetch_catalog") as mock_fetch, \
          patch("app.api.catalog.catalog_service._fetch_from_url") as mock_fetch_url:
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=http://evil.com")
 
         # Verify no service calls were made
@@ -160,7 +159,7 @@ async def test_get_catalog_backward_compatibility_existing_clients():
         mock_get_cache.return_value = None
         mock_fetch.return_value = (SAMPLE_CATALOG_ITEMS, False)
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog")
 
         # Verify response structure is compatible
@@ -195,7 +194,7 @@ async def test_search_catalog_source_omitted_defaults_to_docker():
         mock_get_cache.return_value = None
         mock_fetch.return_value = (SAMPLE_CATALOG_ITEMS, False)
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Search without source parameter
             response = await client.get("/api/catalog/search?q=test")
 
@@ -217,7 +216,7 @@ async def test_search_catalog_invalid_source_returns_400():
     Requirements: 2.5, 5.2
     """
     with patch("app.api.catalog.catalog_service.fetch_catalog") as mock_fetch:
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog/search?source=invalid&q=test")
 
         # Verify 400 Bad Request with structured error

@@ -1,6 +1,7 @@
 """Container API endpoints."""
 
 import logging
+import os
 import time
 from typing import Annotated
 
@@ -75,19 +76,12 @@ def get_container_provider() -> ContainerProvider:
             client_key = settings.docker_client_key
             
             if settings.docker_cert_path:
-                cert_dir = Path(settings.docker_cert_path)
                 if not ca_cert:
-                    ca_path = cert_dir / "ca.pem"
-                    if ca_path.exists():
-                        ca_cert = str(ca_path)
+                    ca_cert = os.path.join(settings.docker_cert_path, "ca.pem")
                 if not client_cert:
-                    cert_path = cert_dir / "cert.pem"
-                    if cert_path.exists():
-                        client_cert = str(cert_path)
+                    client_cert = os.path.join(settings.docker_cert_path, "cert.pem")
                 if not client_key:
-                    key_path = cert_dir / "key.pem"
-                    if key_path.exists():
-                        client_key = str(key_path)
+                    client_key = os.path.join(settings.docker_cert_path, "key.pem")
 
             tls_config = docker.tls.TLSConfig(
                 client_cert=(client_cert, client_key) if client_cert and client_key else None,
@@ -191,6 +185,8 @@ async def list_containers(
     try:
         containers = await container_service.list_containers_with_auth(session_id, all)
         return ContainerListResponse(containers=containers)
+    except HTTPException:
+        raise
     except AuthenticationError as e:
         _raise_container_http_exception(e)
     except ContainerUnavailableError as e:
@@ -239,6 +235,8 @@ async def create_container(
             name=config.name,
             status="running",
         )
+    except HTTPException:
+        raise
     except (AuthenticationError, ContainerError) as e:
         _raise_container_http_exception(e)
     except Exception as e:
@@ -261,6 +259,8 @@ async def get_container_config(
             container_id, session_id
         )
         return ContainerConfig.model_validate(config_data)
+    except HTTPException:
+        raise
     except (AuthenticationError, ContainerError) as e:
         _raise_container_http_exception(e)
     except Exception:
@@ -295,6 +295,8 @@ async def install_container(
             name=config.name,
             status="running",
         )
+    except HTTPException:
+        raise
     except (AuthenticationError, ContainerError) as e:
         _raise_container_http_exception(e)
     except Exception as e:
@@ -323,6 +325,8 @@ async def start_container(
             message=f"Container {container_id} started successfully",
             container_id=container_id,
         )
+    except HTTPException:
+        raise
     except (AuthenticationError, ContainerError) as e:
         _raise_container_http_exception(e)
     except Exception as e:
@@ -357,6 +361,8 @@ async def stop_container(
             message=f"Container {container_id} stopped successfully",
             container_id=container_id,
         )
+    except HTTPException:
+        raise
     except (AuthenticationError, ContainerError) as e:
         _raise_container_http_exception(e)
     except Exception as e:
@@ -391,6 +397,8 @@ async def restart_container(
             message=f"Container {container_id} restarted successfully",
             container_id=container_id,
         )
+    except HTTPException:
+        raise
     except (AuthenticationError, ContainerError) as e:
         _raise_container_http_exception(e)
     except Exception as e:
@@ -425,6 +433,8 @@ async def delete_container(
             message=f"Container {container_id} deleted successfully",
             container_id=container_id,
         )
+    except HTTPException:
+        raise
     except (AuthenticationError, ContainerError) as e:
         _raise_container_http_exception(e)
     except Exception as e:

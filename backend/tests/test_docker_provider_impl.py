@@ -56,22 +56,43 @@ async def test_create_container_compensation_logic(provider):
     
     # containers.create は成功するが start は失敗する設定
     mock_client.containers.create.return_value = mock_container
-    
-    # 最初の call_docker_api (pull/get image) は成功
-    # 2回目 (containers.create) も成功
-    # 3回目 (container.start) は失敗させる
-    async def side_effect(func, *args, **kwargs):
-        if func == mock_container.start:
-            raise Exception("Start failed")
-        return func(*args, **kwargs)
-    
-    provider._call_docker_api = AsyncMock(side_effect=side_effect)
-    
+    # DockerException with "timeout" should be normalized to DockerUnavailableError
+    mock_container.start.side_effect = DockerException("Connection timeout")
+
+    # Image check/pull は成功させる
+    provider._call_docker_api = AsyncMock(return_value=None)
     config = ContainerConfig(name="test", image="alpine")
     
-    with pytest.raises(Exception, match="Start failed"):
+    with pytest.raises(DockerUnavailableError, match="Connection timeout"):
         await provider.create_container(config, "test", {})
     
     # container.remove(force=True) が呼ばれたことを確認
     # run_in_executor を経由するため、呼び出しを検証
+    mock_container.remove.assert_called_once_with(force=True)
+
+@pytest.mark.asyncio
+async def test_create_container_connection_normalization(provider):
+    """接続エラー時に DockerUnavailableError に正規化され、クライアントがリセットされることを検証する。"""
+    mock_client = MagicMock()
+    mock_container = MagicMock()
+    
+    # get_client と call_docker_api をモック
+    provider._get_client = AsyncMock(return_value=mock_client)
+    mock_client.containers.create.return_value = mock_container
+    # start() 中に接続エラーが発生するシミュレーション
+    mock_container.start.side_effect = DockerException("Connection timeout")
+    
+    # Image check は成功させる
+    provider._call_docker_api = AsyncMock(return_value=None)
+    config = ContainerConfig(name="test", image="alpine")
+    
+    # クライアントがセットされている状態から開始
+    provider._client = mock_client
+    
+    with pytest.raises(DockerUnavailableError):
+        await provider.create_container(config, "test", {})
+    
+    # クライアントが None にリセットされていることを確認
+    assert provider._client is None
+    # 補償削除が呼ばれていることを確認
     mock_container.remove.assert_called_once_with(force=True)

@@ -33,7 +33,7 @@
 
 - [ ] **Step 1: 既存テストを実行**
 
-Run: `cd /home/y_ohi/program/private/docker-mcp-gateway-web-console/backend && python -m pytest tests/ -x -q --tb=short 2>&1 | tail -20`
+Run: `cd backend && python -m pytest tests/ -x -q --tb=short 2>&1 | tail -20`
 Expected: All tests PASS (green baseline)
 
 - [ ] **Step 2: 結果を記録**
@@ -81,7 +81,7 @@ def test_devcontainer_compose_dind_service() -> None:
 
 - [ ] **Step 2: テスト実行 — 失敗確認**
 
-Run: `cd /home/y_ohi/program/private/docker-mcp-gateway-web-console/backend && python -m pytest tests/test_devcontainer_docker_socket.py::test_devcontainer_compose_dind_service -xvs 2>&1 | tail -20`
+Run: `cd backend && python -m pytest tests/test_devcontainer_docker_socket.py::test_devcontainer_compose_dind_service -xvs 2>&1 | tail -20`
 Expected: FAIL (dind service not found)
 
 - [ ] **Step 3: docker-compose.devcontainer.yml を更新**
@@ -174,12 +174,12 @@ def test_devcontainer_compose_references_detected_socket() -> None:
 
 - [ ] **Step 5: テスト実行 — 成功確認**
 
-Run: `cd /home/y_ohi/program/private/docker-mcp-gateway-web-console/backend && python -m pytest tests/test_devcontainer_docker_socket.py -xvs 2>&1 | tail -20`
+Run: `cd backend && python -m pytest tests/test_devcontainer_docker_socket.py -xvs 2>&1 | tail -20`
 Expected: PASS
 
 - [ ] **Step 6: PyYAML 依存の追加**
 
-Run: `cd /home/y_ohi/program/private/docker-mcp-gateway-web-console/backend && grep -q pyyaml requirements-dev.txt || echo "pyyaml" >> requirements-dev.txt`
+Run: `cd backend && grep -q pyyaml requirements-dev.txt || echo "pyyaml" >> requirements-dev.txt`
 
 - [ ] **Step 7: コミット**
 
@@ -215,7 +215,7 @@ def test_devcontainer_json_has_docker_remote_env() -> None:
 
 - [ ] **Step 2: テスト実行 — 失敗確認**
 
-Run: `cd /home/y_ohi/program/private/docker-mcp-gateway-web-console/backend && python -m pytest tests/test_devcontainer_config.py::test_devcontainer_json_has_docker_remote_env -xvs`
+Run: `cd backend && python -m pytest tests/test_devcontainer_config.py::test_devcontainer_json_has_docker_remote_env -xvs`
 Expected: FAIL
 
 - [ ] **Step 3: devcontainer.json に remoteEnv を追加**
@@ -242,7 +242,7 @@ Expected: FAIL
 
 - [ ] **Step 5: テスト実行 — 成功確認**
 
-Run: `cd /home/y_ohi/program/private/docker-mcp-gateway-web-console/backend && python -m pytest tests/test_devcontainer_config.py -xvs 2>&1 | tail -10`
+Run: `cd backend && python -m pytest tests/test_devcontainer_config.py -xvs 2>&1 | tail -10`
 Expected: PASS
 
 - [ ] **Step 6: コミット**
@@ -312,7 +312,7 @@ finally ブロックの環境変数復元コードに追加:
 
 - [ ] **Step 3: 全テスト実行 — Green 確認**
 
-Run: `cd /home/y_ohi/program/private/docker-mcp-gateway-web-console/backend && python -m pytest tests/ -x -q --tb=short 2>&1 | tail -20`
+Run: `cd backend && python -m pytest tests/ -x -q --tb=short 2>&1 | tail -20`
 Expected: All tests PASS
 
 - [ ] **Step 4: コミット**
@@ -429,7 +429,7 @@ class TestContainerServiceWithAuth:
 
 - [ ] **Step 2: テスト実行 — 失敗確認**
 
-Run: `cd /home/y_ohi/program/private/docker-mcp-gateway-web-console/backend && python -m pytest tests/test_container_service_auth.py -xvs 2>&1 | tail -20`
+Run: `cd backend && python -m pytest tests/test_container_service_auth.py -xvs 2>&1 | tail -20`
 Expected: FAIL
 
 - [ ] **Step 3: ContainerService に AuthService DI を実装 [Green]**
@@ -486,12 +486,12 @@ if TYPE_CHECKING:
 
 - [ ] **Step 4: テスト実行 — 成功確認**
 
-Run: `cd /home/y_ohi/program/private/docker-mcp-gateway-web-console/backend && python -m pytest tests/test_container_service_auth.py -xvs 2>&1 | tail -20`
+Run: `cd backend && python -m pytest tests/test_container_service_auth.py -xvs 2>&1 | tail -20`
 Expected: PASS
 
 - [ ] **Step 5: 回帰テスト**
 
-Run: `cd /home/y_ohi/program/private/docker-mcp-gateway-web-console/backend && python -m pytest tests/ -x -q --tb=short 2>&1 | tail -20`
+Run: `cd backend && python -m pytest tests/ -x -q --tb=short 2>&1 | tail -20`
 Expected: All tests PASS
 
 - [ ] **Step 6: コミット**
@@ -543,7 +543,7 @@ def get_container_service(
 
 - [ ] **Step 5: 全テスト実行 — Green 確認**
 
-Run: `cd /home/y_ohi/program/private/docker-mcp-gateway-web-console/backend && python -m pytest tests/ -x -q --tb=short 2>&1 | tail -20`
+Run: `cd backend && python -m pytest tests/ -x -q --tb=short 2>&1 | tail -20`
 Expected: All tests PASS
 
 - [ ] **Step 6: コミット**

@@ -4,6 +4,8 @@ import logging
 import re
 from typing import Any, AsyncIterator, List, Optional, TYPE_CHECKING
 
+from fastapi import HTTPException, status
+
 from ..models.containers import (
     ContainerConfig,
     ContainerInfo,
@@ -130,6 +132,20 @@ class ContainerService:
 
         raise ContainerError(f"Failed to {operation}: {e}") from e
 
+    def _map_container_error_to_http(self, e: ContainerError) -> Exception:
+        """Map specific ContainerError types to FastAPI HTTPException.
+        
+        Other errors (including ContainerUnavailableError) are returned as-is
+        so the API layer can handle them gracefully.
+        """
+        if isinstance(e, AuthenticationError):
+            return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        if isinstance(e, ContainerAlreadyExistsError):
+            return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+        
+        # Return original domain exception for other ContainerError subclasses
+        return e
+
     async def list_containers(self, all_containers: bool = True) -> List[ContainerInfo]:
         """List containers via provider."""
         try:
@@ -141,8 +157,11 @@ class ContainerService:
         self, session_id: str, all_containers: bool = True
     ) -> List[ContainerInfo]:
         """Validate session before listing containers."""
-        await self._validate_session_and_get(session_id)
-        return await self.list_containers(all_containers)
+        try:
+            await self._validate_session_and_get(session_id)
+            return await self.list_containers(all_containers)
+        except ContainerError as e:
+            raise self._map_container_error_to_http(e) from e
 
     async def create_container(
         self,
@@ -167,10 +186,15 @@ class ContainerService:
                 sanitized_name,
                 resolved_env,
             )
+        except (ContainerAlreadyExistsError, ContainerUnavailableError):
+            raise
         except Exception as e:
             st = getattr(e, "status_code", None)
             if st == 409:
                 raise ContainerAlreadyExistsError(sanitized_name, container_status=str(st)) from e
+            if st == 503:
+                provider_id = self.provider.identifier
+                raise ContainerUnavailableError([provider_id], [f"status={st}, error={e}"]) from e
             self._handle_provider_exception(e, "create container")
             
         # Save state
@@ -204,11 +228,14 @@ class ContainerService:
         session_id: str,
     ) -> str:
         """Validate session before creating a container."""
-        session = await self._validate_session_and_get(session_id)
-        if not session.bw_session_key:
-            raise ContainerError("Bitwarden session key not found in session")
+        try:
+            session = await self._validate_session_and_get(session_id)
+            if not session.bw_session_key:
+                raise ContainerError("Bitwarden session key not found in session")
 
-        return await self.create_container(config, session_id, session.bw_session_key)
+            return await self.create_container(config, session_id, session.bw_session_key)
+        except ContainerError as e:
+            raise self._map_container_error_to_http(e) from e
 
     async def get_container_config_with_auth(
         self, 
@@ -216,8 +243,11 @@ class ContainerService:
         session_id: str
     ) -> dict:
         """認証後に保存済みのコンテナ設定を返す。"""
-        await self._validate_session_and_get(session_id)
-        return self.get_container_config(container_id)
+        try:
+            await self._validate_session_and_get(session_id)
+            return self.get_container_config(container_id)
+        except ContainerError as e:
+            raise self._map_container_error_to_http(e) from e
 
     def get_container_config(self, container_id: str) -> dict:
         """Return saved container configuration."""
@@ -246,8 +276,11 @@ class ContainerService:
 
     async def start_container_with_auth(self, container_id: str, session_id: str) -> bool:
         """Validate session before starting a container."""
-        await self._validate_session_and_get(session_id)
-        return await self.start_container(container_id)
+        try:
+            await self._validate_session_and_get(session_id)
+            return await self.start_container(container_id)
+        except ContainerError as e:
+            raise self._map_container_error_to_http(e) from e
 
     async def stop_container(self, container_id: str, timeout: int = 10) -> bool:
         """Stop container via provider."""
@@ -260,8 +293,11 @@ class ContainerService:
         self, container_id: str, session_id: str, timeout: int = 10
     ) -> bool:
         """Validate session before stopping a container."""
-        await self._validate_session_and_get(session_id)
-        return await self.stop_container(container_id, timeout)
+        try:
+            await self._validate_session_and_get(session_id)
+            return await self.stop_container(container_id, timeout)
+        except ContainerError as e:
+            raise self._map_container_error_to_http(e) from e
 
     async def restart_container(self, container_id: str, timeout: int = 10) -> bool:
         """Restart container via provider."""
@@ -274,8 +310,11 @@ class ContainerService:
         self, container_id: str, session_id: str, timeout: int = 10
     ) -> bool:
         """Validate session before restarting a container."""
-        await self._validate_session_and_get(session_id)
-        return await self.restart_container(container_id, timeout)
+        try:
+            await self._validate_session_and_get(session_id)
+            return await self.restart_container(container_id, timeout)
+        except ContainerError as e:
+            raise self._map_container_error_to_http(e) from e
 
     async def delete_container(self, container_id: str, force: bool = False) -> bool:
         """Delete container via provider."""
@@ -288,8 +327,11 @@ class ContainerService:
         self, container_id: str, session_id: str, force: bool = False
     ) -> bool:
         """Validate session before deleting a container."""
-        await self._validate_session_and_get(session_id)
-        return await self.delete_container(container_id, force)
+        try:
+            await self._validate_session_and_get(session_id)
+            return await self.delete_container(container_id, force)
+        except ContainerError as e:
+            raise self._map_container_error_to_http(e) from e
 
     async def stream_logs(
         self,
