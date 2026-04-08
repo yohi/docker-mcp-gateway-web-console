@@ -433,9 +433,11 @@ class CatalogService:
                         error_code=CatalogErrorCode.UPSTREAM_UNAVAILABLE,
                     )
 
-                response.raise_for_status()
-
                 # Parse JSON response (AsyncMock compatibility: handle coroutine)
+                rfs = response.raise_for_status()
+                if asyncio.iscoroutine(rfs):
+                    await rfs
+
                 parsed = response.json()
                 data = await parsed if asyncio.iscoroutine(parsed) else parsed
 

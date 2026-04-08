@@ -11,10 +11,9 @@ import pytest
 from datetime import datetime, timedelta
 from email.utils import formatdate
 from unittest.mock import patch, AsyncMock
-from httpx import Response
 from app.main import app
 from app.models.catalog import CatalogErrorCode
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport, Response
 
 
 @pytest.fixture(autouse=True)
@@ -47,7 +46,7 @@ async def test_upstream_rate_limit_returns_429():
         mock_client.get.return_value = mock_response
         mock_client_class.return_value = mock_client
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=docker")
 
         # Verify 429 response
@@ -83,7 +82,7 @@ async def test_upstream_rate_limit_without_retry_after():
         mock_client.get.return_value = mock_response
         mock_client_class.return_value = mock_client
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=docker")
 
         # Verify 429 response
@@ -121,7 +120,7 @@ async def test_upstream_rate_limit_with_datetime_retry_after():
         mock_client.get.return_value = mock_response
         mock_client_class.return_value = mock_client
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=docker")
 
         # Verify 429 response
@@ -157,7 +156,7 @@ async def test_search_endpoint_rate_limit_returns_429():
         mock_client.get.return_value = mock_response
         mock_client_class.return_value = mock_client
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog/search?source=docker&q=test")
 
         # Verify 429 response
@@ -186,7 +185,7 @@ async def test_upstream_timeout_returns_503():
         mock_client.get.side_effect = httpx.TimeoutException("Request timeout")
         mock_client_class.return_value = mock_client
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=docker")
 
         # Verify 503 response
@@ -221,7 +220,7 @@ async def test_upstream_5xx_error_returns_503():
         mock_client.get.return_value = mock_response
         mock_client_class.return_value = mock_client
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=docker")
 
         # Verify 503 response
@@ -250,7 +249,7 @@ async def test_upstream_connection_error_returns_503():
         mock_client.get.side_effect = httpx.ConnectError("Connection refused")
         mock_client_class.return_value = mock_client
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=docker")
 
         # Verify 503 response
@@ -279,7 +278,7 @@ async def test_search_endpoint_upstream_timeout_returns_503():
         mock_client.get.side_effect = httpx.TimeoutException("Request timeout")
         mock_client_class.return_value = mock_client
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog/search?source=docker&q=test")
 
         # Verify 503 response
