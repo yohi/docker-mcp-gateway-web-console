@@ -62,7 +62,9 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 BITWARDEN_CLI_PATH=/usr/local/bin/bw
 
 # Docker Configuration
-DOCKER_HOST=unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}
+# 直接実行（python-dotenv）する場合、ネストした変数展開はサポートされません。
+# 具体的なパスを指定してください。未設定の場合はプログラムが自動推測します。
+DOCKER_HOST=unix:///run/user/1000/docker.sock
 # ソケットパスが異なる場合に上書き
 # DOCKER_SOCKET_PATH=/run/user/1000/docker.sock
 
@@ -96,12 +98,17 @@ LOG_LEVEL=INFO
 
 # Performance
 SECRET_CACHE_TTL_SECONDS=1800
-MAX_LOG_LINES=1000
+# Session Management
+SESSION_TIMEOUT_MINUTES=30
 ```
+
+**注意**: バックエンドは `DOCKER_HOST` が未設定の場合、`XDG_RUNTIME_DIR` や UID に基づいて
+自動的に適切なソケットパス（`unix:///run/user/<uid>/docker.sock` 等）を選択します。
 
 ## Docker Compose 環境変数
 
-Docker Composeを使用する場合、プロジェクトルートの `.env` ファイルでこれらの変数をオーバーライドできます：
+Docker Composeを使用する場合、プロジェクトルートの `.env` ファイルでこれらの変数をオーバーライドできます。
+Compose YAML 内では変数展開が利用可能です：
 
 ```env
 # Frontend
@@ -111,12 +118,12 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 # Backend
 BACKEND_PORT=8000
 BITWARDEN_CLI_PATH=/usr/local/bin/bw
-DOCKER_HOST=unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}
+# Compose YAML 経由で渡される場合は変数展開が有効です
+DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}}
 DOCKER_SOCKET_PATH=/run/user/${UID:-1000}/docker.sock
 SESSION_TIMEOUT_MINUTES=30
 LOG_LEVEL=INFO
 ```
-
 別ユーザーで動作するデーモンや rootful Docker に接続する場合は、
 `DOCKER_SOCKET_PATH` を実際のソケットパスに合わせてください。Compose 側の
 ボリュームマウントも同じパスに自動で切り替わります。

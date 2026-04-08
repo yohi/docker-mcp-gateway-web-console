@@ -62,7 +62,9 @@ Create a `.env` file in the `backend/` directory:
 BITWARDEN_CLI_PATH=/usr/local/bin/bw
 
 # Docker Configuration
-DOCKER_HOST=unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}
+# Nested variable expansion is not supported when running directly (python-dotenv).
+# Use a concrete path. If unset, the backend will attempt to guess it automatically.
+DOCKER_HOST=unix:///run/user/1000/docker.sock
 # Override when the socket path differs
 # DOCKER_SOCKET_PATH=/run/user/1000/docker.sock
 
@@ -97,12 +99,18 @@ LOG_LEVEL=INFO
 
 # Performance
 SECRET_CACHE_TTL_SECONDS=1800
-MAX_LOG_LINES=1000
+# Session Management
+SESSION_TIMEOUT_MINUTES=30
 ```
+
+**Note**: If `DOCKER_HOST` is unset, the backend automatically selects an appropriate 
+socket path (e.g., `unix:///run/user/<uid>/docker.sock`) based on `XDG_RUNTIME_DIR` 
+or the current UID.
 
 ## Docker Compose Environment Variables
 
-When using Docker Compose, you can override these variables in a `.env` file at the project root:
+When using Docker Compose, you can override these variables in a `.env` file at the project root.
+Variable expansion is available within the Compose YAML:
 
 ```env
 # Frontend
@@ -112,12 +120,12 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 # Backend
 BACKEND_PORT=8000
 BITWARDEN_CLI_PATH=/usr/local/bin/bw
-DOCKER_HOST=unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}
+# Variable expansion is supported when passed through Compose YAML
+DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}}
 DOCKER_SOCKET_PATH=/run/user/${UID:-1000}/docker.sock
 SESSION_TIMEOUT_MINUTES=30
 LOG_LEVEL=INFO
 ```
-
 If you're running Docker under another user or with a rootful daemon, set
 `DOCKER_SOCKET_PATH` to the actual socket location. The Compose volume mount
 will automatically use the same path.

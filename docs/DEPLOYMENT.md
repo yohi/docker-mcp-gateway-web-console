@@ -93,8 +93,7 @@ NEXT_PUBLIC_API_URL=https://api.yourdomain.com
 **backend/.env:**
 ```env
 BITWARDEN_CLI_PATH=/usr/local/bin/bw
-DOCKER_HOST=unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}
-# DOCKER_SOCKET_PATH=/run/user/1000/docker.sock
+DOCKER_HOST=unix:///run/user/1000/docker.sock
 SESSION_TIMEOUT_MINUTES=30
 CATALOG_CACHE_TTL_SECONDS=3600
 CORS_ORIGINS=https://yourdomain.com
@@ -128,6 +127,7 @@ services:
       - LOG_LEVEL=WARNING
     volumes:
       - ${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}:${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}:ro
+      - /run/user:/run/user:ro
       - ./backend/data:/app/data
     networks:
       - app-network
