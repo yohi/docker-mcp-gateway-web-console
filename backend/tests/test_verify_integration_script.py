@@ -235,7 +235,7 @@ def test_verify_integration_script_fails_on_missing_dind_config(tmp_path: Path) 
     
     import re
     # Locate the dind service definition and rename it to make it 'missing' for the script
-    content = re.sub(r"(?m)^\s*dind:", "  dind_backup:", content)
+    content = re.sub(r"(?m)^(\s*)dind:", r"\1dind_backup:", content)
     dev_compose.write_text(content, encoding="utf-8")
 
     log_path = tmp_path / "docker-calls.log"

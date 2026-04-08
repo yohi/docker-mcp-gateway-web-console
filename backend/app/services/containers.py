@@ -132,20 +132,19 @@ class ContainerService:
 
         raise ContainerError(f"Failed to {operation}: {e}") from e
 
-    def _map_container_error_to_http(self, e: ContainerError) -> HTTPException:
+    def _map_container_error_to_http(self, e: ContainerError) -> Exception:
         """Map specific ContainerError types to FastAPI HTTPException.
         
-        Other errors (including ContainerUnavailableError) should be handled 
-        gracefully by the API layer for UI-level degradation.
+        Other errors (including ContainerUnavailableError) are returned as-is
+        so the API layer can handle them gracefully.
         """
         if isinstance(e, AuthenticationError):
             return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
         if isinstance(e, ContainerAlreadyExistsError):
             return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
         
-        # All other ContainerErrors are re-raised or passed as-is to let the API layer
-        # decide between raising 4xx/5xx or returning a partial list with warnings.
-        raise e
+        # Return original domain exception for other ContainerError subclasses
+        return e
 
     async def list_containers(self, all_containers: bool = True) -> List[ContainerInfo]:
         """List containers via provider."""

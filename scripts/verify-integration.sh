@@ -48,7 +48,10 @@ compose_exec() {
 require_dind_config() {
   info "Validating DinD/TLS configuration in ${dev_compose_file}"
   local config_output
-  config_output=$("${docker_bin}" compose -f "${dev_compose_path}" config 2>/dev/null)
+  # Capture both stdout and stderr to handle failures gracefully
+  if ! config_output=$("${docker_bin}" compose -f "${dev_compose_path}" config 2>&1); then
+    fail "Failed to resolve compose config for ${dev_compose_path}:\n${config_output}"
+  fi
   
   # Validate dind service exists
   echo "${config_output}" | grep -qE '^\s*dind:' || fail "dind service missing from ${dev_compose_file}"

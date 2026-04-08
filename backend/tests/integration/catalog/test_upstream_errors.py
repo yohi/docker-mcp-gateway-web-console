@@ -11,10 +11,9 @@ import pytest
 from datetime import datetime, timedelta
 from email.utils import formatdate
 from unittest.mock import patch, AsyncMock
-from httpx import Response
 from app.main import app
 from app.models.catalog import CatalogErrorCode
-from httpx import AsyncClient, ASGITransport
+from httpx import AsyncClient, ASGITransport, Response
 
 
 @pytest.fixture(autouse=True)

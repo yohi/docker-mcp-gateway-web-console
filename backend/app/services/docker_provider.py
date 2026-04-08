@@ -230,28 +230,45 @@ class DockerSdkProvider(ContainerProvider):
             "restart_policy": config.restart_policy,
         }
         
+        loop = asyncio.get_event_loop()
+        container = None
+        
         def _create_and_start():
+            nonlocal container
             container = client.containers.create(
                 **{k: v for k, v in docker_kwargs.items() if v is not None}
             )
-            try:
-                container.start()
-                return container.id
-            except Exception:
-                try:
-                    container.remove(force=True)
-                except Exception:
-                    pass
-                raise
+            container.start()
+            return container.id
 
-        loop = asyncio.get_event_loop()
         try:
             return await loop.run_in_executor(None, _create_and_start)
         except (DockerException, APIError, RequestsConnectionError, RequestsTimeout, ConnectionError, TimeoutError) as e:
             # Normalize connection-related errors similar to _call_docker_api
             if "connection" in str(e).lower() or "timeout" in str(e).lower() or isinstance(e, (RequestsConnectionError, RequestsTimeout, ConnectionError, TimeoutError)):
                 self._client = None
+                # Ensure any container leftover is removed before raising normalized error
+                if container:
+                    try:
+                        await loop.run_in_executor(None, lambda: container.remove(force=True))
+                    except Exception as cleanup_exc:
+                        logger.warning(f"Failed to remove orphaned container {container.id} after connection error: {cleanup_exc}")
                 raise DockerUnavailableError([self.base_url], [str(e)]) from e
+            
+            # Non-connection Docker errors (like 409) still need cleanup
+            if container:
+                try:
+                    await loop.run_in_executor(None, lambda: container.remove(force=True))
+                except Exception:
+                    pass
+            raise
+        except Exception:
+            # Other general errors
+            if container:
+                try:
+                    await loop.run_in_executor(None, lambda: container.remove(force=True))
+                except Exception as cleanup_exc:
+                    logger.warning(f"Failed to remove orphaned container {container.id} after error: {cleanup_exc}")
             raise
 
     async def start_container(self, container_id: str) -> bool:

@@ -68,10 +68,11 @@ async def test_create_container_compensation_on_start_failure(mock_provider, moc
     )
     config = ContainerConfig(name="test", image="alpine")
     
-    with pytest.raises(HTTPException) as excinfo:
+    # Now that we updated _map_container_error_to_http to re-raise generic errors,
+    # create_container_with_auth will raise ContainerError directly.
+    with pytest.raises(ContainerError) as excinfo:
         await svc.create_container_with_auth(config, "test-sid")
-    assert excinfo.value.status_code == 400
-    assert "Start failed" in str(excinfo.value.detail)
+    assert "Start failed" in str(excinfo.value)
 
 @pytest.mark.asyncio
 async def test_create_container_compensation_on_503(mock_provider, mock_secret_manager, mock_auth_service):
@@ -87,10 +88,10 @@ async def test_create_container_compensation_on_503(mock_provider, mock_secret_m
     )
     config = ContainerConfig(name="test", image="alpine")
     
-    with pytest.raises(HTTPException) as excinfo:
+    # 503 is mapped to ContainerUnavailableError (subclass of ContainerError)
+    with pytest.raises(ContainerError) as excinfo:
         await svc.create_container_with_auth(config, "test-sid")
-    assert excinfo.value.status_code == 503
-    assert "503" in str(excinfo.value.detail)
+    assert "デーモンに接続できません" in str(excinfo.value)
 
 @pytest.mark.asyncio
 async def test_create_container_compensation_on_409(mock_provider, mock_secret_manager, mock_auth_service):
