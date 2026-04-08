@@ -122,7 +122,6 @@ BITWARDEN_CLI_PATH=/usr/local/bin/bw
 # Variable expansion is supported when passed through Compose YAML
 DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}}
 DOCKER_SOCKET_PATH=/run/user/${UID:-1000}/docker.sock
-SESSION_TIMEOUT_MINUTES=30
 LOG_LEVEL=INFO
 ```
 

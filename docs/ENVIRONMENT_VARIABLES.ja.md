@@ -120,7 +120,6 @@ BITWARDEN_CLI_PATH=/usr/local/bin/bw
 # Compose YAML 経由で渡される場合は変数展開が有効です
 DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}}
 DOCKER_SOCKET_PATH=/run/user/${UID:-1000}/docker.sock
-SESSION_TIMEOUT_MINUTES=30
 LOG_LEVEL=INFO
 ```
 
