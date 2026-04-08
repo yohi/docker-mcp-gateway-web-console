@@ -230,20 +230,22 @@ class DockerSdkProvider(ContainerProvider):
             "restart_policy": config.restart_policy,
         }
         
-        container = await self._call_docker_api(
-            client.containers.create, 
-            **{k: v for k, v in docker_kwargs.items() if v is not None}
-        )
-        
-        try:
-            await self._call_docker_api(container.start)
-        except Exception:
-            # Cleanup orphaned container on start failure
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: container.remove(force=True))
-            raise
-            
-        return container.id
+        def _create_and_start():
+            container = client.containers.create(
+                **{k: v for k, v in docker_kwargs.items() if v is not None}
+            )
+            try:
+                container.start()
+                return container.id
+            except Exception:
+                try:
+                    container.remove(force=True)
+                except Exception:
+                    pass
+                raise
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _create_and_start)
 
     async def start_container(self, container_id: str) -> bool:
         client = await self._get_client()
