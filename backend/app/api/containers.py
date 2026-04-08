@@ -68,9 +68,30 @@ def get_container_provider() -> ContainerProvider:
     if _container_provider is None:
         tls_config = None
         if settings.docker_tls_verify:
+            # Resolve certificate paths, prioritizing explicit settings, 
+            # then deriving from DOCKER_CERT_PATH if available.
+            ca_cert = settings.docker_ca_cert
+            client_cert = settings.docker_client_cert
+            client_key = settings.docker_client_key
+            
+            if settings.docker_cert_path:
+                cert_dir = Path(settings.docker_cert_path)
+                if not ca_cert:
+                    ca_path = cert_dir / "ca.pem"
+                    if ca_path.exists():
+                        ca_cert = str(ca_path)
+                if not client_cert:
+                    cert_path = cert_dir / "cert.pem"
+                    if cert_path.exists():
+                        client_cert = str(cert_path)
+                if not client_key:
+                    key_path = cert_dir / "key.pem"
+                    if key_path.exists():
+                        client_key = str(key_path)
+
             tls_config = docker.tls.TLSConfig(
-                client_cert=(settings.docker_client_cert_path, settings.docker_client_key_path) if settings.docker_client_cert_path and settings.docker_client_key_path else None,
-                ca_cert=settings.docker_ca_cert_path,
+                client_cert=(client_cert, client_key) if client_cert and client_key else None,
+                ca_cert=ca_cert,
                 verify=True
             )
         

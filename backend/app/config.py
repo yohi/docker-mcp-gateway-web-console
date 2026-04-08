@@ -47,39 +47,6 @@ class Settings(BaseSettings):
     docker_client_key: Optional[str] = Field(default=None, validation_alias="DOCKER_CLIENT_KEY")
     container_provider_type: str = Field(default="docker-sdk", validation_alias="CONTAINER_PROVIDER_TYPE")
 
-    @property
-    def docker_ca_cert_path(self) -> Optional[str]:
-        """Resolve CA certificate path."""
-        if self.docker_ca_cert:
-            return self.docker_ca_cert
-        if self.docker_cert_path:
-            ca_path = Path(self.docker_cert_path) / "ca.pem"
-            if ca_path.exists():
-                return str(ca_path)
-        return None
-
-    @property
-    def docker_client_cert_path(self) -> Optional[str]:
-        """Resolve client certificate path."""
-        if self.docker_client_cert:
-            return self.docker_client_cert
-        if self.docker_cert_path:
-            cert_path = Path(self.docker_cert_path) / "cert.pem"
-            if cert_path.exists():
-                return str(cert_path)
-        return None
-
-    @property
-    def docker_client_key_path(self) -> Optional[str]:
-        """Resolve client key path."""
-        if self.docker_client_key:
-            return self.docker_client_key
-        if self.docker_cert_path:
-            key_path = Path(self.docker_cert_path) / "key.pem"
-            if key_path.exists():
-                return str(key_path)
-        return None
-
     # Session Configuration
     session_timeout_minutes: int = 30
     state_db_path: str = "data/state.db"
