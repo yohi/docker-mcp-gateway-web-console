@@ -96,17 +96,10 @@ def get_container_provider() -> ContainerProvider:
             )
         
         # Currently only docker-sdk is supported, but can be extended
-        if settings.container_provider_type == "docker-sdk":
-            _container_provider = DockerSdkProvider(
-                base_url=settings.docker_host,
-                tls_config=tls_config
-            )
-        else:
-            # Fallback to docker-sdk
-            _container_provider = DockerSdkProvider(
-                base_url=settings.docker_host,
-                tls_config=tls_config
-            )
+        _container_provider = DockerSdkProvider(
+            base_url=settings.docker_host,
+            tls_config=tls_config
+        )
             
     return _container_provider
 
@@ -155,6 +148,32 @@ def _log_docker_unavailable(e: ContainerUnavailableError) -> None:
     _last_docker_warn_at = now
 
 
+def _raise_container_http_exception(e: Exception) -> None:
+    """Map Container exceptions to FastAPI HTTPExceptions."""
+    if isinstance(e, AuthenticationError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        ) from e
+    if isinstance(e, ContainerAlreadyExistsError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        ) from e
+    if isinstance(e, ContainerUnavailableError):
+        raise _docker_unavailable(e) from e
+    if isinstance(e, ContainerError):
+        # Default to 400, but use 404 for specific "not found" messages
+        status_code = status.HTTP_400_BAD_REQUEST
+        if "not found" in str(e).lower() or "保存されていません" in str(e):
+            status_code = status.HTTP_404_NOT_FOUND
+        raise HTTPException(
+            status_code=status_code,
+            detail=str(e),
+        ) from e
+    raise e
+
+
 @router.get("", response_model=ContainerListResponse)
 async def list_containers(
     session_id: Annotated[str, Depends(get_session_id)],
@@ -173,10 +192,7 @@ async def list_containers(
         containers = await container_service.list_containers_with_auth(session_id, all)
         return ContainerListResponse(containers=containers)
     except AuthenticationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-        ) from e
+        _raise_container_http_exception(e)
     except ContainerUnavailableError as e:
         _log_docker_unavailable(e)
         return ContainerListResponse(
@@ -223,23 +239,8 @@ async def create_container(
             name=config.name,
             status="running",
         )
-    except AuthenticationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-        ) from e
-    except ContainerAlreadyExistsError as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(e),
-        ) from e
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except ContainerError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception as e:
         logger.exception("Unexpected error creating container")
         raise HTTPException(
@@ -260,16 +261,8 @@ async def get_container_config(
             container_id, session_id
         )
         return ContainerConfig.model_validate(config_data)
-    except AuthenticationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-        ) from e
-    except ContainerError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        ) from e
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception:
         logger.exception("Unexpected error getting container config")
         raise HTTPException(
@@ -302,23 +295,8 @@ async def install_container(
             name=config.name,
             status="running",
         )
-    except AuthenticationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-        ) from e
-    except ContainerAlreadyExistsError as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(e),
-        ) from e
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except ContainerError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception as e:
         logger.exception("Unexpected error installing container")
         raise HTTPException(
@@ -345,18 +323,8 @@ async def start_container(
             message=f"Container {container_id} started successfully",
             container_id=container_id,
         )
-    except AuthenticationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-        ) from e
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except ContainerError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception as e:
         logger.error(f"Unexpected error starting container: {e}")
         raise HTTPException(
@@ -389,18 +357,8 @@ async def stop_container(
             message=f"Container {container_id} stopped successfully",
             container_id=container_id,
         )
-    except AuthenticationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-        ) from e
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except ContainerError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception as e:
         logger.error(f"Unexpected error stopping container: {e}")
         raise HTTPException(
@@ -433,18 +391,8 @@ async def restart_container(
             message=f"Container {container_id} restarted successfully",
             container_id=container_id,
         )
-    except AuthenticationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-        ) from e
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except ContainerError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception as e:
         logger.error(f"Unexpected error restarting container: {e}")
         raise HTTPException(
@@ -477,18 +425,8 @@ async def delete_container(
             message=f"Container {container_id} deleted successfully",
             container_id=container_id,
         )
-    except AuthenticationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-        ) from e
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except ContainerError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception as e:
         logger.error(f"Unexpected error deleting container: {e}")
         raise HTTPException(

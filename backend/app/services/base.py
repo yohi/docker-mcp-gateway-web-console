@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import AsyncIterator, Dict, List, Optional
 from ..models.containers import ContainerConfig, ContainerInfo, LogEntry
 
 class ContainerProvider(ABC):
