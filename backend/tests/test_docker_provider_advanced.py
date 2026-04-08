@@ -27,24 +27,59 @@ def test_container_summary_to_info_minimal():
     assert info.status == "stopped"
     assert isinstance(info.created_at, datetime)
 
+def test_container_summary_to_info_status_mappings():
+    provider = DockerSdkProvider(base_url="unix:///var/run/docker.sock")
+    
+    # マッピングのテストケース
+    test_cases = [
+        ("running", "running"),
+        ("exited", "stopped"),
+        ("created", "stopped"),
+        ("paused", "stopped"),
+        ("removing", "error"),
+        ("dead", "error"),
+        ("restarting", "error"),
+        ("", "error"),
+        (None, "error"),
+    ]
+    
+    for state, expected_status in test_cases:
+        summary = {"Id": "123", "State": state}
+        info = provider._container_summary_to_info(summary)
+        assert info.status == expected_status, f"State '{state}' should map to '{expected_status}'"
+
 @pytest.mark.asyncio
 async def test_get_client_caching_and_throttle():
     provider = DockerSdkProvider(base_url="http://invalid:2375")
     
-    # 最初の失敗 (DockerExceptionを投げる必要がある)
-    with patch("docker.DockerClient", side_effect=DockerException("First failure")):
-        with pytest.raises(DockerUnavailableError):
-            await provider._get_client()
+    # time.monotonic() をモックしてスロットリング挙動を安定化させる
+    # 呼び出し回数に依存しないよう、現在の時刻を保持する状態オブジェクトを使用
+    class MockTime:
+        def __init__(self):
+            self.now = 100.0
+        def __call__(self, *args, **kwargs):
+            return self.now
+            
+    mock_time = MockTime()
     
-    first_error = provider._last_error
-    assert first_error is not None
-    
-    # 5秒以内の再試行は即座に同じエラーを投げる
-    with patch("docker.DockerClient") as mock_client:
-        with pytest.raises(DockerUnavailableError) as excinfo:
-            await provider._get_client()
-        assert excinfo.value is first_error
-        mock_client.assert_not_called()
+    with patch("time.monotonic", side_effect=mock_time):
+        # 最初の失敗 (DockerExceptionを投げる必要がある)
+        with patch("docker.DockerClient", side_effect=DockerException("First failure")):
+            with pytest.raises(DockerUnavailableError):
+                await provider._get_client()
+        
+        first_error = provider._last_error
+        assert first_error is not None
+        
+        # 時間を2秒進める (5秒以内)
+        mock_time.now = 102.0
+        
+        # 5秒以内の再試行 (102.0 - 100.0 = 2.0 < 5) は即座に同じエラーを投げる
+        with patch("docker.DockerClient") as mock_client:
+            with pytest.raises(DockerUnavailableError) as excinfo:
+                await provider._get_client()
+            assert excinfo.value is first_error
+            mock_client.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_stream_logs_parsing():
