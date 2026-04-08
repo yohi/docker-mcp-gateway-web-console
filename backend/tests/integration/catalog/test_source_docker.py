@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from app.main import app
 from app.config import settings
 from app.models.catalog import CatalogItem
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 # Sample CatalogItem matching the expected result of source=docker
 DOCKER_CATALOG_ITEMS = [
@@ -34,8 +34,8 @@ async def test_get_catalog_docker_source():
         mock_get_cache.return_value = None
         mock_fetch.return_value = (DOCKER_CATALOG_ITEMS, False)
         
-        # Using standard app argument as in other tests
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        # Using ASGITransport for newer httpx versions
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=docker")
 
         # Verify response
@@ -62,7 +62,7 @@ async def test_get_catalog_default_source_fallback():
         mock_get_cache.return_value = None
         mock_fetch.return_value = (DOCKER_CATALOG_ITEMS, False)
         
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog")
             
         assert response.status_code == 200
@@ -84,7 +84,7 @@ async def test_get_catalog_cached():
         # Scenario: Cache available
         mock_get_cache.return_value = DOCKER_CATALOG_ITEMS
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=docker")
 
         assert response.status_code == 200

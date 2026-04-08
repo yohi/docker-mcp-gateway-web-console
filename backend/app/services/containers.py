@@ -133,18 +133,19 @@ class ContainerService:
         raise ContainerError(f"Failed to {operation}: {e}") from e
 
     def _map_container_error_to_http(self, e: ContainerError) -> HTTPException:
-        """Map ContainerError to FastAPI HTTPException."""
+        """Map specific ContainerError types to FastAPI HTTPException.
+        
+        Other errors (including ContainerUnavailableError) should be handled 
+        gracefully by the API layer for UI-level degradation.
+        """
         if isinstance(e, AuthenticationError):
             return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
         if isinstance(e, ContainerAlreadyExistsError):
             return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-        if isinstance(e, ContainerUnavailableError):
-            return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
         
-        status_code = status.HTTP_400_BAD_REQUEST
-        if "not found" in str(e).lower() or "保存されていません" in str(e):
-            status_code = status.HTTP_404_NOT_FOUND
-        return HTTPException(status_code=status_code, detail=str(e))
+        # All other ContainerErrors are re-raised or passed as-is to let the API layer
+        # decide between raising 4xx/5xx or returning a partial list with warnings.
+        raise e
 
     async def list_containers(self, all_containers: bool = True) -> List[ContainerInfo]:
         """List containers via provider."""

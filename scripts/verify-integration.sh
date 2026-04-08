@@ -96,15 +96,10 @@ if [ -z "${frontend_status}" ]; then
 fi
 
 info "Validating DevContainer backend Docker access via DinD"
-compose_exec "${dev_compose_path}" "${backend_service}" python3 -c "import docker; docker.from_env().ping()" >/dev/null
+compose_exec "${dev_compose_path}" "${backend_service}" python3 -c "import docker; docker.from_env().ping()" || fail "Backend could not connect to DinD"
 
 info "Validating DevContainer workspace Docker access via DinD"
-if compose_exec "${dev_compose_path}" "${workspace_service}" python3 -c "import docker; docker.from_env().ping()" 2>/dev/null; then
-  info "Workspace Docker access verified via Python SDK"
-else
-  info "Workspace Docker access falling back to docker info"
-  compose_exec "${dev_compose_path}" "${workspace_service}" docker info >/dev/null
-fi
+compose_exec "${dev_compose_path}" "${workspace_service}" python3 -c "import docker; docker.from_env().ping()" || fail "Workspace could not connect to DinD"
 
 info "Validating DevContainer frontend dev command"
 compose_exec "${dev_compose_path}" "${frontend_service}" npm run dev -- --help >/dev/null

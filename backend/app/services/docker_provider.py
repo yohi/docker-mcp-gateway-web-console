@@ -245,7 +245,14 @@ class DockerSdkProvider(ContainerProvider):
                 raise
 
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _create_and_start)
+        try:
+            return await loop.run_in_executor(None, _create_and_start)
+        except (DockerException, APIError, RequestsConnectionError, RequestsTimeout, ConnectionError, TimeoutError) as e:
+            # Normalize connection-related errors similar to _call_docker_api
+            if "connection" in str(e).lower() or "timeout" in str(e).lower() or isinstance(e, (RequestsConnectionError, RequestsTimeout, ConnectionError, TimeoutError)):
+                self._client = None
+                raise DockerUnavailableError([self.base_url], [str(e)]) from e
+            raise
 
     async def start_container(self, container_id: str) -> bool:
         client = await self._get_client()

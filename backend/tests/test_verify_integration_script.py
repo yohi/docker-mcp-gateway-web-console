@@ -75,12 +75,16 @@ def _write_fake_docker(path: Path, log_path: Path, exec_log_path: Path) -> None:
           fi
 
           if [ "$service" = "backend" ] && [ "$cmd" = "python3" ]; then
-            # mock python sdk ping
+            if [ "${{FAIL_DOCKER_PING:-0}}" = "1" ]; then
+              exit 1
+            fi
             exit 0
           fi
 
           if [ "$service" = "workspace" ] && [ "$cmd" = "python3" ]; then
-            # mock python sdk ping
+            if [ "${{FAIL_DOCKER_PING:-0}}" = "1" ]; then
+              exit 1
+            fi
             exit 0
           fi
 
@@ -228,7 +232,10 @@ def test_verify_integration_script_fails_on_missing_dind_config(tmp_path: Path) 
     # Mutate devcontainer compose to remove dind service
     dev_compose = tmp_path / ".devcontainer" / "docker-compose.devcontainer.yml"
     content = dev_compose.read_text(encoding="utf-8")
-    content = content.replace("  dind:", "  dind_backup:")
+    
+    import re
+    # Locate the dind service definition and rename it to make it 'missing' for the script
+    content = re.sub(r"(?m)^\s*dind:", "  dind_backup:", content)
     dev_compose.write_text(content, encoding="utf-8")
 
     log_path = tmp_path / "docker-calls.log"
@@ -254,3 +261,32 @@ def test_verify_integration_script_fails_on_missing_dind_config(tmp_path: Path) 
     assert result.returncode != 0
     combined_output = f"{result.stdout}\n{result.stderr}"
     assert "dind service missing" in combined_output
+
+
+def test_verify_integration_script_fails_on_dind_unreachable(tmp_path: Path) -> None:
+    _prepare_repo(tmp_path)
+
+    log_path = tmp_path / "docker-calls.log"
+    exec_log_path = tmp_path / "docker-exec.log"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_docker(fake_bin / "docker", log_path, exec_log_path)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
+    env["FAIL_DOCKER_PING"] = "1"
+    env["CI"] = "true"
+
+    script_under_test = _repo_root() / "scripts" / "verify-integration.sh"
+    result = subprocess.run(
+        ["bash", str(script_under_test)],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    combined_output = f"{result.stdout}\n{result.stderr}"
+    assert "could not connect to dind" in combined_output.lower()

@@ -56,17 +56,10 @@ async def test_create_container_compensation_logic(provider):
     
     # containers.create は成功するが start は失敗する設定
     mock_client.containers.create.return_value = mock_container
-    
-    # 最初の call_docker_api (pull/get image) は成功
-    # 2回目 (containers.create) も成功
-    # 3回目 (container.start) は失敗させる
-    async def side_effect(func, *args, **kwargs):
-        if func == mock_container.start:
-            raise Exception("Start failed")
-        return func(*args, **kwargs)
-    
-    provider._call_docker_api = AsyncMock(side_effect=side_effect)
-    
+    mock_container.start.side_effect = Exception("Start failed")
+
+    # Image check/pull は成功させる
+    provider._call_docker_api = AsyncMock(return_value=None)
     config = ContainerConfig(name="test", image="alpine")
     
     with pytest.raises(Exception, match="Start failed"):
