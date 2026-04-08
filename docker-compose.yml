@@ -4,8 +4,9 @@ services:
   dind:
     image: docker:dind
     privileged: true
+    command: ["dockerd", "--host=unix:///var/run/docker.sock", "--host=tcp://0.0.0.0:2375", "--tls=false"]
     environment:
-      - DOCKER_TLS_CERTDIR=/certs
+      - DOCKER_TLS_CERTDIR=
     volumes:
       - dind-certs:/certs/client
       - dind-data:/var/lib/docker
@@ -14,7 +15,7 @@ services:
     networks:
       - mcp-gateway
     healthcheck:
-      test: ["CMD", "docker", "--tlsverify", "--tlscacert=/certs/client/ca.pem", "--tlscert=/certs/client/cert.pem", "--tlskey=/certs/client/key.pem", "-H=tcp://localhost:2376", "info"]
+      test: ["CMD", "docker", "-H", "unix:///var/run/docker.sock", "info"]
       interval: 10s
       timeout: 10s
       retries: 6
@@ -57,12 +58,12 @@ services:
       - ./data:/app/data
       - ./backend:/app
       - dind-certs:/certs/client:ro
-      - "bw-cli-config:/root/.config/Bitwarden CLI"
-      - "bw-cli-cache:/root/.cache/Bitwarden CLI"
+      - "bw-cli-config:/home/appuser/.config/Bitwarden CLI"
+      - "bw-cli-cache:/home/appuser/.cache/Bitwarden CLI"
     environment:
       - BITWARDEN_CLI_PATH=/usr/local/bin/bw
-      - DOCKER_HOST=tcp://dind:2376
-      - DOCKER_TLS_VERIFY=1
+      - DOCKER_HOST=tcp://dind:2375
+      - DOCKER_TLS_VERIFY=0
       - DOCKER_CERT_PATH=/certs/client
       - SESSION_TIMEOUT_MINUTES=30
       - CATALOG_CACHE_TTL_SECONDS=3600
@@ -74,9 +75,11 @@ services:
       - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost:8000/api/catalog/oauth/callback}
       - OAUTH_ALLOW_OVERRIDE=${OAUTH_ALLOW_OVERRIDE:-true}
       - OAUTH_TOKEN_ENCRYPTION_KEY=${OAUTH_TOKEN_ENCRYPTION_KEY:-}
+      - OAUTH_TOKEN_ENCRYPTION_KEY_FILE=/app/data/oauth_encryption.key
+      - STATE_DB_PATH=/app/data/state.db
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
-      - HOME=/root
+      - HOME=/home/appuser
     depends_on:
       dind:
         condition: service_healthy
