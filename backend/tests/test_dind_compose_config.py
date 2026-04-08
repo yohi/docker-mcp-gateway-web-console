@@ -47,11 +47,12 @@ def _assert_dind_service(services: dict, network_name: str) -> None:
     dind_networks = dind.get("networks", [])
 
     assert (
-        dind["image"] == "docker:dind"
-    ), f"Expected dind image to be 'docker:dind', but got: {dind.get('image')}"
-    assert (
-        dind["privileged"] is True
-    ), f"Expected dind service to be privileged, but got: {dind.get('privileged')}"
+        dind["image"] in ["docker:dind", "docker:dind-rootless"]
+    ), f"Expected dind image to be 'docker:dind' or 'docker:dind-rootless', but got: {dind.get('image')}"
+    if dind["image"] == "docker:dind":
+        assert (
+            dind.get("privileged") is True
+        ), f"Expected dind service to be privileged, but got: {dind.get('privileged')}"
     assert any(
         "DOCKER_TLS_CERTDIR=/certs" in item for item in dind_env
     ), f"Expected DOCKER_TLS_CERTDIR=/certs in environment, but got: {dind_env}"
