@@ -47,11 +47,38 @@ compose_exec() {
 
 require_dind_config() {
   info "Validating DinD/TLS configuration in ${dev_compose_file}"
-  grep -q "dind:" "${dev_compose_path}" || fail "dind service missing from ${dev_compose_file}"
-  grep -q "DOCKER_HOST=tcp://dind:2376" "${dev_compose_path}" || fail "DOCKER_HOST for dind missing from ${dev_compose_file}"
-  grep -q "DOCKER_TLS_VERIFY=1" "${dev_compose_path}" || fail "DOCKER_TLS_VERIFY missing from ${dev_compose_file}"
-  grep -q "DOCKER_CERT_PATH=/certs/client" "${dev_compose_path}" || fail "DOCKER_CERT_PATH missing from ${dev_compose_file}"
-  grep -q "dind-certs:/certs/client:ro" "${dev_compose_path}" || fail "dind client cert mount missing from ${dev_compose_file}"
+  local config_output
+  # Capture both stdout and stderr to handle failures gracefully
+  if ! config_output=$("${docker_bin}" compose -f "${dev_compose_path}" config 2>&1); then
+    fail "Failed to resolve compose config for ${dev_compose_path}:\n${config_output}"
+  fi
+  
+  # Validate dind service exists
+  echo "${config_output}" | grep -qE '^\s*dind:' || fail "dind service missing from ${dev_compose_file}"
+  
+  # Validate environment variables and volume mounts with anchors
+  echo "${config_output}" | grep -qE '^\s*DOCKER_HOST: tcp://dind:2376$' || \
+  echo "${config_output}" | grep -qE '^\s*- DOCKER_HOST=tcp://dind:2376$' || \
+  fail "DOCKER_HOST for dind missing or incorrect in ${dev_compose_file}"
+  
+  echo "${config_output}" | grep -qE '^\s*DOCKER_TLS_VERIFY: ("1"|1)$' || \
+  echo "${config_output}" | grep -qE '^\s*- DOCKER_TLS_VERIFY=1$' || \
+  fail "DOCKER_TLS_VERIFY missing or incorrect in ${dev_compose_file}"
+  
+  echo "${config_output}" | grep -qE '^\s*DOCKER_CERT_PATH: /certs/client$' || \
+  echo "${config_output}" | grep -qE '^\s*- DOCKER_CERT_PATH=/certs/client$' || \
+  fail "DOCKER_CERT_PATH missing or incorrect in ${dev_compose_file}"
+  
+  # Check for volume mount in various formats
+  if echo "${config_output}" | grep -qE '^\s*- dind-certs:/certs/client:ro$' || \
+     echo "${config_output}" | grep -qE 'dind-certs:/certs/client:ro' || \
+     (echo "${config_output}" | grep -qE 'source: dind-certs' && \
+      echo "${config_output}" | grep -qE 'target: /certs/client' && \
+      echo "${config_output}" | grep -qE 'read_only: (true|"true")'); then
+    info "DinD volume mount verified"
+  else
+    fail "dind client cert mount missing or incorrect in ${dev_compose_file}"
+  fi
 }
 
 require_dind_config
@@ -72,10 +99,10 @@ if [ -z "${frontend_status}" ]; then
 fi
 
 info "Validating DevContainer backend Docker access via DinD"
-compose_exec "${dev_compose_path}" "${backend_service}" docker info >/dev/null
+compose_exec "${dev_compose_path}" "${backend_service}" python3 -c "import docker; docker.from_env().ping()" || fail "Backend could not connect to DinD"
 
 info "Validating DevContainer workspace Docker access via DinD"
-compose_exec "${dev_compose_path}" "${workspace_service}" docker info >/dev/null
+compose_exec "${dev_compose_path}" "${workspace_service}" python3 -c "import docker; docker.from_env().ping()" || fail "Workspace could not connect to DinD"
 
 info "Validating DevContainer frontend dev command"
 compose_exec "${dev_compose_path}" "${frontend_service}" npm run dev -- --help >/dev/null

@@ -9,16 +9,18 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from urllib.parse import urlparse
 
 import docker
-from docker.errors import APIError, DockerException, ImageNotFound, NotFound
-from docker.models.containers import Container
+from docker.errors import APIError, DockerException, ImageNotFound
+from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout as RequestsTimeout
 
-from ..config import settings
 from ..models.containers import (
     ContainerConfig,
     ContainerInfo,
     LogEntry,
 )
 from .base import ContainerProvider
+from .containers import ContainerUnavailableError
+
+logger = logging.getLogger(__name__)
 
 def _parse_version_triplet(value: str) -> Optional[tuple[int, int, int]]:
     match = re.match(r"^\s*(\d+)\.(\d+)(?:\.(\d+))?", value)
@@ -65,13 +67,11 @@ class DockerProviderError(Exception):
     """Base exception for Docker provider."""
     pass
 
-class DockerUnavailableError(DockerProviderError):
+class DockerUnavailableError(ContainerUnavailableError):
     """Raised when Docker daemon is unreachable."""
     def __init__(self, attempted_hosts: list[str], errors: list[str]) -> None:
-        self.attempted_hosts = attempted_hosts
-        self.errors = errors
-        message = f"Docker connection failed. Hosts: {attempted_hosts}. Errors: {errors}"
-        super().__init__(message)
+        super().__init__(attempted_hosts, errors)
+        self.status_code = 503
 
 class DockerSdkProvider(ContainerProvider):
     """Docker SDK based implementation of ContainerProvider."""
@@ -87,37 +87,54 @@ class DockerSdkProvider(ContainerProvider):
         self._last_error: Optional[DockerUnavailableError] = None
         self._last_error_at: Optional[float] = None
 
-    def _get_client(self) -> docker.DockerClient:
+    @property
+    def identifier(self) -> str:
+        """Return the base URL as the provider identifier."""
+        return self.base_url
+
+    async def _get_client(self) -> docker.DockerClient:
+        """Get or create the Docker client in a thread-safe way."""
         if self._client:
             return self._client
 
         if self._last_error and self._last_error_at:
-            if time.monotonic() - self._last_error_at < 30:
+            if time.monotonic() - self._last_error_at < 5:
                 raise self._last_error
 
-        attempted_hosts = [self.base_url]
-
-        errors = []
-        for host in attempted_hosts:
-            parsed = urlparse(host)
-            if parsed.scheme == "unix":
-                socket_path = parsed.path
-                if not os.path.exists(socket_path) or not os.access(socket_path, os.R_OK | os.W_OK):
-                    errors.append(f"{host}: Socket inaccessible")
-                    continue
-
+        def _init_client():
+            attempted_hosts = [self.base_url]
+            errors = []
             try:
-                client = docker.DockerClient(base_url=host, tls=self.tls_config)
+                client = docker.DockerClient(base_url=self.base_url, tls=self.tls_config)
                 client.ping()
-                self._client = client
-                return self._client
+                return client, attempted_hosts
             except DockerException as e:
-                errors.append(f"{host}: {e}")
+                errors.append(f"{self.base_url}: {e}")
+            raise DockerUnavailableError(attempted_hosts, errors)
 
-        error = DockerUnavailableError(attempted_hosts, errors)
-        self._last_error = error
-        self._last_error_at = time.monotonic()
-        raise error
+        loop = asyncio.get_event_loop()
+        try:
+            client, _ = await loop.run_in_executor(None, _init_client)
+            self._client = client
+            return self._client
+        except DockerUnavailableError as e:
+            self._last_error = e
+            self._last_error_at = time.monotonic()
+            raise
+
+    async def _call_docker_api(self, func, *args, **kwargs):
+        """Wrap Docker API calls to normalize connection errors and clear cached client."""
+        await self._get_client()
+        loop = asyncio.get_event_loop()
+        try:
+            return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+        except (DockerException, APIError, RequestsConnectionError, RequestsTimeout, ConnectionError, TimeoutError) as e:
+            # If it's a connection-related error, invalidate the client
+            if "connection" in str(e).lower() or "timeout" in str(e).lower() or isinstance(e, (RequestsConnectionError, RequestsTimeout, ConnectionError, TimeoutError)):
+                self._client = None
+                # Wrap as DockerUnavailableError to normalize
+                raise DockerUnavailableError([self.base_url], [str(e)]) from e
+            raise
 
     def _container_summary_to_info(self, summary: dict[str, Any]) -> ContainerInfo:
         container_id = summary.get("Id") or summary.get("ID")
@@ -151,20 +168,18 @@ class DockerSdkProvider(ContainerProvider):
         )
 
     async def list_containers(self, all_containers: bool = True) -> List[ContainerInfo]:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        summaries = await loop.run_in_executor(None, lambda: client.api.containers(all=all_containers))
+        client = await self._get_client()
+        summaries = await self._call_docker_api(client.api.containers, all=all_containers)
         return [self._container_summary_to_info(s) for s in summaries]
 
     async def create_container(self, config: ContainerConfig, sanitized_name: str, resolved_env: Dict[str, str]) -> str:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
+        client = await self._get_client()
 
         # Image pull logic
         try:
-            await loop.run_in_executor(None, lambda: client.images.get(config.image))
+            await self._call_docker_api(client.images.get, config.image)
         except ImageNotFound:
-            await loop.run_in_executor(None, lambda: client.images.pull(config.image))
+            await self._call_docker_api(client.images.pull, config.image)
 
         port_bindings = {f"{cp}/tcp": hp for cp, hp in (config.ports or {}).items()}
         volumes = {hp: {"bind": cp, "mode": "rw"} for hp, cp in (config.volumes or {}).items()}
@@ -188,46 +203,79 @@ class DockerSdkProvider(ContainerProvider):
             "restart_policy": config.restart_policy,
         }
         
-        container = await loop.run_in_executor(None, lambda: client.containers.create(**{k: v for k, v in docker_kwargs.items() if v is not None}))
-        await loop.run_in_executor(None, container.start)
-        return container.id
+        loop = asyncio.get_event_loop()
+        container = None
+        
+        def _create_and_start():
+            nonlocal container
+            container = client.containers.create(
+                **{k: v for k, v in docker_kwargs.items() if v is not None}
+            )
+            container.start()
+            return container.id
+
+        try:
+            return await loop.run_in_executor(None, _create_and_start)
+        except (DockerException, APIError, RequestsConnectionError, RequestsTimeout, ConnectionError, TimeoutError) as e:
+            # Normalize connection-related errors similar to _call_docker_api
+            if "connection" in str(e).lower() or "timeout" in str(e).lower() or isinstance(e, (RequestsConnectionError, RequestsTimeout, ConnectionError, TimeoutError)):
+                self._client = None
+                # Ensure any container leftover is removed before raising normalized error
+                if container:
+                    try:
+                        await loop.run_in_executor(None, lambda: container.remove(force=True))
+                    except Exception as cleanup_exc:
+                        logger.warning(f"Failed to remove orphaned container {container.id} after connection error: {cleanup_exc}")
+                raise DockerUnavailableError([self.base_url], [str(e)]) from e
+            
+            # Non-connection Docker errors (like 409) still need cleanup
+            if container:
+                try:
+                    await loop.run_in_executor(None, lambda: container.remove(force=True))
+                except Exception as cleanup_exc:
+                    logger.warning(f"Failed to remove orphaned container {container.id} after Docker error: {cleanup_exc}")
+            raise
+        except Exception:
+            # Other general errors
+            if container:
+                try:
+                    await loop.run_in_executor(None, lambda: container.remove(force=True))
+                except Exception as cleanup_exc:
+                    logger.warning(f"Failed to remove orphaned container {container.id} after error: {cleanup_exc}")
+            raise
 
     async def start_container(self, container_id: str) -> bool:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        container = await loop.run_in_executor(None, lambda: client.containers.get(container_id))
-        await loop.run_in_executor(None, container.start)
+        client = await self._get_client()
+        container = await self._call_docker_api(client.containers.get, container_id)
+        await self._call_docker_api(container.start)
         return True
 
     async def stop_container(self, container_id: str, timeout: int = 10) -> bool:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        container = await loop.run_in_executor(None, lambda: client.containers.get(container_id))
-        await loop.run_in_executor(None, lambda: container.stop(timeout=timeout))
+        client = await self._get_client()
+        container = await self._call_docker_api(client.containers.get, container_id)
+        await self._call_docker_api(container.stop, timeout=timeout)
         return True
 
     async def restart_container(self, container_id: str, timeout: int = 10) -> bool:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        container = await loop.run_in_executor(None, lambda: client.containers.get(container_id))
-        await loop.run_in_executor(None, lambda: container.restart(timeout=timeout))
+        client = await self._get_client()
+        container = await self._call_docker_api(client.containers.get, container_id)
+        await self._call_docker_api(container.restart, timeout=timeout)
         return True
 
     async def delete_container(self, container_id: str, force: bool = False) -> bool:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        container = await loop.run_in_executor(None, lambda: client.containers.get(container_id))
-        await loop.run_in_executor(None, lambda: container.remove(force=force))
+        client = await self._get_client()
+        container = await self._call_docker_api(client.containers.get, container_id)
+        await self._call_docker_api(container.remove, force=force)
         return True
 
     async def stream_logs(self, container_id: str, follow: bool = True, tail: int = 100) -> AsyncIterator[LogEntry]:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        container = await loop.run_in_executor(None, lambda: client.containers.get(container_id))
+        client = await self._get_client()
+        container = await self._call_docker_api(client.containers.get, container_id)
         
-        log_stream = await loop.run_in_executor(None, lambda: container.logs(
+        log_stream = await self._call_docker_api(
+            container.logs,
             stream=follow, follow=follow, tail=tail, timestamps=True, stdout=True, stderr=True, demux=True
-        ))
+        )
 
         def get_next():
             try:
@@ -236,7 +284,7 @@ class DockerSdkProvider(ContainerProvider):
                 return None
 
         while True:
-            chunk = await loop.run_in_executor(None, get_next)
+            chunk = await asyncio.get_event_loop().run_in_executor(None, get_next)
             if chunk is None:
                 break
             
@@ -261,11 +309,11 @@ class DockerSdkProvider(ContainerProvider):
             yield LogEntry(timestamp=ts, message=msg, stream=stream)
 
     async def exec_command(self, container_id: str, command: List[str]) -> tuple[int, bytes]:
-        client = self._get_client()
-        loop = asyncio.get_event_loop()
-        container = await loop.run_in_executor(None, lambda: client.containers.get(container_id))
-        exit_code, output = await loop.run_in_executor(None, lambda: container.exec_run(cmd=command, stdout=True, stderr=True))
+        client = await self._get_client()
+        container = await self._call_docker_api(client.containers.get, container_id)
+        exit_code, output = await self._call_docker_api(container.exec_run, cmd=command, stdout=True, stderr=True)
         return exit_code or 0, output or b""
+
 
     def close(self):
         if self._client:

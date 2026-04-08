@@ -10,7 +10,8 @@
 
 ---
 
-### Task 1: Update Devcontainer to use DinD
+## Task 1
+: Update Devcontainer to use DinD
 
 **Files:**
 - Modify: `.devcontainer/docker-compose.devcontainer.yml`
@@ -27,7 +28,6 @@ Expected: Files deleted.
 
 ```yaml
 # Update `.devcontainer/docker-compose.devcontainer.yml` to remove socket mounts and add dind
-version: "3.8"
 
 services:
   workspace:
@@ -97,7 +97,8 @@ git commit -m "chore: migrate devcontainer to dind architecture"
 
 ---
 
-### Task 2: Refactor ContainerService (Dependency Injection & Auth)
+## Task 2
+: Refactor ContainerService (Dependency Injection & Auth)
 
 **Files:**
 - Modify: `backend/app/services/containers.py`
@@ -182,7 +183,8 @@ git commit -m "refactor: add auth checks to container service"
 
 ---
 
-### Task 3: Thin Controller Refactoring for API
+## Task 3
+: Thin Controller Refactoring for API
 
 **Files:**
 - Modify: `backend/app/api/containers.py`

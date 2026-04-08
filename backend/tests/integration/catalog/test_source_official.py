@@ -7,7 +7,7 @@ from unittest.mock import patch, AsyncMock, Mock
 from app.main import app
 from app.config import settings
 from app.models.catalog import CatalogItem
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ async def test_get_catalog_official_source():
         mock_get_cache.return_value = None
         mock_fetch.return_value = (EXPECTED_CATALOG_ITEMS, False)
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=official")
 
         # Verify response
@@ -206,7 +206,7 @@ async def test_get_catalog_official_schema_conversion():
 
         mock_fetch_url.side_effect = mock_fetch_implementation
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=official")
 
         assert response.status_code == 200
@@ -264,7 +264,7 @@ async def test_get_catalog_official_with_cache():
         # Scenario: Cache available for Official Registry
         mock_get_cache.return_value = EXPECTED_CATALOG_ITEMS
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=official")
 
         assert response.status_code == 200
@@ -297,7 +297,7 @@ async def test_get_catalog_official_error_handling():
             error_code=CatalogErrorCode.UPSTREAM_UNAVAILABLE
         )
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=official")
 
         # Verify error response
@@ -375,7 +375,7 @@ async def test_get_catalog_official_pagination():
         # Make the client class return our mock client when used as context manager
         mock_client_class.return_value.__aenter__.return_value = mock_client
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=official")
 
         # Verify response
@@ -449,7 +449,7 @@ async def test_get_catalog_official_pagination_max_pages():
         mock_client.get = AsyncMock(side_effect=responses)
         mock_client_class.return_value.__aenter__.return_value = mock_client
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=official")
 
         # Verify response
@@ -522,7 +522,7 @@ async def test_get_catalog_official_pagination_page_delay():
         mock_client.get = AsyncMock(side_effect=[page1_response, page2_response, page3_response])
         mock_client_class.return_value.__aenter__.return_value = mock_client
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=official")
 
         # Verify response
@@ -579,7 +579,7 @@ async def test_get_catalog_official_pagination_partial_failure():
         mock_client.get = AsyncMock(side_effect=[page1_response, page2_error])
         mock_client_class.return_value.__aenter__.return_value = mock_client
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=official")
 
         # Verify response - should return page 1 items even though page 2 failed
@@ -651,7 +651,7 @@ async def test_get_catalog_official_pagination_cache_miss():
         mock_client_class.return_value.__aenter__.return_value = mock_client
 
         # Request with cache miss
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=official")
 
         # Verify response
@@ -706,7 +706,7 @@ async def test_get_catalog_official_pagination_cache_hit():
         mock_client_class.return_value.__aenter__.return_value = mock_client
 
         # Request with cache hit
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=official")
 
         # Verify response
@@ -783,7 +783,7 @@ async def test_get_catalog_official_pagination_cache_expiry():
         mock_client_class.return_value.__aenter__.return_value = mock_client
 
         # Request with cache expired
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/catalog?source=official")
 
         # Verify response
