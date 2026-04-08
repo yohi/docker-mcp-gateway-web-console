@@ -161,7 +161,7 @@ class ContainerService:
             await self._validate_session_and_get(session_id)
             return await self.list_containers(all_containers)
         except ContainerError as e:
-            raise self._map_container_error_to_http(e)
+            raise self._map_container_error_to_http(e) from e
 
     async def create_container(
         self,
@@ -235,7 +235,7 @@ class ContainerService:
 
             return await self.create_container(config, session_id, session.bw_session_key)
         except ContainerError as e:
-            raise self._map_container_error_to_http(e)
+            raise self._map_container_error_to_http(e) from e
 
     async def get_container_config_with_auth(
         self, 
@@ -247,7 +247,7 @@ class ContainerService:
             await self._validate_session_and_get(session_id)
             return self.get_container_config(container_id)
         except ContainerError as e:
-            raise self._map_container_error_to_http(e)
+            raise self._map_container_error_to_http(e) from e
 
     def get_container_config(self, container_id: str) -> dict:
         """Return saved container configuration."""
@@ -280,7 +280,7 @@ class ContainerService:
             await self._validate_session_and_get(session_id)
             return await self.start_container(container_id)
         except ContainerError as e:
-            raise self._map_container_error_to_http(e)
+            raise self._map_container_error_to_http(e) from e
 
     async def stop_container(self, container_id: str, timeout: int = 10) -> bool:
         """Stop container via provider."""
@@ -297,7 +297,7 @@ class ContainerService:
             await self._validate_session_and_get(session_id)
             return await self.stop_container(container_id, timeout)
         except ContainerError as e:
-            raise self._map_container_error_to_http(e)
+            raise self._map_container_error_to_http(e) from e
 
     async def restart_container(self, container_id: str, timeout: int = 10) -> bool:
         """Restart container via provider."""
@@ -314,7 +314,7 @@ class ContainerService:
             await self._validate_session_and_get(session_id)
             return await self.restart_container(container_id, timeout)
         except ContainerError as e:
-            raise self._map_container_error_to_http(e)
+            raise self._map_container_error_to_http(e) from e
 
     async def delete_container(self, container_id: str, force: bool = False) -> bool:
         """Delete container via provider."""
@@ -331,7 +331,7 @@ class ContainerService:
             await self._validate_session_and_get(session_id)
             return await self.delete_container(container_id, force)
         except ContainerError as e:
-            raise self._map_container_error_to_http(e)
+            raise self._map_container_error_to_http(e) from e
 
     async def stream_logs(
         self,

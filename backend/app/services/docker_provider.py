@@ -1,6 +1,7 @@
 """Docker SDK implementation of ContainerProvider."""
 
 import asyncio
+import logging
 import os
 import re
 import time
@@ -19,6 +20,8 @@ from ..models.containers import (
 )
 from .base import ContainerProvider
 from .containers import ContainerUnavailableError
+
+logger = logging.getLogger(__name__)
 
 def _parse_version_triplet(value: str) -> Optional[tuple[int, int, int]]:
     match = re.match(r"^\s*(\d+)\.(\d+)(?:\.(\d+))?", value)
@@ -259,8 +262,8 @@ class DockerSdkProvider(ContainerProvider):
             if container:
                 try:
                     await loop.run_in_executor(None, lambda: container.remove(force=True))
-                except Exception:
-                    pass
+                except Exception as cleanup_exc:
+                    logger.warning(f"Failed to remove orphaned container {container.id} after Docker error: {cleanup_exc}")
             raise
         except Exception:
             # Other general errors

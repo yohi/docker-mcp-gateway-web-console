@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import stat
 import subprocess
 import textwrap
@@ -233,7 +234,6 @@ def test_verify_integration_script_fails_on_missing_dind_config(tmp_path: Path) 
     dev_compose = tmp_path / ".devcontainer" / "docker-compose.devcontainer.yml"
     content = dev_compose.read_text(encoding="utf-8")
     
-    import re
     # Locate the dind service definition and rename it to make it 'missing' for the script
     content = re.sub(r"(?m)^(\s*)dind:", r"\1dind_backup:", content)
     dev_compose.write_text(content, encoding="utf-8")
