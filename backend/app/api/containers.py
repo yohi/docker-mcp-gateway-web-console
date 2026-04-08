@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 
+from ..config import settings
 from ..models.containers import (
     ContainerActionResponse,
     ContainerConfig,
@@ -13,15 +14,19 @@ from ..models.containers import (
     ContainerListResponse,
 )
 from ..services.auth import AuthService
+from ..services.base import ContainerProvider
 from ..services.containers import (
+    AuthenticationError,
     ContainerAlreadyExistsError,
     ContainerError,
     ContainerUnavailableError,
     ContainerService,
 )
+from ..services.docker_provider import DockerSdkProvider
 from ..services.secrets import SecretManager
 from ..services.state_store import StateStore
 from .auth import get_auth_service, get_session_id
+import docker.tls
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +36,7 @@ router = APIRouter(prefix="/containers", tags=["containers"])
 _container_service: ContainerService = None
 _secret_manager: SecretManager = None
 _state_store: StateStore = None
+_container_provider: ContainerProvider = None
 
 
 def _docker_unavailable(e: ContainerUnavailableError) -> HTTPException:
@@ -56,15 +62,68 @@ def get_secret_manager() -> SecretManager:
     return _secret_manager
 
 
+def get_container_provider() -> ContainerProvider:
+    """Dependency to get the container provider instance."""
+    global _container_provider
+    if _container_provider is None:
+        tls_config = None
+        if settings.docker_tls_verify:
+            # Resolve certificate paths, prioritizing explicit settings, 
+            # then deriving from DOCKER_CERT_PATH if available.
+            ca_cert = settings.docker_ca_cert
+            client_cert = settings.docker_client_cert
+            client_key = settings.docker_client_key
+            
+            if settings.docker_cert_path:
+                cert_dir = Path(settings.docker_cert_path)
+                if not ca_cert:
+                    ca_path = cert_dir / "ca.pem"
+                    if ca_path.exists():
+                        ca_cert = str(ca_path)
+                if not client_cert:
+                    cert_path = cert_dir / "cert.pem"
+                    if cert_path.exists():
+                        client_cert = str(cert_path)
+                if not client_key:
+                    key_path = cert_dir / "key.pem"
+                    if key_path.exists():
+                        client_key = str(key_path)
+
+            tls_config = docker.tls.TLSConfig(
+                client_cert=(client_cert, client_key) if client_cert and client_key else None,
+                ca_cert=ca_cert,
+                verify=True
+            )
+        
+        # Currently only docker-sdk is supported, but can be extended
+        _container_provider = DockerSdkProvider(
+            base_url=settings.docker_host,
+            tls_config=tls_config
+        )
+            
+    return _container_provider
+
+
 def get_container_service(
-    secret_manager: Annotated[SecretManager, Depends(get_secret_manager)]
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    secret_manager: Annotated[SecretManager, Depends(get_secret_manager)],
+    container_provider: Annotated[ContainerProvider, Depends(get_container_provider)],
 ) -> ContainerService:
     """Dependency to get the container service instance."""
     global _container_service, _state_store
     if _container_service is None:
         _state_store = StateStore()
         _state_store.init_schema()
-        _container_service = ContainerService(secret_manager, state_store=_state_store)
+        _container_service = ContainerService(
+            container_provider, 
+            secret_manager, 
+            auth_service,
+            state_store=_state_store
+        )
+    else:
+        # Update auth_service to handle dependency overrides in tests
+        _container_service.auth_service = auth_service
+        
     return _container_service
 
 
@@ -89,10 +148,35 @@ def _log_docker_unavailable(e: ContainerUnavailableError) -> None:
     _last_docker_warn_at = now
 
 
+def _raise_container_http_exception(e: Exception) -> None:
+    """Map Container exceptions to FastAPI HTTPExceptions."""
+    if isinstance(e, AuthenticationError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        ) from e
+    if isinstance(e, ContainerAlreadyExistsError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        ) from e
+    if isinstance(e, ContainerUnavailableError):
+        raise _docker_unavailable(e) from e
+    if isinstance(e, ContainerError):
+        # Default to 400, but use 404 for specific "not found" messages
+        status_code = status.HTTP_400_BAD_REQUEST
+        if "not found" in str(e).lower() or "保存されていません" in str(e):
+            status_code = status.HTTP_404_NOT_FOUND
+        raise HTTPException(
+            status_code=status_code,
+            detail=str(e),
+        ) from e
+    raise e
+
+
 @router.get("", response_model=ContainerListResponse)
 async def list_containers(
     session_id: Annotated[str, Depends(get_session_id)],
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
     container_service: Annotated[ContainerService, Depends(get_container_service)],
     all: bool = True,
 ):
@@ -105,21 +189,10 @@ async def list_containers(
     Requires valid session authentication.
     """
     try:
-        # Validate session
-        is_valid = await auth_service.validate_session(session_id)
-        if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired session"
-            )
-        
-        # List containers
-        containers = await container_service.list_containers(all_containers=all)
-        
+        containers = await container_service.list_containers_with_auth(session_id, all)
         return ContainerListResponse(containers=containers)
-        
-    except HTTPException:
-        raise
+    except AuthenticationError as e:
+        _raise_container_http_exception(e)
     except ContainerUnavailableError as e:
         _log_docker_unavailable(e)
         return ContainerListResponse(
@@ -128,81 +201,23 @@ async def list_containers(
             " ホスト上で Docker が起動していることと、DOCKER_HOST/ソケットの権限を確認してください。",
         )
     except ContainerError as e:
-        logger.error("Failed to list containers: %s", e)
+        logger.error("Domain error listing containers: %s", e)
         return ContainerListResponse(
             containers=[],
-            warning="コンテナ一覧の取得に失敗しました。不要なコンテナが削除中の可能性があります。再読み込みしてください。",
-        )
-    except RuntimeError as e:
-        logger.error(f"Failed to list containers: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            warning=f"コンテナ一覧の取得に失敗しました: {e}",
         )
     except Exception as e:
-        logger.error(f"Unexpected error listing containers: {e}")
+        logger.exception("Unexpected error listing containers")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while listing containers"
-        )
-
-
-async def _create_container_internal(
-    config: ContainerConfig,
-    session_id: str,
-    auth_service: AuthService,
-    container_service: ContainerService,
-    operation_name: str = "create",
-) -> ContainerCreateResponse:
-    """コンテナ作成処理の共通内部ヘルパー。"""
-    is_valid = await auth_service.validate_session(session_id)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session"
-        )
-
-    session = await auth_service.get_session(session_id)
-    if session is None:
-        logger.warning(
-            f"Session {session_id} not found after validation ({operation_name})"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session"
-        )
-
-    try:
-        container_id = await container_service.create_container(
-            config=config,
-            session_id=session_id,
-            bw_session_key=session.bw_session_key,
-        )
-    except ContainerAlreadyExistsError as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(e),
+            detail="Internal server error while listing containers",
         ) from e
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except ContainerError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
-
-    return ContainerCreateResponse(
-        container_id=container_id,
-        name=config.name,
-        status="running",
-    )
 
 
 @router.post("", response_model=ContainerCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_container(
     config: ContainerConfig,
     session_id: Annotated[str, Depends(get_session_id)],
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
     container_service: Annotated[ContainerService, Depends(get_container_service)],
 ):
     """
@@ -218,24 +233,19 @@ async def create_container(
     Requires valid session authentication.
     """
     try:
-        return await _create_container_internal(
-            config, session_id, auth_service, container_service, "create"
+        container_id = await container_service.create_container_with_auth(config, session_id)
+        return ContainerCreateResponse(
+            container_id=container_id,
+            name=config.name,
+            status="running",
         )
-    except HTTPException:
-        raise
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except RuntimeError as e:
-        logger.exception("Failed to create container")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        ) from e
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception as e:
         logger.exception("Unexpected error creating container")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while creating container"
+            detail="Error creating container",
         ) from e
 
 
@@ -243,24 +253,16 @@ async def create_container(
 async def get_container_config(
     container_id: str,
     session_id: Annotated[str, Depends(get_session_id)],
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
     container_service: Annotated[ContainerService, Depends(get_container_service)],
 ):
     """保存済みのコンテナ設定を取得する。"""
-    is_valid = await auth_service.validate_session(session_id)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session"
-        )
     try:
-        config_data = container_service.get_container_config(container_id)
+        config_data = await container_service.get_container_config_with_auth(
+            container_id, session_id
+        )
         return ContainerConfig.model_validate(config_data)
-    except ContainerError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        ) from e
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception:
         logger.exception("Unexpected error getting container config")
         raise HTTPException(
@@ -273,7 +275,6 @@ async def get_container_config(
 async def install_container(
     config: ContainerConfig,
     session_id: Annotated[str, Depends(get_session_id)],
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
     container_service: Annotated[ContainerService, Depends(get_container_service)],
 ):
     """
@@ -288,24 +289,19 @@ async def install_container(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="コンテナイメージが指定されていません",
             )
-        return await _create_container_internal(
-            config, session_id, auth_service, container_service, "install"
+        container_id = await container_service.create_container_with_auth(config, session_id)
+        return ContainerCreateResponse(
+            container_id=container_id,
+            name=config.name,
+            status="running",
         )
-    except HTTPException:
-        raise
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except RuntimeError as e:
-        logger.exception("Failed to install container")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        ) from e
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception as e:
         logger.exception("Unexpected error installing container")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while installing container"
+            detail="Error creating container",
         ) from e
 
 
@@ -313,7 +309,6 @@ async def install_container(
 async def start_container(
     container_id: str,
     session_id: Annotated[str, Depends(get_session_id)],
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
     container_service: Annotated[ContainerService, Depends(get_container_service)],
 ):
     """
@@ -322,33 +317,14 @@ async def start_container(
     Requires valid session authentication.
     """
     try:
-        # Validate session
-        is_valid = await auth_service.validate_session(session_id)
-        if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired session"
-            )
-        
-        # Start container
-        success = await container_service.start_container(container_id)
-        
+        success = await container_service.start_container_with_auth(container_id, session_id)
         return ContainerActionResponse(
             success=success,
             message=f"Container {container_id} started successfully",
             container_id=container_id,
         )
-        
-    except HTTPException:
-        raise
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except RuntimeError as e:
-        logger.error(f"Failed to start container: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception as e:
         logger.error(f"Unexpected error starting container: {e}")
         raise HTTPException(
@@ -361,7 +337,6 @@ async def start_container(
 async def stop_container(
     container_id: str,
     session_id: Annotated[str, Depends(get_session_id)],
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
     container_service: Annotated[ContainerService, Depends(get_container_service)],
     timeout: int = 10,
 ):
@@ -374,33 +349,16 @@ async def stop_container(
     Requires valid session authentication.
     """
     try:
-        # Validate session
-        is_valid = await auth_service.validate_session(session_id)
-        if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired session"
-            )
-        
-        # Stop container
-        success = await container_service.stop_container(container_id, timeout=timeout)
-        
+        success = await container_service.stop_container_with_auth(
+            container_id, session_id, timeout=timeout
+        )
         return ContainerActionResponse(
             success=success,
             message=f"Container {container_id} stopped successfully",
             container_id=container_id,
         )
-        
-    except HTTPException:
-        raise
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except RuntimeError as e:
-        logger.error(f"Failed to stop container: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception as e:
         logger.error(f"Unexpected error stopping container: {e}")
         raise HTTPException(
@@ -413,7 +371,6 @@ async def stop_container(
 async def restart_container(
     container_id: str,
     session_id: Annotated[str, Depends(get_session_id)],
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
     container_service: Annotated[ContainerService, Depends(get_container_service)],
     timeout: int = 10,
 ):
@@ -426,33 +383,16 @@ async def restart_container(
     Requires valid session authentication.
     """
     try:
-        # Validate session
-        is_valid = await auth_service.validate_session(session_id)
-        if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired session"
-            )
-        
-        # Restart container
-        success = await container_service.restart_container(container_id, timeout=timeout)
-        
+        success = await container_service.restart_container_with_auth(
+            container_id, session_id, timeout=timeout
+        )
         return ContainerActionResponse(
             success=success,
             message=f"Container {container_id} restarted successfully",
             container_id=container_id,
         )
-        
-    except HTTPException:
-        raise
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except RuntimeError as e:
-        logger.error(f"Failed to restart container: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception as e:
         logger.error(f"Unexpected error restarting container: {e}")
         raise HTTPException(
@@ -465,7 +405,6 @@ async def restart_container(
 async def delete_container(
     container_id: str,
     session_id: Annotated[str, Depends(get_session_id)],
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
     container_service: Annotated[ContainerService, Depends(get_container_service)],
     force: bool = False,
 ):
@@ -478,33 +417,16 @@ async def delete_container(
     Requires valid session authentication.
     """
     try:
-        # Validate session
-        is_valid = await auth_service.validate_session(session_id)
-        if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired session"
-            )
-        
-        # Delete container
-        success = await container_service.delete_container(container_id, force=force)
-        
+        success = await container_service.delete_container_with_auth(
+            container_id, session_id, force=force
+        )
         return ContainerActionResponse(
             success=success,
             message=f"Container {container_id} deleted successfully",
             container_id=container_id,
         )
-        
-    except HTTPException:
-        raise
-    except ContainerUnavailableError as e:
-        raise _docker_unavailable(e) from e
-    except RuntimeError as e:
-        logger.error(f"Failed to delete container: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+    except (AuthenticationError, ContainerError) as e:
+        _raise_container_http_exception(e)
     except Exception as e:
         logger.error(f"Unexpected error deleting container: {e}")
         raise HTTPException(
@@ -547,8 +469,8 @@ async def stream_logs(
             return
         
         # Validate session
-        auth_service = get_auth_service()
-        is_valid = await auth_service.validate_session(session_id)
+        # Use service to validate session for consistency
+        is_valid = await container_service.auth_service.validate_session(session_id)
         if not is_valid:
             await websocket.send_json({
                 "error": "Invalid or expired session"

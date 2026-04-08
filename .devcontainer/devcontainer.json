@@ -3,6 +3,11 @@
   "dockerComposeFile": ["../docker-compose.yml", "docker-compose.devcontainer.yml"],
   "service": "workspace",
   "workspaceFolder": "/workspace",
+  "remoteEnv": {
+    "DOCKER_HOST": "tcp://dind:2376",
+    "DOCKER_TLS_VERIFY": "1",
+    "DOCKER_CERT_PATH": "/certs/client"
+  },
   "customizations": {
     "vscode": {
       "extensions": [

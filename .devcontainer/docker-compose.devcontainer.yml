@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   workspace:
     build:
@@ -7,17 +5,42 @@ services:
       dockerfile: .devcontainer/Dockerfile.workspace
     volumes:
       - ..:/workspace:cached
-      - ${DOCKER_SOCKET}:/var/run/docker.sock
+      - dind-certs:/certs/client:ro
+    environment:
+      - DOCKER_HOST=tcp://dind:2376
+      - DOCKER_TLS_VERIFY=1
+      - DOCKER_CERT_PATH=/certs/client
     command: sleep infinity
     depends_on:
       - backend
       - frontend
+      - dind
+
+  dind:
+    image: docker:dind
+    privileged: true
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
+    volumes:
+      - dind-certs:/certs/client
+      - dind-data:/var/lib/docker
 
   backend:
     volumes:
       - ../backend:/app:cached
+      - dind-certs:/certs/client:ro
+    environment:
+      - DOCKER_HOST=tcp://dind:2376
+      - DOCKER_TLS_VERIFY=1
+      - DOCKER_CERT_PATH=/certs/client
+    depends_on:
+      - dind
 
   frontend:
     volumes:
       - ../frontend:/app:cached
     shm_size: 1gb  # Chromium requires at least 1GB shared memory for E2E tests
+
+volumes:
+  dind-certs:
+  dind-data:

@@ -1,6 +1,7 @@
 import logging
 import os
 from pathlib import Path
+from typing import Optional
 
 from cryptography.fernet import Fernet
 from pydantic import Field
@@ -39,6 +40,12 @@ class Settings(BaseSettings):
 
     # Docker Configuration
     docker_host: str = Field(default_factory=_default_docker_host)
+    docker_tls_verify: bool = Field(default=False, validation_alias="DOCKER_TLS_VERIFY")
+    docker_cert_path: Optional[str] = Field(default=None, validation_alias="DOCKER_CERT_PATH")
+    docker_ca_cert: Optional[str] = Field(default=None, validation_alias="DOCKER_CA_CERT")
+    docker_client_cert: Optional[str] = Field(default=None, validation_alias="DOCKER_CLIENT_CERT")
+    docker_client_key: Optional[str] = Field(default=None, validation_alias="DOCKER_CLIENT_KEY")
+    container_provider_type: str = Field(default="docker-sdk", validation_alias="CONTAINER_PROVIDER_TYPE")
 
     # Session Configuration
     session_timeout_minutes: int = 30
