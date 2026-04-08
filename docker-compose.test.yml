@@ -4,6 +4,25 @@ version: '3.8'
 # This extends the base docker-compose.yml with test-specific settings
 
 services:
+  dind:
+    image: docker:dind
+    privileged: true
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
+    volumes:
+      - dind-certs:/certs/client
+      - dind-data:/var/lib/docker
+    ports:
+      - "8080-8090:8080-8090"
+    networks:
+      - mcp-gateway-test
+    healthcheck:
+      test: ["CMD", "docker", "--tlsverify", "--tlscacert=/certs/client/ca.pem", "--tlscert=/certs/client/cert.pem", "--tlskey=/certs/client/key.pem", "-H=tcp://localhost:2376", "info"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   frontend:
     image: "${E2E_FRONTEND_IMAGE:-docker-mcp-gateway-web-console-frontend:latest}"
     build:
@@ -46,9 +65,13 @@ services:
     ports:
       # Default: dynamic host port (e.g., ":8000"). CI can override with "8001:8000".
       - "${E2E_BACKEND_PORT_MAPPING:-:8000}"
+    volumes:
+      - dind-certs:/certs/client:ro
     environment:
       - BITWARDEN_CLI_PATH=/usr/local/bin/bw
-      - DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}}
+      - DOCKER_HOST=tcp://dind:2376
+      - DOCKER_TLS_VERIFY=1
+      - DOCKER_CERT_PATH=/certs/client
       - PYTHONPATH=/app
       - SESSION_TIMEOUT_MINUTES=30
       - CATALOG_CACHE_TTL_SECONDS=3600
@@ -58,6 +81,9 @@ services:
       - TESTING=true
     networks:
       - mcp-gateway-test
+    depends_on:
+      dind:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
       interval: 5s
@@ -90,5 +116,7 @@ networks:
     driver: bridge
 
 volumes:
+  dind-certs:
+  dind-data:
   bw-cli-config:
   bw-cli-cache:

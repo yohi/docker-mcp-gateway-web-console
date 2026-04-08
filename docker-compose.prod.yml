@@ -1,6 +1,26 @@
 version: '3.8'
 
 services:
+  dind:
+    image: docker:dind-rootless
+    container_name: mcp-gateway-dind
+    restart: unless-stopped
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
+    volumes:
+      - dind-certs:/certs/client
+      - dind-data:/var/lib/docker
+    ports:
+      - "8080-8090:8080-8090"
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "docker", "--tlsverify", "--tlscacert=/certs/client/ca.pem", "--tlscert=/certs/client/cert.pem", "--tlskey=/certs/client/key.pem", "-H=tcp://localhost:2376", "info"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
   backend:
     build:
       context: ./backend
@@ -9,7 +29,9 @@ services:
     restart: unless-stopped
     environment:
       - BITWARDEN_CLI_PATH=/usr/local/bin/bw
-      - DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}}
+      - DOCKER_HOST=tcp://dind:2376
+      - DOCKER_TLS_VERIFY=1
+      - DOCKER_CERT_PATH=/certs/client
       - SESSION_TIMEOUT_MINUTES=${SESSION_TIMEOUT_MINUTES:-30}
       - CATALOG_CACHE_TTL_SECONDS=${CATALOG_CACHE_TTL_SECONDS:-3600}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://yourdomain.com}
@@ -24,13 +46,15 @@ services:
       - SECRET_CACHE_TTL_SECONDS=${SECRET_CACHE_TTL_SECONDS:-1800}
       - MAX_LOG_LINES=${MAX_LOG_LINES:-1000}
     volumes:
-      - ${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}:${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}:ro
-      - /run/user:/run/user:ro
+      - dind-certs:/certs/client:ro
       - backend-data:/app/data
       - "bw-cli-config:/root/.config/Bitwarden CLI"
       - "bw-cli-cache:/root/.cache/Bitwarden CLI"
     networks:
       - mcp-network
+    depends_on:
+      dind:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -83,6 +107,10 @@ services:
       retries: 3
 
 volumes:
+  dind-certs:
+    driver: local
+  dind-data:
+    driver: local
   backend-data:
     driver: local
   bw-cli-config:

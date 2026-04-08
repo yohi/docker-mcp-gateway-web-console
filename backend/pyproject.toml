@@ -17,6 +17,18 @@ target-version = ['py314']
 [tool.ruff]
 target-version = "py314"
 
+[tool.ruff.lint]
+# 基本的なリンター設定
+select = ["E", "F", "B", "S", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# S101: Use of assert detected (pytestのテストコードでは標準的なため無視)
+"tests/*" = ["S101"]
+
+[tool.bandit]
+# B101/S101: assert_used (pytestのテストコードでは標準的なため除外)
+skips = ["B101"]
+
 [tool.mypy]
 python_version = "3.14"
 

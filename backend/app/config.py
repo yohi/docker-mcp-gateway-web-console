@@ -1,5 +1,4 @@
 import logging
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -13,16 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _default_docker_host() -> str:
-    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
-    if runtime_dir:
-        return f"unix://{runtime_dir}/docker.sock"
-    try:
-        uid = os.getuid()
-    except AttributeError:
-        uid = None
-    if isinstance(uid, int):
-        return f"unix:///run/user/{uid}/docker.sock"
-    return "unix:///var/run/docker.sock"
+    return "tcp://dind:2376"
 
 
 class Settings(BaseSettings):
@@ -149,9 +139,25 @@ class Settings(BaseSettings):
         return [domain.strip().lower() for domain in self.oauth_allowed_domains.split(",") if domain.strip()]
 
     def model_post_init(self, __context: object) -> None:
-        """OAuth トークン暗号化キーを env > ファイル > 生成の順で取得し、妥当性を検証する。"""
+        """Initialize settings after model creation."""
+        self._init_docker_certs()
+        self._init_encryption_key()
+
+    def _init_docker_certs(self) -> None:
+        """Initialize Docker certificate paths if TLS verify is enabled."""
+        if self.docker_tls_verify and self.docker_cert_path:
+            cert_dir = Path(self.docker_cert_path)
+            if self.docker_ca_cert is None:
+                self.docker_ca_cert = str(cert_dir / "ca.pem")
+            if self.docker_client_cert is None:
+                self.docker_client_cert = str(cert_dir / "cert.pem")
+            if self.docker_client_key is None:
+                self.docker_client_key = str(cert_dir / "key.pem")
+
+    def _init_encryption_key(self) -> None:
+        """Load or generate OAuth token encryption key."""
         env_key = self.oauth_token_encryption_key
-        # 1. 環境変数が設定されている場合は優先して検証
+        # 1. Try environment variable
         if env_key and env_key.strip() and env_key != OAUTH_TOKEN_ENCRYPTION_KEY_PLACEHOLDER:
             try:
                 Fernet(env_key.encode())
@@ -165,7 +171,7 @@ class Settings(BaseSettings):
 
         key_path = Path(self.oauth_token_key_file)
 
-        # 2. ファイルが存在する場合は読み込んで検証
+        # 2. Try file
         if key_path.exists():
             try:
                 key_bytes = key_path.read_bytes().strip()
@@ -178,7 +184,7 @@ class Settings(BaseSettings):
                 logger.error("暗号鍵ファイル %s の読み込みに失敗しました。", key_path)
                 raise exc
 
-        # 3. いずれも無ければ新規生成し、ファイルへ保存 (600)
+        # 3. Generate new key
         try:
             key_path.parent.mkdir(parents=True, exist_ok=True)
             new_key = Fernet.generate_key().decode("utf-8")
@@ -191,10 +197,8 @@ class Settings(BaseSettings):
                     key_path,
                 )
             except PermissionError:
-                # ディスク書き込み不可の場合はメモリ上でのみ使用し、再起動時に再生成される
                 logger.warning(
-                    "暗号鍵ファイル %s への書き込み権限がありません。生成したキーをメモリ上でのみ使用します。"
-                    " 永続化したい場合はディレクトリの権限を修正してください。",
+                    "暗号鍵ファイル %s への書き込み権限がありません。生成したキーをメモリ上でのみ使用します。",
                     key_path,
                 )
             self.oauth_token_encryption_key = new_key

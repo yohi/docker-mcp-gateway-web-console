@@ -2,12 +2,10 @@
 
 import asyncio
 import logging
-import os
 import re
 import time
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional
-from urllib.parse import urlparse
 
 import docker
 from docker.errors import APIError, DockerException, ImageNotFound
@@ -103,43 +101,14 @@ class DockerSdkProvider(ContainerProvider):
                 raise self._last_error
 
         def _init_client():
-            # Handle local socket fallback if base_url is a unix socket
             attempted_hosts = [self.base_url]
-            if self.base_url.startswith("unix://"):
-                default_unix = "unix:///var/run/docker.sock"
-                if default_unix not in attempted_hosts:
-                    attempted_hosts.append(default_unix)
-                
-                runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
-                if runtime_dir:
-                    fallback = f"unix://{runtime_dir}/docker.sock"
-                    if fallback not in attempted_hosts:
-                        attempted_hosts.append(fallback)
-                
-                try:
-                    uid = os.getuid()
-                    fallback_user = f"unix:///run/user/{uid}/docker.sock"
-                    if fallback_user not in attempted_hosts:
-                        attempted_hosts.append(fallback_user)
-                except AttributeError:
-                    pass
-
             errors = []
-            for host in attempted_hosts:
-                parsed = urlparse(host)
-                if parsed.scheme == "unix":
-                    socket_path = parsed.path
-                    if not os.path.exists(socket_path) or not os.access(socket_path, os.R_OK | os.W_OK):
-                        errors.append(f"{host}: Socket inaccessible")
-                        continue
-
-                try:
-                    client = docker.DockerClient(base_url=host, tls=self.tls_config)
-                    client.ping()
-                    return client, attempted_hosts
-                except DockerException as e:
-                    errors.append(f"{host}: {e}")
-            
+            try:
+                client = docker.DockerClient(base_url=self.base_url, tls=self.tls_config)
+                client.ping()
+                return client, attempted_hosts
+            except DockerException as e:
+                errors.append(f"{self.base_url}: {e}")
             raise DockerUnavailableError(attempted_hosts, errors)
 
         loop = asyncio.get_event_loop()
