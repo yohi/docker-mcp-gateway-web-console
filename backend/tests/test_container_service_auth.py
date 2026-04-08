@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
-from backend.app.services.containers import ContainerService, AuthenticationError, ContainerError
-from backend.app.services.base import ContainerProvider
-from backend.app.models.containers import ContainerConfig
+from app.services.containers import ContainerService, AuthenticationError, ContainerError
+from app.services.base import ContainerProvider
+from app.models.containers import ContainerConfig
 
 @pytest.fixture
 def mock_provider():

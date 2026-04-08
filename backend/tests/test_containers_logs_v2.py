@@ -15,7 +15,8 @@ class TestContainerLogsV2:
     def container_service(self):
         provider = MagicMock(spec=ContainerProvider)
         secret_manager = MagicMock(spec=SecretManager)
-        service = ContainerService(provider, secret_manager)
+        auth_service = MagicMock()
+        service = ContainerService(provider, secret_manager, auth_service)
         return service
 
     @pytest.mark.asyncio

@@ -106,6 +106,10 @@ def get_container_service(
             auth_service,
             state_store=_state_store
         )
+    else:
+        # Update auth_service to handle dependency overrides in tests
+        _container_service.auth_service = auth_service
+        
     return _container_service
 
 
@@ -156,13 +160,14 @@ async def list_containers(
         _log_docker_unavailable(e)
         return ContainerListResponse(
             containers=[],
-            warning="Docker daemon is unavailable.",
+            warning="Docker デーモンに接続できないため空の一覧を返しました。"
+            " ホスト上で Docker が起動していることと、DOCKER_HOST/ソケットの権限を確認してください。",
         )
     except ContainerError as e:
         logger.error("Domain error listing containers: %s", e)
         return ContainerListResponse(
             containers=[],
-            warning=f"Container error: {e}",
+            warning=f"コンテナ一覧の取得に失敗しました: {e}",
         )
     except Exception as e:
         logger.exception("Unexpected error listing containers")
@@ -506,9 +511,8 @@ async def stream_logs(
         
         # Validate session
         # Use service to validate session for consistency
-        try:
-            await container_service.auth_service.validate_session(session_id)
-        except Exception:
+        is_valid = await container_service.auth_service.validate_session(session_id)
+        if not is_valid:
             await websocket.send_json({
                 "error": "Invalid or expired session"
             })

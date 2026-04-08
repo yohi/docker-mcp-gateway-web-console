@@ -18,7 +18,7 @@ class TestContainerAuthAPI:
     def test_list_containers_unauthorized(self):
         """Test listing containers with invalid session returns 401."""
         mock_auth_service = AsyncMock()
-        mock_auth_service.validate_session.return_value = False
+        mock_auth_service.get_session.return_value = None
         
         app.dependency_overrides[get_auth_service] = lambda: mock_auth_service
         app.dependency_overrides[get_session_id] = lambda: "invalid-session-id"
@@ -30,7 +30,7 @@ class TestContainerAuthAPI:
     def test_create_container_unauthorized(self):
         """Test creating container with invalid session returns 401."""
         mock_auth_service = AsyncMock()
-        mock_auth_service.validate_session.return_value = False
+        mock_auth_service.get_session.return_value = None
         
         app.dependency_overrides[get_auth_service] = lambda: mock_auth_service
         app.dependency_overrides[get_session_id] = lambda: "invalid-session-id"
@@ -48,7 +48,7 @@ class TestContainerAuthAPI:
     def test_container_actions_unauthorized(self):
         """Test container actions (start, stop, etc.) with invalid session return 401."""
         mock_auth_service = AsyncMock()
-        mock_auth_service.validate_session.return_value = False
+        mock_auth_service.get_session.return_value = None
         
         app.dependency_overrides[get_auth_service] = lambda: mock_auth_service
         app.dependency_overrides[get_session_id] = lambda: "invalid-session-id"
@@ -72,7 +72,7 @@ class TestContainerAuthAPI:
     def test_get_config_unauthorized(self):
         """Test getting container config with invalid session returns 401."""
         mock_auth_service = AsyncMock()
-        mock_auth_service.validate_session.return_value = False
+        mock_auth_service.get_session.return_value = None
         
         app.dependency_overrides[get_auth_service] = lambda: mock_auth_service
         app.dependency_overrides[get_session_id] = lambda: "invalid-session-id"
