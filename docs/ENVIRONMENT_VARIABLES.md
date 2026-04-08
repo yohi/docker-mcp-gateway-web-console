@@ -99,8 +99,7 @@ LOG_LEVEL=INFO
 
 # Performance
 SECRET_CACHE_TTL_SECONDS=1800
-# Session Management
-SESSION_TIMEOUT_MINUTES=30
+MAX_LOG_LINES=1000
 ```
 
 **Note**: If `DOCKER_HOST` is unset, the backend automatically selects an appropriate 
@@ -126,9 +125,12 @@ DOCKER_SOCKET_PATH=/run/user/${UID:-1000}/docker.sock
 SESSION_TIMEOUT_MINUTES=30
 LOG_LEVEL=INFO
 ```
+
 If you're running Docker under another user or with a rootful daemon, set
-`DOCKER_SOCKET_PATH` to the actual socket location. The Compose volume mount
-will automatically use the same path.
+`DOCKER_SOCKET_PATH` to the actual socket location.
+While Compose volume mounts usually follow this path automatically, if your 
+`docker-compose.yml` uses a fixed mount path (e.g., `/run/user/${UID:-1000}/docker.sock`), 
+you must ensure the Compose-side path matches your setting.
 
 For the DevContainer DinD setup, the backend/workspace containers use
 `DOCKER_HOST=tcp://dind:2376`, `DOCKER_TLS_VERIFY=1`, and

@@ -98,8 +98,7 @@ LOG_LEVEL=INFO
 
 # Performance
 SECRET_CACHE_TTL_SECONDS=1800
-# Session Management
-SESSION_TIMEOUT_MINUTES=30
+MAX_LOG_LINES=1000
 ```
 
 **注意**: バックエンドは `DOCKER_HOST` が未設定の場合、`XDG_RUNTIME_DIR` や UID に基づいて
@@ -124,9 +123,12 @@ DOCKER_SOCKET_PATH=/run/user/${UID:-1000}/docker.sock
 SESSION_TIMEOUT_MINUTES=30
 LOG_LEVEL=INFO
 ```
-別ユーザーで動作するデーモンや rootful Docker に接続する場合は、
-`DOCKER_SOCKET_PATH` を実際のソケットパスに合わせてください。Compose 側の
-ボリュームマウントも同じパスに自動で切り替わります。
+
+別ユーザーで動作するデーモンや rootful Docker に接続する場合、
+`DOCKER_SOCKET_PATH` を実際のソケットパスに合わせてください。
+通常は Compose のボリュームマウントも連動しますが、`docker-compose.yml` 側で 
+`/run/user/${UID:-1000}/docker.sock` のように固定マウントされている場合は、
+Compose 側のパスも手動で合わせる必要があります。
 
 なお DevContainer の DinD 構成ではホストソケットは使わず、
 `DOCKER_HOST=tcp://dind:2376`、`DOCKER_TLS_VERIFY=1`、
