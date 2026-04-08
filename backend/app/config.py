@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _default_docker_host() -> str:
-    return "unix:///var/run/docker.sock"
+    return "tcp://dind:2376"
 
 
 class Settings(BaseSettings):
