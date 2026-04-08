@@ -20,7 +20,7 @@ DooD アプローチから脱却し、**Docker-in-Docker (DinD)** を用いた�
 ### 2.1. 構成の比較
 
 **【現状 (DooD)】**
-- Workspace (Devcontainer) コンテナに `${DOCKER_SOCKET}:/var/run/docker.sock` をマウント。
+- Workspace (Devcontainer) コンテナにホストの Docker ソケットをマウント。
 - Backend (FastAPI) はローカルの UNIX ソケット経由でホストのコンテナを操作。
 
 **【新構成 (DinD + TLS)】**
@@ -42,7 +42,7 @@ DooD アプローチから脱却し、**Docker-in-Docker (DinD)** を用いた�
 ホストのソケットマウントを廃止し、`dind` サービスを追加します。
 
 **`docker-compose.devcontainer.yml` の変更方針:**
-- `workspace` サービスの `volumes` から `${DOCKER_SOCKET}:/var/run/docker.sock` を削除。
+- `workspace` サービスの `volumes` からホスト Docker ソケットのマウントを削除。
 - 新規サービス `dind` (image: `docker:dind`) を追加し、`privileged: true` およびTLS証明書生成用のボリューム設定を行う。
 - **データとキャッシュの永続化**: `dind` コンテナの再作成時にダウンロード済みのDockerイメージやビルドキャッシュが失われ、開発体験（ビルド速度）が著しく低下するのを防ぐため、名前付きボリューム（例: `dind-data:/var/lib/docker`）をマウントし、Dockerの内部データやイメージキャッシュを永続化する設定を追加します。
 - `workspace` および `backend` サービスに、`dind` と通信するための環境変数 (`DOCKER_HOST`, `DOCKER_TLS_VERIFY`, `DOCKER_CERT_PATH`) を設定します。設定齟齬を防ぐため、`dind` サービスが自動生成するTLSクライアント証明書の共有ディレクトリパスを `/certs/client` と明記し、各サービスはこのディレクトリを同一パス（または指定のパス）でボリュームマウントして証明書を参照するよう構成します。

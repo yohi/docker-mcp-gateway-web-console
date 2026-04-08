@@ -30,8 +30,8 @@ Create a `.env` file in the `backend/` directory:
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
 | `BITWARDEN_CLI_PATH` | Path to Bitwarden CLI executable | `/usr/local/bin/bw` | `/usr/bin/bw` |
-| `DOCKER_HOST` | Docker daemon socket | `unix:///var/run/docker.sock` | `tcp://localhost:2375` |
-| `DOCKER_SOCKET_PATH` | Actual Unix socket path when using `unix://` | `/var/run/docker.sock` | `/run/user/1000/docker.sock` |
+| `DOCKER_HOST` | Docker daemon endpoint used by the backend service | `unix:///run/user/<uid>/docker.sock` | `unix:///var/run/docker.sock` |
+| `DOCKER_SOCKET_PATH` | Actual Unix socket path when using `unix://` in local/prod Compose | `/run/user/<uid>/docker.sock` | `/var/run/docker.sock` |
 
 ### Optional Variables
 
@@ -62,8 +62,10 @@ Create a `.env` file in the `backend/` directory:
 BITWARDEN_CLI_PATH=/usr/local/bin/bw
 
 # Docker Configuration
-DOCKER_HOST=unix:///var/run/docker.sock
-# Override when the socket path differs (e.g., rootless Docker)
+# Nested variable expansion is not supported when running directly (python-dotenv).
+# Use a concrete path. If unset, the backend will attempt to guess it automatically.
+DOCKER_HOST=unix:///run/user/1000/docker.sock
+# Override when the socket path differs
 # DOCKER_SOCKET_PATH=/run/user/1000/docker.sock
 
 # Session Management
@@ -100,9 +102,14 @@ SECRET_CACHE_TTL_SECONDS=1800
 MAX_LOG_LINES=1000
 ```
 
+**Note**: If `DOCKER_HOST` is unset, the backend automatically selects an appropriate 
+socket path (e.g., `unix:///run/user/<uid>/docker.sock`) based on `XDG_RUNTIME_DIR` 
+or the current UID.
+
 ## Docker Compose Environment Variables
 
-When using Docker Compose, you can override these variables in a `.env` file at the project root:
+When using Docker Compose, you can override these variables in a `.env` file at the project root.
+Variable expansion is available within the Compose YAML:
 
 ```env
 # Frontend
@@ -112,16 +119,21 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 # Backend
 BACKEND_PORT=8000
 BITWARDEN_CLI_PATH=/usr/local/bin/bw
-DOCKER_HOST=unix://${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
-DOCKER_SOCKET_PATH=/var/run/docker.sock
-SESSION_TIMEOUT_MINUTES=30
+# Variable expansion is supported when passed through Compose YAML
+DOCKER_HOST=${DOCKER_HOST:-unix://${DOCKER_SOCKET_PATH:-/run/user/${UID:-1000}/docker.sock}}
+DOCKER_SOCKET_PATH=/run/user/${UID:-1000}/docker.sock
 LOG_LEVEL=INFO
 ```
 
-If you're running Docker in rootless mode or under another user, set
-`DOCKER_SOCKET_PATH` to the actual socket location (for example,
-`/run/user/1000/docker.sock`). The Compose volume mount will automatically
-use the same path.
+If you're running Docker under another user or with a rootful daemon, set
+`DOCKER_SOCKET_PATH` to the actual socket location.
+While Compose volume mounts usually follow this path automatically, if your 
+`docker-compose.yml` uses a fixed mount path (e.g., `/run/user/${UID:-1000}/docker.sock`), 
+you must ensure the Compose-side path matches your setting.
+
+For the DevContainer DinD setup, the backend/workspace containers use
+`DOCKER_HOST=tcp://dind:2376`, `DOCKER_TLS_VERIFY=1`, and
+`DOCKER_CERT_PATH=/certs/client` instead of a host socket mount.
 
 ## Production Considerations
 
