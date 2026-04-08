@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
-from backend.app.services.docker_provider import (
+from app.services.docker_provider import (
     DockerSdkProvider, 
     DockerUnavailableError, 
     _parse_version_triplet
