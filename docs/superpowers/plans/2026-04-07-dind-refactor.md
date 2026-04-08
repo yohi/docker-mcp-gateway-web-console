@@ -409,7 +409,8 @@ class TestContainerServiceWithAuth:
             secret_manager=mock_secret_manager,
             auth_service=mock_auth_service,
         )
-        with pytest.raises(ValueError, match="Invalid or expired session"):
+        from backend.app.services.containers import AuthenticationError
+        with pytest.raises(AuthenticationError, match="Invalid or expired session"):
             await svc._validate_session_and_get("bad-sid")
 
     @pytest.mark.asyncio
@@ -440,13 +441,13 @@ Expected: FAIL
         self,
         provider: ContainerProvider,
         secret_manager: SecretManager,
-        state_store: Optional[StateStore] = None,
         auth_service: Optional['AuthService'] = None,
+        state_store: Optional[StateStore] = None,
     ):
         self.provider = provider
         self.secret_manager = secret_manager
-        self._state_store = state_store or StateStore()
         self.auth_service = auth_service
+        self._state_store = state_store or StateStore()
 ```
 
 新メソッドを `close` の前に追加:
@@ -520,8 +521,10 @@ def get_container_service(
         _state_store = StateStore()
         _state_store.init_schema()
         _container_service = ContainerService(
-            container_provider, secret_manager,
-            state_store=_state_store, auth_service=auth_service,
+            container_provider,
+            secret_manager,
+            auth_service=auth_service,
+            state_store=_state_store,
         )
     return _container_service
 ```
