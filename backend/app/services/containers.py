@@ -1,11 +1,8 @@
 """Container Service for Docker integration."""
 
-import asyncio
 import logging
 import re
-from typing import Any, AsyncIterator, List, Optional
-
-from fastapi import status
+from typing import Any, AsyncIterator, List, Optional, TYPE_CHECKING
 
 from ..models.containers import (
     ContainerConfig,
@@ -13,10 +10,12 @@ from ..models.containers import (
     LogEntry,
 )
 from ..models.state import ContainerConfigRecord
-from .auth import AuthService
 from .base import ContainerProvider
 from .secrets import SecretManager
 from .state_store import StateStore
+
+if TYPE_CHECKING:
+    from .auth import AuthService
 
 
 class ContainerError(Exception):
@@ -50,17 +49,17 @@ class ContainerAlreadyExistsError(ContainerError):
         self,
         name: str,
         container_id: str | None = None,
-        status: str | None = None,
+        container_status: str | None = None,
     ) -> None:
         self.name = name
         self.container_id = container_id
-        self.status = status
+        self.container_status = container_status
 
         detail = f"コンテナ名 {name} は既に使用されています。"
         if container_id:
             detail += f" 既存コンテナID: {container_id}。"
-        if status:
-            detail += f" 状態: {status}。"
+        if container_status:
+            detail += f" 状態: {container_status}。"
 
         super().__init__(detail)
 
@@ -80,8 +79,8 @@ class ContainerService:
         self,
         provider: ContainerProvider,
         secret_manager: SecretManager,
-        auth_service: AuthService,
-        state_store: Optional[StateStore] = None,
+        auth_service: "AuthService",
+        state_store: Optional[StateStore] = None
     ):
         """
         Initialize the Container Service.
@@ -171,7 +170,7 @@ class ContainerService:
         except Exception as e:
             st = getattr(e, "status_code", None)
             if st == 409:
-                raise ContainerAlreadyExistsError(sanitized_name, status=str(st)) from e
+                raise ContainerAlreadyExistsError(sanitized_name, container_status=str(st)) from e
             self._handle_provider_exception(e, "create container")
             
         # Save state
@@ -210,6 +209,15 @@ class ContainerService:
             raise ContainerError("Bitwarden session key not found in session")
 
         return await self.create_container(config, session_id, session.bw_session_key)
+
+    async def get_container_config_with_auth(
+        self, 
+        container_id: str, 
+        session_id: str
+    ) -> dict:
+        """認証後に保存済みのコンテナ設定を返す。"""
+        await self._validate_session_and_get(session_id)
+        return self.get_container_config(container_id)
 
     def get_container_config(self, container_id: str) -> dict:
         """Return saved container configuration."""

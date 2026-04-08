@@ -69,8 +69,8 @@ def get_container_provider() -> ContainerProvider:
         tls_config = None
         if settings.docker_tls_verify:
             tls_config = docker.tls.TLSConfig(
-                client_cert=(settings.docker_client_cert, settings.docker_client_key) if settings.docker_client_cert and settings.docker_client_key else None,
-                ca_cert=settings.docker_ca_cert,
+                client_cert=(settings.docker_client_cert_path, settings.docker_client_key_path) if settings.docker_client_cert_path and settings.docker_client_key_path else None,
+                ca_cert=settings.docker_ca_cert_path,
                 verify=True
             )
         
@@ -91,9 +91,9 @@ def get_container_provider() -> ContainerProvider:
 
 
 def get_container_service(
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
     secret_manager: Annotated[SecretManager, Depends(get_secret_manager)],
     container_provider: Annotated[ContainerProvider, Depends(get_container_provider)],
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> ContainerService:
     """Dependency to get the container service instance."""
     global _container_service, _state_store
@@ -101,10 +101,10 @@ def get_container_service(
         _state_store = StateStore()
         _state_store.init_schema()
         _container_service = ContainerService(
-            container_provider,
-            secret_manager,
+            container_provider, 
+            secret_manager, 
             auth_service,
-            state_store=_state_store,
+            state_store=_state_store
         )
     return _container_service
 
@@ -226,19 +226,19 @@ async def create_container(
 async def get_container_config(
     container_id: str,
     session_id: Annotated[str, Depends(get_session_id)],
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
     container_service: Annotated[ContainerService, Depends(get_container_service)],
 ):
     """保存済みのコンテナ設定を取得する。"""
-    is_valid = await auth_service.validate_session(session_id)
-    if not is_valid:
+    try:
+        config_data = await container_service.get_container_config_with_auth(
+            container_id, session_id
+        )
+        return ContainerConfig.model_validate(config_data)
+    except AuthenticationError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session"
-        )
-    try:
-        config_data = container_service.get_container_config(container_id)
-        return ContainerConfig.model_validate(config_data)
+            detail=str(e),
+        ) from e
     except ContainerError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -505,9 +505,10 @@ async def stream_logs(
             return
         
         # Validate session
-        auth_service = get_auth_service()
-        is_valid = await auth_service.validate_session(session_id)
-        if not is_valid:
+        # Use service to validate session for consistency
+        try:
+            await container_service.auth_service.validate_session(session_id)
+        except Exception:
             await websocket.send_json({
                 "error": "Invalid or expired session"
             })
