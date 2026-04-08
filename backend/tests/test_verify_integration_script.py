@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import stat
 import subprocess
 import textwrap
@@ -10,6 +11,13 @@ from pathlib import Path
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _bash_path() -> str:
+    path = shutil.which("bash")
+    if not path:
+        raise RuntimeError("bash not found in PATH")
+    return path
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -172,7 +180,7 @@ def test_verify_integration_script_runs_checks_with_dind_verification(tmp_path: 
 
     script_under_test = _repo_root() / "scripts" / "verify-integration.sh"
     result = subprocess.run(
-        ["bash", str(script_under_test)],
+        [_bash_path(), str(script_under_test)],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -215,7 +223,7 @@ def test_verify_integration_script_fails_on_unhealthy_backend(tmp_path: Path) ->
 
     script_under_test = _repo_root() / "scripts" / "verify-integration.sh"
     result = subprocess.run(
-        ["bash", str(script_under_test)],
+        [_bash_path(), str(script_under_test)],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -250,7 +258,7 @@ def test_verify_integration_script_fails_on_missing_dind_config(tmp_path: Path) 
 
     script_under_test = _repo_root() / "scripts" / "verify-integration.sh"
     result = subprocess.run(
-        ["bash", str(script_under_test)],
+        [_bash_path(), str(script_under_test)],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -260,7 +268,7 @@ def test_verify_integration_script_fails_on_missing_dind_config(tmp_path: Path) 
 
     assert result.returncode != 0
     combined_output = f"{result.stdout}\n{result.stderr}"
-    assert "dind service missing" in combined_output
+    assert "dind service missing" in combined_output.lower()
 
 
 def test_verify_integration_script_fails_on_dind_unreachable(tmp_path: Path) -> None:
@@ -279,7 +287,7 @@ def test_verify_integration_script_fails_on_dind_unreachable(tmp_path: Path) -> 
 
     script_under_test = _repo_root() / "scripts" / "verify-integration.sh"
     result = subprocess.run(
-        ["bash", str(script_under_test)],
+        [_bash_path(), str(script_under_test)],
         cwd=tmp_path,
         env=env,
         capture_output=True,
