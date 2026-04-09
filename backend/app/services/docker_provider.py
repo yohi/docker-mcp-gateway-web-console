@@ -173,7 +173,9 @@ class DockerSdkProvider(ContainerProvider):
     async def list_containers(self, all_containers: bool = True) -> List[ContainerInfo]:
         client = await self._get_client()
         summaries = await self._call_docker_api(client.api.containers, all=all_containers)
-        return [self._container_summary_to_info(s) for s in summaries]
+        results = [self._container_summary_to_info(s) for s in summaries]
+        logger.info("Found %d containers, results: %s", len(results), [(r.id[:8], r.name) for r in results])
+        return results
 
     async def create_container(self, config: ContainerConfig, sanitized_name: str, resolved_env: Dict[str, str]) -> str:
         client = await self._get_client()

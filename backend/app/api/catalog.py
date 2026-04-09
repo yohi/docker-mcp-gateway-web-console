@@ -5,7 +5,7 @@ import logging
 import math
 from typing import Optional, Union
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
 
 from ..config import settings
@@ -21,8 +21,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
-# Initialize catalog service
-catalog_service = CatalogService()
+# Singleton instances for dependency injection
+_catalog_service: CatalogService = None
+
+
+def get_catalog_service() -> CatalogService:
+    """Dependency to get the catalog service instance (singleton)."""
+    global _catalog_service
+    if _catalog_service is None:
+        _catalog_service = CatalogService()
+    return _catalog_service
 
 _CATALOG_ERROR_STATUS = {
     CatalogErrorCode.INVALID_SOURCE: status.HTTP_400_BAD_REQUEST,
@@ -110,7 +118,8 @@ def _catalog_error_response(
     },
 )
 async def get_catalog(
-    source: Optional[str] = Query(None, description="Catalog source ID")
+    source: Optional[str] = Query(None, description="Catalog source ID"),
+    catalog_service: CatalogService = Depends(get_catalog_service),
 ) -> Union[CatalogResponse, JSONResponse]:
     """
     Fetch catalog data from a remote source.
@@ -217,6 +226,7 @@ async def search_catalog(
         le=200,
         description="1ページあたりの件数。過大指定での負荷を防ぐため上限200件。",
     ),
+    catalog_service: CatalogService = Depends(get_catalog_service),
 ) -> Union[CatalogResponse, JSONResponse]:
     """
     Search and filter catalog items.
@@ -292,7 +302,8 @@ async def search_catalog(
 
 @router.delete("/cache")
 async def clear_catalog_cache(
-    source: Optional[str] = Query(default=None, description="Specific catalog URL to clear, or omit to clear all")
+    source: Optional[str] = Query(default=None, description="Specific catalog URL to clear, or omit to clear all"),
+    catalog_service: CatalogService = Depends(get_catalog_service),
 ) -> dict:
     """
     Clear catalog cache.

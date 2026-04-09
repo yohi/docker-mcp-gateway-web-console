@@ -11,7 +11,8 @@ import re
 import time
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import httpx
@@ -63,6 +64,8 @@ class AllowedURLsValidator:
             use_settings.catalog_docker_url,
             use_settings.catalog_official_url,
             use_settings.catalog_default_url,
+            use_settings.catalog_local_url,
+            "https://raw.githubusercontent.com/docker/mcp-registry/main/registry.json",
         ]
         self._allowed_urls = frozenset(
             self._normalize_url(url) for url in allowed if url
@@ -304,6 +307,18 @@ class CatalogService:
         Raises:
             CatalogError: 取得およびフォールバックが失敗し、キャッシュも無い場合
         """
+        # Handle local file catalog source
+        if source_url == "file://local-mcp-catalogs" or source_url == settings.catalog_local_url:
+            try:
+                local_items = self._fetch_from_local_yaml()
+                # Always update cache even if empty
+                self._cache[source_url] = (local_items, datetime.now(timezone.utc) + self._cache_ttl)
+                return local_items, False
+            except Exception as e:
+                logger.error(f"Error fetching local catalog: {e}")
+                # For local, we don't want to fallback to remote
+                return [], False
+
         if not force_refresh:
             cached = await self.get_cached_catalog(source_url)
             if cached is not None:
@@ -882,6 +897,10 @@ class CatalogService:
                 )
             except Exception as e:
                 last_error = e
+                # レート制限 (429) の場合は、リトライや警告を行わずに即座に中断する
+                if hasattr(e, "response") and getattr(e.response, "status_code", None) == 429:
+                    return None
+
                 should_retry = self._should_retry_github(e) and attempt < (
                     self._github_fetch_retries - 1
                 )
@@ -1206,29 +1225,27 @@ class CatalogService:
         )
 
     def _fetch_from_local_yaml(self) -> List[CatalogItem]:
-        """Fetch catalog items from local YAML files.
-        Prioritizes:
-        1. Custom path from settings (dotfiles_ai_root)
-        2. Mounted host catalogs (/mnt/host_dotfiles/...)
-        3. Default container-local path (~/.docker/mcp/catalogs)
         """
-        # 探索するディレクトリ候補
+        Fetch catalog items from local YAML files.
+        Searches multiple locations to find MCP catalog files.
+        """
         search_dirs = []
         
-        # 1. settings.dotfiles_ai_root (コンテナ内から見たパスに置換)
-        # ホストの /home/y_ohi/dotfiles が /mnt/host_dotfiles にマウントされていると仮定
-        if settings.dotfiles_ai_root:
-            path = Path(settings.dotfiles_ai_root)
-            # ホストパスをコンテナ内マウントパスに変換
-            if "/home/y_ohi/dotfiles" in str(path):
-                container_path = Path(str(path).replace("/home/y_ohi/dotfiles", "/mnt/host_dotfiles"))
-                search_dirs.append(container_path / "mcp" / "catalogs")
-        
-        # 2. 直接マウントパス
+        # 1. 直接マウントされたパス (dotfiles-ai)
         search_dirs.append(Path("/mnt/host_dotfiles/components/dotfiles-ai/mcp/catalogs"))
         
-        # 3. 従来の標準パス
+        # 2. ホストのルートマウントからの相対パス
+        search_dirs.append(Path("/mnt/host_dotfiles/mcp/catalogs"))
+        
+        # 3. コンテナ内の標準パス
         search_dirs.append(Path.home() / ".docker" / "mcp" / "catalogs")
+        
+        # 4. 設定からの動的変換 (ホストパスをコンテナパスに置換)
+        if settings.dotfiles_ai_root:
+            h_path = str(settings.dotfiles_ai_root)
+            # /home/y_ohi/dotfiles を /mnt/host_dotfiles に読み替える
+            c_path = h_path.replace("/home/y_ohi/dotfiles", "/mnt/host_dotfiles")
+            search_dirs.append(Path(c_path) / "mcp" / "catalogs")
 
         all_items: List[CatalogItem] = []
         processed_dirs = set()
@@ -1241,6 +1258,7 @@ class CatalogService:
             logger.info("Searching local catalogs in: %s", mcp_dir)
             
             for yaml_path in mcp_dir.glob("*.yaml"):
+                # ... 既存のパースロジック ...
                 try:
                     content = yaml_path.read_text(encoding="utf-8")
                     data = yaml.safe_load(content)
