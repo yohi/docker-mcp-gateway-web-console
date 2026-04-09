@@ -2,9 +2,10 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..models.config import (
+    ConfigPathInfo,
     ConfigReadResponse,
     ConfigWriteRequest,
     ConfigWriteResponse,
@@ -16,12 +17,50 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
-# Initialize config service
-config_service = ConfigService()
+# Singleton instances for dependency injection
+_config_service: ConfigService = None
+
+
+def get_config_service() -> ConfigService:
+    """Dependency to get the configuration service instance (singleton)."""
+    global _config_service
+    if _config_service is None:
+        _config_service = ConfigService()
+    return _config_service
+
+
+@router.get("/path", response_model=ConfigPathInfo)
+async def get_config_path(
+    config_service: ConfigService = Depends(get_config_service)
+):
+    """
+    Get the current configuration file path.
+    """
+    path = config_service.get_config_path()
+    import os
+    return ConfigPathInfo(
+        path=str(path),
+        exists=path.exists(),
+        is_writable=os.access(path, os.W_OK) if path.exists() else os.access(path.parent, os.W_OK)
+    )
+
+
+@router.post("/path", response_model=ConfigPathInfo)
+async def update_config_path(
+    info: ConfigPathInfo,
+    config_service: ConfigService = Depends(get_config_service)
+):
+    """
+    Update the configuration file path.
+    """
+    config_service.set_config_path(info.path)
+    return await get_config_path(config_service)
 
 
 @router.get("/gateway", response_model=ConfigReadResponse)
-async def read_gateway_config():
+async def read_gateway_config(
+    config_service: ConfigService = Depends(get_config_service)
+):
     """
     Read the current Gateway configuration.
 
@@ -50,12 +89,16 @@ async def read_gateway_config():
 
 
 @router.put("/gateway", response_model=ConfigWriteResponse)
-async def write_gateway_config(request: ConfigWriteRequest):
+async def write_gateway_config(
+    request: ConfigWriteRequest,
+    config_service: ConfigService = Depends(get_config_service)
+):
     """
     Write Gateway configuration to file.
 
     Args:
         request: ConfigWriteRequest with the new configuration
+        config_service: Configuration service instance
 
     Returns:
         ConfigWriteResponse indicating success
@@ -106,7 +149,10 @@ async def write_gateway_config(request: ConfigWriteRequest):
 
 
 @router.post("/gateway/validate", response_model=ValidationResult)
-async def validate_gateway_config(request: ConfigWriteRequest):
+async def validate_gateway_config(
+    request: ConfigWriteRequest,
+    config_service: ConfigService = Depends(get_config_service)
+):
     """
     Validate Gateway configuration without saving.
 
@@ -114,6 +160,7 @@ async def validate_gateway_config(request: ConfigWriteRequest):
 
     Args:
         request: ConfigWriteRequest with the configuration to validate
+        config_service: Configuration service instance
 
     Returns:
         ValidationResult with validation status and any errors/warnings
@@ -131,9 +178,14 @@ async def validate_gateway_config(request: ConfigWriteRequest):
 
 
 @router.post("/gateway/backup")
-async def backup_gateway_config():
+async def backup_gateway_config(
+    config_service: ConfigService = Depends(get_config_service)
+):
     """
     Create a backup of the current Gateway configuration.
+
+    Args:
+        config_service: Configuration service instance
 
     Returns:
         Dict with backup file path

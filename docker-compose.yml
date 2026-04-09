@@ -1,39 +1,19 @@
 version: '3.8'
 
 services:
-  dind:
-    image: docker:dind
-    privileged: true
-    command: ["dockerd", "--host=unix:///var/run/docker.sock", "--host=tcp://0.0.0.0:2375", "--tls=false"]
-    environment:
-      - DOCKER_TLS_CERTDIR=
-    volumes:
-      - dind-certs:/certs/client
-      - dind-data:/var/lib/docker
-    ports:
-      - "8080-8090:8080-8090"
-    networks:
-      - mcp-gateway
-    healthcheck:
-      test: ["CMD", "docker", "-H", "unix:///var/run/docker.sock", "info"]
-      interval: 10s
-      timeout: 10s
-      retries: 6
-      start_period: 20s
-
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
     shm_size: 1gb  # Chromium requires at least 1GB shared memory for E2E tests
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:${BACKEND_PORT:-8000}
       - NODE_ENV=development
     depends_on:
       - backend
@@ -52,27 +32,27 @@ services:
       dockerfile: Dockerfile.dev
     working_dir: /workspace/backend
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./:/workspace
       - ./data:/app/data
       - ./backend:/app
-      - dind-certs:/certs/client:ro
-      - "bw-cli-config:/home/appuser/.config/Bitwarden CLI"
-      - "bw-cli-cache:/home/appuser/.cache/Bitwarden CLI"
+      - "${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock"
+      - ./data/bw-configs:/home/appuser/.config/Bitwarden CLI
+      - ./data/bw-cache:/home/appuser/.cache/Bitwarden CLI
+      - "${HOST_DOTFILES_DIR:-/home/y_ohi/dotfiles}:/mnt/host_dotfiles"
     environment:
       - BITWARDEN_CLI_PATH=/usr/local/bin/bw
-      - DOCKER_HOST=tcp://dind:2375
+      - DOCKER_HOST=unix:///var/run/docker.sock
       - DOCKER_TLS_VERIFY=0
-      - DOCKER_CERT_PATH=/certs/client
       - SESSION_TIMEOUT_MINUTES=30
       - CATALOG_CACHE_TTL_SECONDS=3600
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+      - CORS_ORIGINS=http://localhost:${FRONTEND_PORT:-3000}
       - OAUTH_AUTHORIZE_URL=${OAUTH_AUTHORIZE_URL:-https://auth.example.com/authorize}
       - OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-https://auth.example.com/token}
       - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-mcp-console}
       - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET:-}
-      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost:8000/api/catalog/oauth/callback}
+      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost:${BACKEND_PORT:-8000}/api/catalog/oauth/callback}
       - OAUTH_ALLOW_OVERRIDE=${OAUTH_ALLOW_OVERRIDE:-true}
       - OAUTH_TOKEN_ENCRYPTION_KEY=${OAUTH_TOKEN_ENCRYPTION_KEY:-}
       - OAUTH_TOKEN_ENCRYPTION_KEY_FILE=/app/data/oauth_encryption.key
@@ -80,9 +60,8 @@ services:
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
       - HOME=/home/appuser
-    depends_on:
-      dind:
-        condition: service_healthy
+    group_add:
+      - "${DOCKER_GID:-995}"
     networks:
       - mcp-gateway
     healthcheck:
@@ -97,8 +76,4 @@ networks:
     driver: bridge
 
 volumes:
-  dind-certs:
-  dind-data:
-  bw-cli-config:
-  bw-cli-cache:
   data-volume:

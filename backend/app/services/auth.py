@@ -500,12 +500,20 @@ class AuthService:
                 raise AuthError("Bitwarden login timed out")
             
             if process.returncode != 0:
-                error_msg = stderr.decode().strip()
+                stdout_msg = stdout.decode().strip()
+                stderr_msg = stderr.decode().strip()
+                combined = f"{stdout_msg}\n{stderr_msg}".strip()
+
+                # Check if already logged in
+                if "You are already logged in" in combined:
+                    logger.info("User already logged in to Bitwarden, attempting to unlock vault")
+                    return await self._unlock_vault(password)
+
                 # Common error messages
-                if "Invalid credentials" in error_msg or "Username or password is incorrect" in error_msg:
+                if "Invalid credentials" in combined or "Username or password is incorrect" in combined:
                     raise AuthError("Invalid email or password")
-                raise AuthError(f"Bitwarden login failed: {error_msg}")
-            
+                raise AuthError(f"Bitwarden login failed: {combined}")
+
             # Session key is returned in stdout
             session_key = stdout.decode().strip()
             

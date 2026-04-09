@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     catalog_default_url: str = "https://api.github.com/repos/docker/mcp-registry/contents/servers"
     # Official MCP Registry の既定URL
     catalog_official_url: str = "https://registry.modelcontextprotocol.io/v0/servers"
+    # ローカルの dotfiles-ai カタログ URL
+    catalog_local_url: str = "file://local-mcp-catalogs"
     # Official MCP Registry ページネーション設定
     catalog_official_max_pages: int = Field(
         default=20,
@@ -115,6 +117,10 @@ class Settings(BaseSettings):
 
     # Application Configuration
     log_level: str = "INFO"
+    dotfiles_ai_root: str = Field(
+        default="/home/y_ohi/dotfiles/components/dotfiles-ai",
+        validation_alias="DOTFILES_AI_ROOT"
+    )
     # Security: Only log request bodies in debug/non-production environments
     # to prevent logging sensitive data (passwords, API keys, PII)
     log_request_body: bool = False

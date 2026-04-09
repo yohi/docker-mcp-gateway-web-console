@@ -8,6 +8,7 @@
  */
 
 export const CATALOG_SOURCES = [
+    { id: 'local', label: 'Local (dotfiles-ai)' },
     { id: 'docker', label: 'Docker MCP Catalog' },
     { id: 'official', label: 'Official MCP Registry' },
 ] as const;
@@ -17,8 +18,9 @@ export type CatalogSourceId = typeof CATALOG_SOURCES[number]['id'];
 /**
  * デフォルトのカタログソースID
  * Requirements 1.3: 初回表示時は Docker をデフォルトに設定
+ * 統合対応: dotfiles-ai のローカル設定をデフォルトにする
  */
-export const DEFAULT_CATALOG_SOURCE: CatalogSourceId = 'docker';
+export const DEFAULT_CATALOG_SOURCE: CatalogSourceId = 'local';
 
 /**
  * ソースIDからラベルを取得するヘルパー

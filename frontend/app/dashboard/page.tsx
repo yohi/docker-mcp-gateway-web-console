@@ -33,7 +33,11 @@ export default function DashboardPage() {
   const containers = data?.containers || [];
   const filteredContainers = showAllContainers
     ? containers
-    : containers.filter((c) => Boolean(c.labels?.['mcp.original_name']));
+    : containers.filter(
+        (c) =>
+          Boolean(c.labels?.['mcp.original_name']) ||
+          Boolean(c.labels?.['docker-mcp'])
+      );
   const isLoading = !data && !error;
 
   const handleRefresh = () => {

@@ -11,6 +11,7 @@ class CatalogSourceId(str, Enum):
 
     DOCKER = "docker"
     OFFICIAL = "official"
+    LOCAL = "local"
 
 
 class CatalogErrorCode(str, Enum):

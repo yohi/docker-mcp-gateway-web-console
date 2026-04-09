@@ -103,11 +103,14 @@ class AllowedURLsValidator:
             ) from exc
 
         scheme = (parsed.scheme or "").lower()
-        if scheme not in {"http", "https"}:
+        if scheme not in {"http", "https", "file"}:
             raise CatalogError(
-                "Catalog URL must use http or https",
+                "Catalog URL must use http, https or file",
                 error_code=CatalogErrorCode.INVALID_SOURCE,
             )
+
+        if scheme == "file":
+            return raw
 
         hostname = parsed.hostname
         if not hostname:
@@ -1201,6 +1204,73 @@ class CatalogService:
             server_type=server_type,
             oauth_config=oauth_config,
         )
+
+    def _fetch_from_local_yaml(self) -> List[CatalogItem]:
+        """Fetch catalog items from local YAML files.
+        Prioritizes:
+        1. Custom path from settings (dotfiles_ai_root)
+        2. Mounted host catalogs (/mnt/host_dotfiles/...)
+        3. Default container-local path (~/.docker/mcp/catalogs)
+        """
+        # 探索するディレクトリ候補
+        search_dirs = []
+        
+        # 1. settings.dotfiles_ai_root (コンテナ内から見たパスに置換)
+        # ホストの /home/y_ohi/dotfiles が /mnt/host_dotfiles にマウントされていると仮定
+        if settings.dotfiles_ai_root:
+            path = Path(settings.dotfiles_ai_root)
+            # ホストパスをコンテナ内マウントパスに変換
+            if "/home/y_ohi/dotfiles" in str(path):
+                container_path = Path(str(path).replace("/home/y_ohi/dotfiles", "/mnt/host_dotfiles"))
+                search_dirs.append(container_path / "mcp" / "catalogs")
+        
+        # 2. 直接マウントパス
+        search_dirs.append(Path("/mnt/host_dotfiles/components/dotfiles-ai/mcp/catalogs"))
+        
+        # 3. 従来の標準パス
+        search_dirs.append(Path.home() / ".docker" / "mcp" / "catalogs")
+
+        all_items: List[CatalogItem] = []
+        processed_dirs = set()
+
+        for mcp_dir in search_dirs:
+            if not mcp_dir.exists() or mcp_dir in processed_dirs:
+                continue
+            
+            processed_dirs.add(mcp_dir)
+            logger.info("Searching local catalogs in: %s", mcp_dir)
+            
+            for yaml_path in mcp_dir.glob("*.yaml"):
+                try:
+                    content = yaml_path.read_text(encoding="utf-8")
+                    data = yaml.safe_load(content)
+                    if not data or "registry" not in data:
+                        continue
+
+                    for key, val in data["registry"].items():
+                        # 各エントリーを CatalogItem に変換
+                        secrets = val.get("secrets", [])
+                        required_secrets = []
+                        if isinstance(secrets, list):
+                            for s in secrets:
+                                if isinstance(s, dict) and s.get("name"):
+                                    required_secrets.append(s.get("name"))
+                        
+                        item = CatalogItem(
+                            id=f"local-{key}",
+                            name=val.get("title", key),
+                            description=val.get("description", ""),
+                            category=val.get("metadata", {}).get("category", "utility"),
+                            docker_image=val.get("image", ""),
+                            required_secrets=required_secrets,
+                            tags=val.get("metadata", {}).get("tags", []),
+                        )
+                        all_items.append(item)
+                    logger.info("Loaded %d items from local catalog: %s", len(data["registry"]), yaml_path.name)
+                except Exception as e:
+                    logger.error("Failed to parse local catalog %s: %s", yaml_path, e)
+
+        return all_items
 
     async def get_cached_catalog(self, source_url: str) -> Optional[List[CatalogItem]]:
         """

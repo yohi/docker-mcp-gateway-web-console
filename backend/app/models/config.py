@@ -71,3 +71,10 @@ class ValidationResult(BaseModel):
     valid: bool
     errors: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
+
+
+class ConfigPathInfo(BaseModel):
+    """Configuration file path information."""
+    path: str = Field(..., description="Absolute path to the configuration file")
+    exists: bool = Field(default=True, description="Whether the file exists")
+    is_writable: bool = Field(default=True, description="Whether the file is writable")

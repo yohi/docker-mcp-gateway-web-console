@@ -140,6 +140,10 @@ class DockerSdkProvider(ContainerProvider):
         names = summary.get("Names") or []
         name = names[0].lstrip("/") if names else str(container_id)
         
+        labels = summary.get("Labels") or {}
+        # docker-mcp-name ラベルがある場合はそれを表示名に使用する
+        display_name = labels.get("docker-mcp-name") or labels.get("mcp.original_name") or name
+
         created_raw = summary.get("Created")
         created_at = datetime.now(timezone.utc)
         if isinstance(created_raw, (int, float)):

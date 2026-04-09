@@ -3,13 +3,16 @@
 import json
 import logging
 import os
+import re
+import uuid
+import yaml
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 from pydantic import ValidationError
 
 from ..config import settings
-from ..models.config import GatewayConfig, ValidationResult
+from ..models.config import GatewayConfig, ServerConfig, ValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -39,16 +42,39 @@ class ConfigService:
             config_path: Path to the gateway configuration file.
                         Defaults to './gateway_config.json' if not specified.
         """
+        # 永続化されたパスの保存先 (絶対パス)
+        self.persistence_path = Path("/app/data/active_config_path.txt")
+        
         if config_path is None:
-            # Default to gateway_config.json in the current working directory
-            config_path = os.path.join(os.getcwd(), "gateway_config.json")
+            # 1. 永続化されたパスがあれば読み込む
+            if self.persistence_path.exists():
+                try:
+                    saved_path = self.persistence_path.read_text(encoding="utf-8").strip()
+                    if saved_path:
+                        config_path = saved_path
+                        logger.info(f"Loaded persisted config path: {config_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to load persisted config path: {e}")
+
+            # 2. それでもなければデフォルト
+            if config_path is None:
+                config_path = os.environ.get("GATEWAY_CONFIG_PATH", os.path.join(os.getcwd(), "gateway_config.json"))
 
         self.config_path = Path(config_path)
         logger.info(f"Config service initialized with path: {self.config_path}")
 
+    def _persist_config_path(self, path: str) -> None:
+        """Save the current config path to a file."""
+        try:
+            self.persistence_path.parent.mkdir(parents=True, exist_ok=True)
+            self.persistence_path.write_text(path, encoding="utf-8")
+            logger.info(f"Persisted config path: {path}")
+        except Exception as e:
+            logger.warning(f"Failed to persist config path: {e}")
+
     async def read_gateway_config(self) -> GatewayConfig:
         """
-        Read Gateway configuration from file.
+        Read Gateway configuration from file (JSON or YAML).
 
         Returns:
             GatewayConfig object with the current configuration
@@ -60,7 +86,6 @@ class ConfigService:
             # Check if file exists
             if not self.config_path.exists():
                 logger.info(f"Config file not found at {self.config_path}, creating default config")
-                # Return default empty configuration
                 return GatewayConfig()
 
             # Check if file is empty
@@ -69,15 +94,23 @@ class ConfigService:
                 return GatewayConfig()
 
             # Read file content
+            is_yaml = self.config_path.suffix.lower() in {".yaml", ".yml"}
             try:
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-            except json.JSONDecodeError as e:
-                raise ConfigError(f"Invalid JSON in configuration file: {e}") from e
-            except IOError as e:
-                raise ConfigError(f"Failed to read configuration file: {e}") from e
+                content = self.config_path.read_text(encoding="utf-8")
+                if is_yaml:
+                    data = yaml.safe_load(content)
+                else:
+                    data = json.loads(content)
+            except Exception as e:
+                raise ConfigError(f"Failed to parse configuration file ({'YAML' if is_yaml else 'JSON'}): {e}") from e
 
-            # Parse and validate configuration
+            # Handle dotfiles-ai (Docker MCP Toolkit) format
+            # If the config has 'mcpServers' at the root, convert it to GatewayConfig
+            if data and "mcpServers" in data:
+                logger.info("Detected dotfiles-ai (Docker MCP Toolkit) configuration format")
+                return self._convert_from_dotfiles_ai(data)
+
+            # Parse and validate standard configuration
             try:
                 config = GatewayConfig(**data)
                 logger.info(f"Successfully loaded configuration with {len(config.servers)} servers")
@@ -89,6 +122,47 @@ class ConfigService:
             raise
         except Exception as e:
             raise ConfigError(f"Unexpected error reading configuration: {e}") from e
+
+    def _convert_from_dotfiles_ai(self, data: dict[str, Any]) -> GatewayConfig:
+        """Convert dotfiles-ai configuration format to GatewayConfig."""
+        servers = []
+        logger.info("Raw data keys: %s", list(data.keys()) if isinstance(data, dict) else "Not a dict")
+        
+        # dotfiles-ai の設定は 'mcpServers' キーの下にサーバー定義がある
+        mcp_servers = data.get("mcpServers", data.get("mcp_servers", {}))
+        
+        if not mcp_servers and isinstance(data, dict):
+            # もしトップレベルが既にサーバー定義のリスト（辞書）だった場合のフォールバック
+            mcp_servers = {k: v for k, v in data.items() if isinstance(v, dict) and ("enabled" in v or "image" in v)}
+
+        logger.info("Found %d potential servers in dotfiles-ai config", len(mcp_servers))
+        
+        for name, config in mcp_servers.items():
+            try:
+                # ログ出力
+                logger.info("Processing server: %s, config type: %s", name, type(config))
+                
+                # dotfiles-ai 形式から Web Console 形式へのマッピング
+                container_id = re.sub(r"[^a-z0-9-]", "-", name.lower()).strip("-")
+                if not container_id:
+                    container_id = f"mcp-{uuid.uuid4().hex[:8]}"
+
+                if not isinstance(config, dict):
+                    logger.warning("Server '%s' config is not a dict, skipping", name)
+                    continue
+
+                server = ServerConfig(
+                    name=name,
+                    enabled=config.get("enabled", True),
+                    container_id=container_id,
+                    config=config
+                )
+                servers.append(server)
+                logger.info("Successfully mapped server: %s", name)
+            except Exception as e:
+                logger.warning("Failed to map server '%s': %s", name, e)
+            
+        return GatewayConfig(servers=servers)
 
     async def write_gateway_config(self, config: GatewayConfig) -> bool:
         """
@@ -278,3 +352,78 @@ class ConfigService:
             Path object for the configuration file
         """
         return self.config_path
+
+    def set_config_path(self, new_path: str) -> bool:
+        """
+        Update the configuration file path.
+
+        Args:
+            new_path: New path to the configuration file
+
+        Returns:
+            True if path was updated
+        """
+        self.config_path = Path(new_path)
+        self._persist_config_path(new_path)
+        logger.info(f"Config path updated to: {self.config_path}")
+        return True
+
+    async def backup_config(self) -> Optional[Path]:
+        """
+        Create a backup of the current configuration file.
+
+        Returns:
+            Path to the backup file if successful, None if no config exists
+
+        Raises:
+            ConfigError: If backup creation fails
+        """
+        try:
+            if not self.config_path.exists():
+                logger.info("No configuration file to backup")
+                return None
+
+            # Check if file is empty
+            if self.config_path.stat().st_size == 0:
+                logger.info("Configuration file is empty, no backup needed")
+                return None
+
+            # Create backup with timestamp
+            from datetime import datetime
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = self.config_path.with_suffix(f".backup_{timestamp}.json")
+
+            # Copy current config to backup
+            import shutil
+
+            shutil.copy2(self.config_path, backup_path)
+
+            logger.info(f"Created configuration backup at {backup_path}")
+            return backup_path
+
+        except Exception as e:
+            raise ConfigError(f"Failed to create configuration backup: {e}") from e
+
+    def get_config_path(self) -> Path:
+        """
+        Get the path to the configuration file.
+
+        Returns:
+            Path object for the configuration file
+        """
+        return self.config_path
+
+    def set_config_path(self, new_path: str) -> bool:
+        """
+        Update the configuration file path.
+
+        Args:
+            new_path: New path to the configuration file
+
+        Returns:
+            True if path was updated
+        """
+        self.config_path = Path(new_path)
+        logger.info(f"Config path updated to: {self.config_path}")
+        return True

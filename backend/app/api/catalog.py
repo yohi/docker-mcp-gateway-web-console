@@ -32,7 +32,7 @@ _CATALOG_ERROR_STATUS = {
 }
 
 _CATALOG_ERROR_DETAILS = {
-    CatalogErrorCode.INVALID_SOURCE: "Invalid source value. Allowed: docker, official",
+    CatalogErrorCode.INVALID_SOURCE: "Invalid source value. Allowed: docker, official, local",
     CatalogErrorCode.RATE_LIMITED: "Upstream rate limit exceeded. Please retry later.",
     CatalogErrorCode.UPSTREAM_UNAVAILABLE: "Upstream registry is temporarily unavailable.",
     CatalogErrorCode.INTERNAL_ERROR: "An internal error occurred.",
@@ -41,13 +41,14 @@ _CATALOG_ERROR_DETAILS = {
 
 def _resolve_source_id(source: Optional[str]) -> CatalogSourceId:
     """Resolve catalog source ID from query param."""
+    logger.info(f"Resolving catalog source ID: {source}")
     if source is None:
         return CatalogSourceId.DOCKER
     try:
         return CatalogSourceId(source)
     except ValueError as exc:
         raise CatalogError(
-            "Invalid source value. Allowed: docker, official",
+            "Invalid source value. Allowed: docker, official, local",
             error_code=CatalogErrorCode.INVALID_SOURCE,
         ) from exc
 
@@ -57,6 +58,7 @@ def _resolve_source_url(source_id: CatalogSourceId) -> str:
     mapping = {
         CatalogSourceId.DOCKER: settings.catalog_docker_url,
         CatalogSourceId.OFFICIAL: settings.catalog_official_url,
+        CatalogSourceId.LOCAL: settings.catalog_local_url,
     }
     return mapping[source_id]
 
